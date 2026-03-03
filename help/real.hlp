@@ -1,0 +1,42 @@
+value
+Convert an integer, string or logical value to a floating point number.
+EXAMPLES
+-------
+
+1. Convert two integer values to floating point to obtain floating
+   point division in a case where integer arithmetic would usually be
+   used.
+
+    0> integer j,k
+    0> j=3; k=4
+    0> print k/j
+    1
+    0> print real(k)/real(j)
+    1.33333
+
+2. Read a decimal number from a string.
+
+    0> print real("3.4") * 10
+    34.0
+
+3. Read a hexadecimal number from strings and return its decimal value.
+
+   0> print real("0xFF")
+   255
+
+4. Read the IEEE special values, NaN and Inf from strings and show that
+   they behave as expected.
+
+   0> print 10 * real("nan")
+   nan
+
+   0> print 1.0 / real("inf")
+   0
+
+5. Convert a logical value to 0 if false, or 1 if true
+
+   0> print real(false)
+   0
+
+   0> print real(true)
+   1

@@ -1,0 +1,102 @@
+method, coefsigma, nbvislimit, verbose
+Smart editing command.
+
+PARAMETERS
+----------
+
+method      - (Optional) Default = 1   (--> standard deviation)
+               Method to dectect and remove outliers. See list below.
+               
+coefsigma   - (Optional) Default = 3.0.
+               Constant to adjust cutoff level for visibility amplitudes.
+               Depends on the method used. See below.
+
+nbvislimit  - (Optional) Default = 10.
+               The minimum number of visibilities in a scan to enable smart editing.
+
+verbose     - (Optional) Default = 0.
+               Talkative output.
+
+CONTEXT
+-------
+This command is non-interactive. It edits data IF by IF, scan by scan
+and subarray by subarray automatically.
+The editing is amplitude-based, which mean that amplitude outliers are removed using
+a method that can be chosen (parameter 'method'). By default, the 'standard deviation' method
+is used. For each method, a constant (parameter 'coefsigma') may be specfied to adjust the
+roughness of the editing.
+Please note that some methods require a minimal number of visibility points (parameter 'nbvislimit')
+per scan.
+
+
+*** All methods to detect outliers: ***
+
+1 - ST_DEVIATION
+	Cutoffs = mean +/- const * standard_deviation
+	
+	where const is usually between 2 and 3.
+
+2 - MADe
+	Median Absolute Deviation: MAD = median{|xi-median|}
+	MADe = 1.4826*MAD (normal distribution)
+	
+	Cutoffs = median +/- const * MADe
+	
+	where const is usually between 2 and 3.
+	
+3 - Z-SCORE
+	Z = (xi-mean)/standard_deviation
+	
+	Edit if |Z| > const.
+	Usually const = 3.
+	
+	*** Not approriate for small data sets ! ***
+	*** Similar to standard deviation method ***
+
+4 - MODIFIED Z-SCORE
+	Median Absolute Deviation: MAD = median{|xi-median|}
+	MZ = 0.6745 * (xi-median)/MAD
+	
+	Edit if |MZ| > const.
+	Usually const = 3.5.
+
+5 - BOXPLOT
+	Cutoffs = [ Q1 - const * IQR , Q3 + const * IQR ]
+
+	where 
+	Q1 = quantile(25%)
+	Q3 = quantile(75%)
+	Inter Quartile Range (IQR) = Q3-Q1
+	
+	and const usually between 1.5 and 3.
+
+6 - ADJUSTED BOXPLOT
+	Cutoffs = [ Q1 - const*exp(-3.5MC)*IQR , Q3 + const*exp(4MC)*IRQ ]  if MC >=0
+	          [ Q1 - const*exp(-4MC)*IQR , Q3 + const*exp(3.5MC)*IRQ ]  if MC <=0
+	
+	where 
+	Q1 = quantile(25%)
+	Q3 = quantile(75%)
+	Inter Quartile Range (IQR) = Q3-Q1
+	MC = medcouple (robust measure of the skewness of the distribution ;
+					MC>0 indicates right skew and MC<0 left skew ; 
+					MC=0 mean symetric distribution)
+	
+	and const usually between 1.5 and 3.
+	
+	*** when MC=0, the adjusted boxplot method become the boxplot method ***
+
+7 - MEDIAN RULE
+	Cutoffs = Median +/- const * IQR
+	
+	where const usually between 2 and 3. 
+	A value of 2.3 may be recommanded typically.
+	
+
+RELATED COMMANDS
+----------------
+vplot    -   Displays visibilities of sub-array baselines.
+
+AUTHOR
+------
+Arnaud Collioud - collioud@obs.u-bordeaux1.fr - 30 Apr. 2014

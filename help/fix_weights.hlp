@@ -1,0 +1,51 @@
+dofix
+Set whether amplitude corrections affect the visibility weights.
+EXAMPLE
+-------
+
+0>fix_weights
+Allow amplitude corrections to visibility weights.
+0>
+
+0>fix_weights true
+Do not allow amplitude corrections to visibility weights.
+0>
+
+0>fix_weights false
+Allow amplitude corrections to visibility weights.
+0>
+
+PARAMETERS
+----------
+dofix   -  (Default=false)
+           If false then amplitude corrections from selfcal and
+           resoff will be applied to the visibility weights,
+           treating them as 1/(amplitude variance).
+           If false, then amplitude corrections will have not
+           change the visibility weights.
+
+CONTEXT
+-------
+
+Difmap assumes that the weight associated with each visibility is
+equal to 1 / (amplitude variance). If the variances used to calculate
+these weights were determined by looking at the scatter of the
+calibrated amplitudes, then they will have been affected by any
+miscalibration of the amplitudes. In this case, subsequent corrections
+to the amplitudes by self-calibration or the resoff command, should
+also be used to correct the weights to correct for the corresponding
+miscalibration of the scatter based variances.
+
+On the other hand, if the amplitude variances used to calculate the
+weights were determined theoretically from the expected thermal noise,
+then they should will not be affected by any miscalibration of the
+amplitudes, so they should not have amplitude corrections applied to
+them by self-calibration or the resoff command.
+
+RELATED COMMANDS
+----------------
+selfcal - Self calibrate for telescope phase (and amplitude) corrections.
+uncalib - Remove selected amplitude or phase corrections.
+resoff  - Determine and apply a baseline based amplitude and phase correction.
+clroff  - Undo the effects of all resoff commands in this difmap session.
+wtscale - Change the scale factor that mutiplies the raw visibility weights.

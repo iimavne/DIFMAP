@@ -1,0 +1,94 @@
+maxamp, maxphs, doclip
+Set limits on acceptable amplitude and phase corrections in selfcal.
+EXAMPLES
+--------
+
+1. To prevent selfcal from making amplitude corrections of more than
+   1.1 (unitless scale factor), or phase corrections of more that 10
+   degrees, type:
+
+   0>selflims 1.1,10
+   Selfcal amplitude corrections will be limited to 0.909091 -> 1.1.
+   Selfcal phase corrections will be limited to -10 -> 10 degrees.
+   0>
+
+   All but the first line are the response from selflims confirming
+   the new limits.
+
+2. To display the currently selected limits omit all arguments:
+
+   0>selflims
+   Selfcal amplitude corrections will be limited to 0.909091 -> 1.1.
+   Selfcal phase corrections will be limited to -10 -> 10 degrees.
+   0>
+
+3. To cancel all limits type:
+
+   0>selflims 0,0
+   Selfcal amplitude corrections will not be limited.
+   Selfcal phase corrections will not be limited.
+   0>
+
+PARAMETERS
+----------
+maxamp  - If maxamp < 1 then no limit will be placed on amplitude
+          corrections except where the selfant command has been used
+          to specify amplitude limits for individual telescopes.
+
+          If maxamp >=1 then for each selfcal solution-time interval,
+          selfcal checks whether the amplitude corrections of any
+          telescopes fall outside the range 1/maxamp to maxamp, where
+          maxamp is either the telescope specific amplitude limit, if
+          specified by selfant, or the global amplitude limit set by
+          the selflims command. If the amplitude correction of one or
+          more telescopes exceeds these limits, then the value of the
+          doclip argument determines how selfcal applies the amplitude
+          limit. See the documentation of the doclip argument below
+          for details.
+
+maxphs  - If maxphs <= 0 then no limit will be placed on phase
+          corrections except where the selfant command has been used
+          to specify phase limits for individual telescopes.
+
+          If maxphs >=0 then for each selfcal solution-time interval,
+          selfcal checks whether the phase corrections of any
+          telescopes fall outside the range -maxphs to maxphs, where
+          maxphs is either the telescope specific phase limit, if
+          specified by selfant, or the global phase limit set by
+          the selflims command. If the phase correction of one or
+          more telescopes exceeds these limits, then the value of the
+          doclip argument determines how selfcal applies the amplitude
+          limit. See the documentation of the doclip argument below for
+          details.
+
+doclip -  Default = false
+          By default, when selfcal finds a correction that exceeds
+          ranges set by the maxamp and maxphs arguments of
+          this command (selflims) or the selfant command, then
+          the corrections of all telescopes in the associated solution
+          interval are discarded and the visibilities are left
+          uncorrected. However if the doclip argument is specified as true,
+          then telescope corrections are clipped where necessary,
+          to prevent them from exceeding the specified limits
+          during the minimization procedure.
+
+When a new data-set is read in using the 'observe' command the
+limits are reset to provide no limits on corrections.
+
+CONTEXT
+-------
+In some data sets where the data is sparse, noisy or not well
+constrained for other reasons, selfcal may produce ridiculously large
+aberrant corrections. The selflims command is used before calling
+selfcal to set limits on the allowed corrections.
+
+Note that rejection of the solution for a given solution bin does NOT
+result in the effected visibilities being flagged - regardless of the
+flagging disposition set by any previous use of the selfflag command.
+
+RELATED COMMANDS
+----------------
+selfcal   - Perform self-calibration.
+selfflag  - Used to control the fate of un-correctable data.
+selftaper - Used to down-weight short baselines during selfcal.
+selfant   - Set antenna based constraints in selfcal.

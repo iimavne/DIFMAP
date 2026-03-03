@@ -1,0 +1,144 @@
+antenna, dofix, weight, maxamp, maxphs
+Set antenna based constraints for subsequent self-calibration.
+EXAMPLES
+--------
+
+  The following example shows how the selfant command lists the
+  current parameters of all telescopes when it is invoked with no
+  arguments.
+
+0>selfant
+1:BONN     self-cal  status=correctable  weight=1 maxamp=none maxphs=none
+1:WSRT     self-cal  status=correctable  weight=1 maxamp=none maxphs=none
+1:JBNK1    self-cal  status=correctable  weight=1 maxamp=none maxphs=none
+1:BOLOGNA  self-cal  status=correctable  weight=1 maxamp=none maxphs=none
+1:TORUN    self-cal  status=correctable  weight=1 maxamp=none maxphs=none
+0>
+
+  The following example shows how the selfant command sets just one
+  paramter for the one specified telescope, then reports the current
+  parameters for that telescope, including any that were previously
+  set, but not changed by this command.
+
+0>selfant BOLOGNA, true
+1:BOLOGNA  self-cal  status=fixed  weight=1 maxamp=none maxphs=none
+0>
+
+  The following example demonstrates how the selfant command overrides
+  the selflims command for a specified telescope or telescopes, but
+  reports the global limits specified by the selflims command for
+  other telescopes that have not been explicitly configured using this
+  command.
+
+0>selflims 2.0, 45.0
+Selfcal amplitude corrections will be limited to 0.5 -> 2.0.
+Selfcal phase corrections will be limited to -45 -> 45 degrees.
+0>
+0>selfant JBNK1, false, 1.0, 10.0, 90.0
+1:JBNK1       self-cal  status=correctable  weight=1  maxamp=10  maxphs=90
+0>selfant
+1:BONN     self-cal  status=correctable  weight=1  maxamp=2.0  maxphs=45
+1:WSRT     self-cal  status=correctable  weight=1  maxamp=2.0  maxphs=45
+1:JBNK1    self-cal  status=correctable  weight=1  maxamp=10  maxphs=90
+1:BOLOGNA  self-cal  status=correctable  weight=1  maxamp=2.0  maxphs=45
+1:TORUN    self-cal  status=correctable  weight=1  maxamp=2.0  maxphs=45
+0>
+
+PARAMETERS
+----------
+antenna - (Default="")
+          The name of the antenna or antennas to be addressed.
+          If this argument is omitted or supplied as "", then
+          all antennas will be addressed. See the antenna_names help
+          topic for a discussion of the syntax and interpretation of
+          antenna specifications.
+
+dofix   - Normally this should be false. If true then subsequent
+          self-calibration will not be allowed to change the complex
+          gain of the named antenna. If this argument is omitted no
+          change is made to the existing value.
+
+weight  - The relative self-cal weight correction factor to give to
+          the named antenna.
+          Normally this should be 1.0. This factor expresses the
+          degree to which the existing weights on the named antenna
+          should be believed with respect to those of other antennas.
+          If this argument is omitted no change is made to the
+          existing value.
+
+maxamp  - If maxamp < 1 then no limit will be placed on amplitude
+          corrections for this telescope unless the selflims command
+          has been used to specify a global amplitude limit.
+
+          If maxamp >=1 then for each selfcal solution-time interval,
+          selfcal checks whether the amplitude corrections of any
+          telescopes fall outside the range 1/maxamp to maxamp, where
+          maxamp is either the telescope specific amplitude limit, if
+          specified by selfant command, or the global amplitude limit
+          set by the selflims command. If the amplitude correction of
+          one or more telescopes exceeds these limits, then the value
+          of the doclip argument of the selflims command determines
+          how selfcal applies the amplitude limit. See 'help selflims'
+          for details.
+
+maxphs  - If maxphs <= 0 then no limit will be placed on phase
+          corrections for this telescope unless the selflims command
+          has been used to specify a global phase limit.
+
+          If maxphs >=0 then for each selfcal solution-time interval,
+          selfcal checks whether the phase corrections of any
+          telescopes fall outside the range -maxphs to maxphs, where
+          maxphs is either the telescope specific phase limit, if
+          specified by the selfant command, or the global phase limit
+          set by the selflims command. If the phase correction one or
+          more telescopes exceeds these limits, then the value
+          of the doclip argument of the selflims command determines
+          how selfcal applies the phase limit. See 'help selflims'
+          for details.
+
+After processing the above arguments the selfant command reports the
+current parameter settings for each of the specified telescopes, or
+all of the telescopes if none were specified. For antennas where no
+telescope-specific limits have been specified, then the limits
+specified by the selflims command will be shown instead.
+
+CONTEXT
+-------
+This command affects the way that corrections for specific antennas of
+specified sub-arrays are treated during subsequent self-calibration.
+Effected commands are selfcal, gscale and startmod.
+
+There are many reasons why preventing the gain of one or more antennas
+from being changed, or from changing too much is advantageous. On the
+one hand it constrains the freedom of solutions of other
+antennas. This is useful if one has very few antennas and the antenna
+that is fixed is an antenna that one believes to be well
+calibrated. On the other hand it can be used to fix the largely
+unconstrained gains of a very noisy antenna, to prevent them from
+going wild.
+
+Each visibility of an observation has an associated weight assigned to
+it. Such weights may be indirectly inspected in vplot, where they are
+plotted as the equivalent 1/sqrt(weight) error bars. The difmap
+self-calibration algorithm uses them to determine the weights to be
+used during fitting. If the real uncertainties on all baselines appear
+to be equally in error by a constant factor then nothing is lost. But
+if the uncertainties on all baselines of a given antenna appear to be
+over or under-estimated with respect to those of other antennas then
+selfant may be used to specify that appropriately scaled versions of
+the weights be used in subsequent self-calibration. This is the
+technically correct way to use the 'weight' argument. Sometimes
+however, one may decide that the correct weights of a given antenna
+are so big compared to other antennas that the resulting self-cal
+solutions are dominated by visibilities of this antenna.  In such
+cases it may be advantageous to reduce the weight of the good antenna
+by specifying 'weight' with a value less than 1.0.
+
+RELATED COMMANDS
+----------------
+selfcal   - Performs self-calibration.
+selfflag  - Used to control the fate of un-correctable data.
+selftaper - Used to down-weight short baselines during selfcal.
+selflims  - Used to set global limits on corrections by selfcal.
+gscal     - Calculate overall telescope amplitude corrections.
+startmod  - Phase selfcal to a starting model then discard the model.

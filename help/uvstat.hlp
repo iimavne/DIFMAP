@@ -1,0 +1,65 @@
+statistic
+Return UV plane visibility statistics.
+EXAMPLE
+-------
+
+ 0>print uvstat(rms)
+ 0.333969
+ 0>
+ 0>print uvstat(chisq)
+ 1.07537
+ 0>
+ 0>print uvstat(nvis)
+ 10756
+ 0>
+ 0>print uvstat(clphs_chisq)
+ 0.230628
+ 0>
+ 0>print uvstat(clphs_nused)
+ 21679
+ 0>
+
+PARAMETERS
+----------
+
+statistic  -  The name of the statistic wanted. Recognised names are:
+
+               rms          -   The root-mean-square difference between
+                                observed and model visibilities (Jy).
+               chisq        -   The reduced chi-squared of the fit
+                                between the observed and model
+                                visibilities.
+               nvis         -   The number of un-flagged visibilities.
+               clphs_chisq  -   The reduced chi-squared of the
+                                discrepancy between the observed and
+                                model closure phases, divided by
+                                clphs_nused.
+               clphs_nused  -   The number of closure phases that were
+                                used to calculated clphs_rchisq. If
+                                no data are flagged then this will be
+                                the sum over all subarrays of:
+                                   ntime * nif * nt * (nt-1) * (nt-2) / 6
+                                where ntime is the number of integrations,
+                                nif is the number of IFs, and nt is the
+                                number of telescopes in each subarray.
+
+CONTEXT
+-------
+This function provides access to a few statistics relating model and
+observed visibilities in the UV plane. The return value may be used in
+expressions, and thus may be used in automatic mapping procedures.
+
+Note that the 'uvrange' command can be used to limit the statistics to
+those of visibilities that lie within a given distance from the center
+of the UV plane.
+
+SIDE EFFECTS
+------------
+The tentative model will be established in the UV plane if not already
+there. This in turn will force difmap to re-invert the data before the
+next operation that involves the current map.
+
+RELATED COMMANDS
+----------------
+imstat  - Return image plane map statistics.
+uvrange - Set the range of visibilities to be inspected.

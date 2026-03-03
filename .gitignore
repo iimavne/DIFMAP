@@ -1,0 +1,66 @@
+# ==========================================
+# Exécutables principaux
+# ==========================================
+difmap
+gfortran_version
+
+# ==========================================
+# Fichiers de compilation (C/Fortran)
+# ==========================================
+*.o
+*.a
+*.so
+*.dylib
+
+# ==========================================
+# Nouveau système de build (Meson / Ninja)
+# ==========================================
+builddir/
+build/
+.meson*
+
+# ==========================================
+# Ancien système de build (Scripts Configure & Make)
+# ==========================================
+Makefile
+*/makefile
+make.configure
+libtecla_src/needed
+libtecla_src/Makefile
+libtecla_src/config.log
+libtecla_src/config.status
+
+# ==========================================
+# Fichiers générés automatiquement
+# ==========================================
+include/helpdir.h
+include/new_helpdir.h
+doc/help.tex
+doc/help.dvi
+
+# ==========================================
+# Logs et fichiers temporaires Difmap
+# ==========================================
+*.log
+difmap.log
+core
+scrfil_src/scrfile* # Fichiers scratch temporaires
+
+# ==========================================
+# Fichiers de données (Optionnel mais recommandé)
+# ==========================================
+# Évite de commiter par erreur vos gros fichiers de données
+*.fits
+*.uvf
+*.uv
+
+# ==========================================
+# Fichiers systèmes et éditeurs
+# ==========================================
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+.vscode/
+.idea/
