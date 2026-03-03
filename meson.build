@@ -3,10 +3,7 @@ project('difmap_smartedit', ['c', 'fortran'],
   default_options : ['warning_level=1', 'c_std=gnu99'])
 
 cc = meson.get_compiler('c')
-fc = meson.get_compiler('fortran')
-
-# --- Architecture Processeur ---
-add_project_arguments('-Dlinux_i486_gcc', language : 'c')
+add_project_arguments('-Dlinux_i486_gcc', '-fPIC', language : 'c')
 
 # --- 1. Dépendances ---
 m_dep = cc.find_library('m', required : true)
@@ -16,7 +13,7 @@ curses_dep = dependency('ncurses', required : true)
 pgplot_dep = cc.find_library('pgplot', required : true)
 cpgplot_dep = cc.find_library('cpgplot', required : true)
 
-# --- 2. Configuration des Includes ---
+# --- 2. Includes ---
 inc = include_directories(
   'include', 'logio_src', 'pager_src', 'recio_src', 
   'scrfil_src', 'fits_src', 'slalib_src', 'sphere_src', 
