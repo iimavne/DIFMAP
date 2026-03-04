@@ -43,6 +43,7 @@ doc/help.dvi
 # ==========================================
 *.log
 difmap.log
+difmap.log_*
 core
 scrfil_src/scrfile* # Fichiers scratch temporaires
 
@@ -53,6 +54,7 @@ scrfil_src/scrfile* # Fichiers scratch temporaires
 *.fits
 *.uvf
 *.uv
+
 
 # ==========================================
 # Fichiers systèmes et éditeurs
