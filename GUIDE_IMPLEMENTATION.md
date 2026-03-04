@@ -361,6 +361,27 @@ class DifmapSession:
         Ouvre fenêtre PGPLOT pour éditer visibilités à la souris.
         L'utilisateur clique pour marquer points mauvais, puis 'Q' pour quitter.
         Cette étape est indispensable avant CLEAN sur données réelles.
+        
+        ⚠️ LIMITATION v1.0: Cette commande nécessite une gestion spéciale de stdin 
+        car vplot ouvre une fenêtre X11 et attend les clics/touches clavier. 
+        Avec la méthode communicate() actuelle (qui ferme stdin après envoi), 
+        Difmap risque de :
+        - Gel de l'écran (deadlock stdin)
+        - Ne pas pouvoir lire les entrées de la souris
+        
+        RECOMMANDATION: Pour l'instant, effectuer l'édition interactive MANUELLEMENT 
+        avant d'utiliser le wrapper Python :
+        
+        $ ./builddir/difmap
+        obs data.fits
+        select I
+        vplot
+        (edit à la souris, puis Q)
+        wedit edited.uvd
+        exit
+        
+        Puis utiliser le wrapper sur edited.uvd. Une version v2.0 avec 
+        support asynchrone (stdin non-blocking) permettrait vplot intégré.
         """
         self.script_buffer.append("vplot")
         return self
