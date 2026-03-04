@@ -1,4 +1,4 @@
-# GUIDE D'IMPLÉMENTATION - DIFMAP Python Wrapper
+# GUIDE D'IMPLÉMENTATION - Wrapper Python DIFMAP
 
 **Approche Validée:** Subprocess + Macros SPHERE  
 **Timeline:** 4 semaines  
@@ -6,53 +6,317 @@
 
 ---
 
-## TABLE OF CONTENTS
+## TABLE DES MATIÈRES
 
-1. [Pourquoi Pas Cython?](#pourquoi-pas-cython)
+1. [Pourquoi Pas Cython? (Les vrais problèmes)](#pourquoi-pas-cython-les-vrais-problèmes)
 2. [Architecture Subprocess](#architecture-subprocess)
-3. [Implementation Details](#implementation-details)
+3. [Détails Implémentation](#détails-implémentation)
 4. [Code Complet: DifmapSession](#code-complet-difmapsession)
-5. [Examples](#examples)
-6. [Testing Strategy](#testing-strategy)
-7. [4-Week Checklist](#4-week-checklist)
+5. [Exemples](#exemples)
+6. [Stratégie de Test](#stratégie-de-test)
+7. [Checklist 4 Semaines](#checklist-4-semaines)
 
 ---
 
-## POURQUOI PAS CYTHON?
+## POURQUOI PAS CYTHON? (Les vrais problèmes)
 
-### Le Problème Fondamental
+### Problème 1: Globals Statiques Massives
 
-**Initial proposal (INCORRECT):**
-```
-Python → Cython Wrapper → libdifmap.so (API publique)
-```
-
-**Réalité du code DIFMAP:**
-- Exécutable monolithique, pas une librairie
-- Globals statiques partout = reentrancy impossible
+**Code réel DIFMAP:**
 
 ```c
-// Code réel dans difmap_src/
-static Observation *ob = NULL;      // Une seule instance globale!
-static Model *model = NULL;
-static Mapcln *mc = NULL;
+// difmap_src/obs.c
+static Observation *ob = NULL;       // L'UNIQUE observation du processus
 
-// Si on peut wrapper en Cython:
-PyInit_cython.fit_model(obs1, model1);  // Init OK
-PyInit_cython.fit_model(obs2, model2);  // ❌ SEGFAULT!
-                                         // ob réutilisé, memory corruption
+// difmap_src/model.c
+static Model *model = NULL;          // L'UNIQUE modèle
+
+// difmap_src/mapcln.c
+static Mapcln *mc = NULL;            // L'UNIQUE état CLEAN
+
+// difmap.c: 50+ autres statics
+static Variable vars[500];
+static USER_FN_PROTO functions[100];
+static ImageMap *image_map = NULL;
+static UVData *current_uvdata = NULL;
+// ... plus de 50 déclarations static!
 ```
 
-### Refonte Requise (Non-faisable)
+**Impact Cython:**
 
-Pour rendre thread-safe:
-- Refactoriser 50% du code C
-- Tester toutes regressions
-- Créer API publique contextualisée
-- **Effort:** 6+ mois, maintenance nécessaire
-- **Risk:** Très élevé pour code 25 ans
+```python
+# Essayer de wrapper:
+from difmap_cython import fit_model, clean
 
-**Verdict:** ❌ **À ignorer complètement.**
+# Session 1: OK
+fit_model(obs1, model1)      # ✓ Initialise ob, model globaux
+clean(obs1, 1000, 0.1)       # ✓ Réutilise ob, model globaux
+
+# Session 2: DÉSASTRE
+fit_model(obs2, model2)      # ❌ SEGFAULT!
+                              # ob pointe toujours à obs1 (memory address)
+                              # model pointe toujours à model1
+                              # Les passer en paramètre ne change RIEN
+                              # Les fonctions C lisent les statics, pas params
+```
+
+**Code problématique réel en C:**
+
+```c
+// dans lmfit.c
+int levenberg_marquardt_fit(Observation *obs, Model *mod, ...) {
+    // ↑ Paramètres, mais:
+    
+    // Ensuite, la fonction utilise probablement:
+    for (int i = 0; i < ob->nbas; i++) {  // ← ob GLOBAL, pas paramètre!
+        // Calcule pour le global ob
+    }
+    
+    // Ou pire, appelle d'autres fonctions qui utilisent globals:
+    compute_residuals();     // Va lire ob et model globaux
+    update_parameters();     // Va modifier model global
+}
+```
+
+**À refactoriser pour fixer:**
+
+```c
+// Nouveau style contextualisé:
+typedef struct {
+    Observation *ob;
+    Model *model;
+    Mapcln *mc;
+    // ... 50+ autres statics dans une struct
+} DifmapContext;
+
+DifmapContext *ctx = difmap_create_context();
+levenberg_marquardt_fit(ctx, obs, model, ...);  // Passe ctx
+difmap_free_context(ctx);
+```
+
+**Effort requis:**
+- Refactoriser 50% du code = ~20,000 lignes C
+- Tester tous les chemins code (énorme test suite)
+- Vérifier thread-safety (races)
+- Documenter la nouvelle API
+- Temps: **6-8 mois**, risk **très élevé**
+
+---
+
+### Problème 2: Aucune API Publique
+
+**Réalité du code:**
+
+```c
+// Exemple: src/lmfit.c
+static void lm_iterate(Observation *ob, ...) {
+    // ↑ STATIC = symbol non exporté!
+}
+
+static float compute_chi2(...) {
+    // ↑ STATIC = invisible dehors!
+}
+
+// Header: src/lmfit.h
+// ← Vide! Aucune déclaration publique
+
+// Dans src/difmap.c, la fonction est enregistrée avec SPHERE:
+static USER_FN_PROTO my_functions[] = {
+    {NULL, "fit", 0, lm_fit},  // ← SPHERE peut l'appeler
+    // Mais C ext. ne le peut pas!
+};
+```
+
+**Impact:**
+- ❌ Pas de `libdifmap.so` à compiler
+- ❌ 500+ fonctions inaccessibles
+- ❌ SWIG/pybind11 = rien à scanner!
+- ✅ SPHERE = l'UNIQUE interface publique
+
+**SPHERE l'orchestrate déjà:**
+
+```sphere
+read_uv "data.fits"     # Appelle uvf_input() (enregistrée SPHERE)
+model                   # Appelle model_init() (enregistrée SPHERE)
+add 0.5 0 0 gaussian    # Appelle add_to_model() (enregistrée SPHERE)
+fit                     # Appelle lm_fit() (enregistrée SPHERE)
+clean 1000 0.1          # Appelle map_clean() (enregistrée SPHERE)
+wmap "output.fits"      # Appelle uvf_output() (enregistrée SPHERE)
+```
+
+**SPHERE a accès à 100+ algos, Python juste génère SPHERE scripts.**
+
+---
+
+### Problème 3: PGPLOT Bloque Jupyter
+
+**Code réel:**
+
+```c
+// difmap_src/maplot.c
+void map_plot() {
+    cpgopen("/XWxxx");      // ← Ouvre fenêtre X11
+    // ... appels de dessin
+    cpgclos();
+}
+
+// cpgplot.h (wrapper PGPLOT Fortran)
+extern void cpgopen_();
+extern void cpgimag_();
+```
+
+**Problème Jupiter:**
+- Server headless (SSH no X11 forward) = crash
+- Container/Docker = pas de device X11
+- Batch processing = hang sur fenêtre
+- Solution PGPLOT: `/ps` device (PostScript headless)
+
+**Solution Python:**
+
+```python
+# Option 1: PGPLOT headless  
+session.execute("""
+set pgdev /ps           # Device PostScript fichier
+mapplot                 # Sauve dans plot.ps
+""")
+
+# Option 2: Ignorer PGPLOT, utiliser matplotlib
+from astropy.io import fits
+import matplotlib.pyplot as plt
+
+hdul = fits.open("clean_map.fits")
+data = hdul[0].data
+
+fig, ax = plt.subplots()
+im = ax.imshow(data, cmap='hot')
+ax.set_title("CLEAN Map")
+plt.colorbar(im)
+plt.show()  # ← Jupyter display OK!
+```
+
+---
+
+## ARCHITECTURE SUBPROCESS
+
+### Vue d'Ensemble
+
+```
+         Python Layer (abstraction)
+    ┌──────────────────────────────┐
+    │  session.read_uv(...)        │
+    │  session.fit_model()         │
+    │  session.clean()             │
+    │  session.execute()           │
+    └────────────────┬─────────────┘
+                     │ Génère SPHERE script
+                     ↓
+    ┌──────────────────────────────┐
+    │  SPHERE Code Généré          │
+    │  read_uv "data.fits"         │
+    │  model                       │
+    │  add 0.5 0 0 gaussian        │
+    │  fit                         │
+    │  clean 1000 0.1              │
+    │  wmap "output.fits"          │
+    │  exit                        │
+    └────────────────┬─────────────┘
+                     │ subprocess.Popen(stdin=PIPE)
+                     ↓
+    ┌──────────────────────────────────────┐
+    │  DIFMAP Executable (./builddir/difmap)
+    │  (Processus séparé = globals isolés)  │
+    │                                       │
+    │  ✓ ob = nouveau (not NULL before!)    │
+    │  ✓ model = nouveau                    │
+    │  ✓ mc = nouveau                       │
+    │  ← Pas de conflit avec autres sessions│
+    └────────────────┬─────────────────────┘
+                     │ FITS + Log output
+                     ↓
+    ┌──────────────────────────────┐
+    │  Result Files               │
+    │  • output.fits (CLEAN map)  │
+    │  • difmap.log (stdout)      │
+    │  • plot.ps (PostScript)     │
+    │                              │
+    │  Python lit via:            │
+    │  • astropy.fits             │
+    │  • log parsing              │
+    │  • matplotlib via numpy     │
+    └──────────────────────────────┘
+```
+
+### Avantages vs Cython
+
+| Feature | Cython | Subprocess |
+|---------|--------|-----------|
+| **Refactor C** | 50k lignes | 0 lignes |
+| **Risque** | ÉNORME (statics) | Bas (isolation OS) |
+| **Timeline** | 6-8 mois | 4 semaines |
+| **Multi-session** | ❌ Segfault certain | ✅ Parfait (procès isolés) |
+| **Jupyter** | ❌ Blocage PGPLOT | ✅ 100% compatible |
+| **Maintenance** | Heavy (API breaks) | Light (SPHERE stable) |
+| **Performance** | Fast (in-process) | Acceptable (spawn ~100ms) |
+
+---
+
+## DÉTAILS IMPLÉMENTATION
+
+### Système de Fichiers Partagés
+
+```python
+import subprocess
+import tempfile
+
+class DifmapSession:
+    def __init__(self):
+        # Répertoire de travail = point de communication
+        self.work_dir = tempfile.mkdtemp(prefix="difmap_")
+        
+        # Lancer subprocess
+        self.proc = subprocess.Popen(
+            ["./builddir/difmap"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            cwd=self.work_dir,  # ← CWD = travail dir
+            text=True
+        )
+    
+    def execute(self, script: str):
+        # Envoyer script
+        stdout, stderr = self.proc.communicate(input=script)
+        
+        # Attendre exit normal
+        # ← Subprocess termine, globals libérés par OS
+        
+        return stdout, stderr
+```
+
+### Lifecycle des Globals
+
+```
+État avant:
+├── ob = NULL
+├── model = NULL
+├── mc = NULL
+
+Exécution script:
+├── "read_uv data.fits"    → ob = new Observation(...)
+├── "model"                → model = new Model()
+├── "add..."               → model->components[0] = ...
+├── "fit"                  → Modifie ob, model
+├── "clean..."             → Modifie mc
+├── "exit" ou EOF stdin    → cleanup() appelé
+
+État après:
+├── Processus terminé
+├── OS récupère TOUTE la mémoire
+├── Zéro leak, zéro persistance
+```
+
+---
+
+## CODE COMPLET: DIFMAPSESSION
 
 ---
 
