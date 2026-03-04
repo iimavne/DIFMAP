@@ -10,7 +10,7 @@ echo "==================================================="
 echo "[1/4] Vérification et installation des dépendances système..."
 # Installation des paquets requis (nécessite les droits sudo)
 sudo apt-get update
-sudo apt-get install -y gcc gfortran pkg-config libgsl-dev pgplot5 libx11-dev libncurses-dev meson ninja-build
+sudo apt-get install -y gcc gfortran pkg-config libgsl-dev pgplot5 libx11-dev libncurses-dev libtecla-dev meson ninja-build
 
 echo "[2/4] Nettoyage des anciens fichiers de compilation..."
 # Suppression de l'ancien dossier s'il existe pour une compilation propre
