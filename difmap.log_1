@@ -1,10 +1,4 @@
-! Started logfile: difmap.log_1 on Tue Mar  3 17:09:38 2026
-mahssini@pcplinux1:~/Bureau/difmap2.5q_mod$ nm ./builddir/difmap | grep setupterm[B[B[ quit
-! Syntax error in line:
-! mahssini@pcplinux1:~/Bureau/difmap2.5q_mod$ nm ./builddir/difmap | grep setupterm[B[B[ quit
-!        ^
-! Unable to identify keyword "mahssini"
-! 
+! Started logfile: difmap.log_1 on Wed Mar  4 14:59:57 2026
 quit
 ! Quitting program
-! Log file difmap.log_1 closed on Tue Mar  3 17:10:55 2026
+! Log file difmap.log_1 closed on Wed Mar  4 15:00:27 2026

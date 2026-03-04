@@ -42,7 +42,7 @@ doc/help.dvi
 # Logs et fichiers temporaires Difmap
 # ==========================================
 *.log
-difmap.log
+difmap.log*
 difmap.log_*
 core
 scrfil_src/scrfile* # Fichiers scratch temporaires
