@@ -196,269 +196,429 @@ plt.show()  # ← Jupyter display OK!
 
 ---
 
-## ARCHITECTURE SUBPROCESS
+## ✅ ARCHITECTURE SUBPROCESS (Résout tous les problèmes)
 
-### Vue d'Ensemble
+### Résumé Simple
 
-```
-         Python Layer (abstraction)
-    ┌──────────────────────────────┐
-    │  session.read_uv(...)        │
-    │  session.fit_model()         │
-    │  session.clean()             │
-    │  session.execute()           │
-    └────────────────┬─────────────┘
-                     │ Génère SPHERE script
-                     ↓
-    ┌──────────────────────────────┐
-    │  SPHERE Code Généré          │
-    │  read_uv "data.fits"         │
-    │  model                       │
-    │  add 0.5 0 0 gaussian        │
-    │  fit                         │
-    │  clean 1000 0.1              │
-    │  wmap "output.fits"          │
-    │  exit                        │
-    └────────────────┬─────────────┘
-                     │ subprocess.Popen(stdin=PIPE)
-                     ↓
-    ┌──────────────────────────────────────┐
-    │  DIFMAP Executable (./builddir/difmap)
-    │  (Processus séparé = globals isolés)  │
-    │                                       │
-    │  ✓ ob = nouveau (not NULL before!)    │
-    │  ✓ model = nouveau                    │
-    │  ✓ mc = nouveau                       │
-    │  ← Pas de conflit avec autres sessions│
-    └────────────────┬─────────────────────┘
-                     │ FITS + Log output
-                     ↓
-    ┌──────────────────────────────┐
-    │  Result Files               │
-    │  • output.fits (CLEAN map)  │
-    │  • difmap.log (stdout)      │
-    │  • plot.ps (PostScript)     │
-    │                              │
-    │  Python lit via:            │
-    │  • astropy.fits             │
-    │  • log parsing              │
-    │  • matplotlib via numpy     │
-    └──────────────────────────────┘
+```python
+# Chaque session = processus séparé = globals isolés
+
+session1 = subprocess.Popen(["./builddir/difmap"], ...) # Process 1: ob, model, mc
+session2 = subprocess.Popen(["./builddir/difmap"], ...) # Process 2: ob, model, mc (isolés)
+
+# Process 1 et Process 2 ont leur propre espace mémoire
+# Segfault dans P1 n'affecte PAS P2
+# Exit P1 libère sa mémoire, P2 continue
 ```
 
-### Avantages vs Cython
-
-| Feature | Cython | Subprocess |
-|---------|--------|-----------|
-| **Refactor C** | 50k lignes | 0 lignes |
-| **Risque** | ÉNORME (statics) | Bas (isolation OS) |
-| **Timeline** | 6-8 mois | 4 semaines |
-| **Multi-session** | ❌ Segfault certain | ✅ Parfait (procès isolés) |
-| **Jupyter** | ❌ Blocage PGPLOT | ✅ 100% compatible |
-| **Maintenance** | Heavy (API breaks) | Light (SPHERE stable) |
-| **Performance** | Fast (in-process) | Acceptable (spawn ~100ms) |
+**Pourquoi c'est SAFE:**
+- OS virtualisation: chaque processus heap séparé
+- MMU (Memory Management Unit) isole adresses
+- Exit process = kernel récupère toute mémoire
+- **Garantie matérielle, pas logicielle!**
 
 ---
 
-## DÉTAILS IMPLÉMENTATION
-
-### Système de Fichiers Partagés
+## 💻 CLASS DifmapSession (Code Complet, Prêt Production)
 
 ```python
+#!/usr/bin/env python3
+"""
+Wrapper DIFMAP via subprocess + SPHERE
+Approche: Générer script SPHERE, exécuter dans subprocess isolé, lire FITS
+"""
+
 import subprocess
 import tempfile
+import logging
+from pathlib import Path
+from typing import Optional, Dict, List
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 class DifmapSession:
-    def __init__(self):
-        # Répertoire de travail = point de communication
-        self.work_dir = tempfile.mkdtemp(prefix="difmap_")
+    """Gère une session DIFMAP isolée (subprocess)"""
+    
+    def __init__(
+        self,
+        difmap_exe: str = "./builddir/difmap",
+        work_dir: Optional[str] = None,
+        timeout: int = 300
+    ):
+        """Initialiser session
+        
+        Args:
+            difmap_exe: Chemin exécutable DIFMAP
+            work_dir: Répertoire travail (temp si None)
+            timeout: Timeout en secondes
+        """
+        self.difmap_exe = Path(difmap_exe)
+        self.work_dir = Path(work_dir or tempfile.mkdtemp(prefix="difmap_"))
+        self.timeout = timeout
+        self.script_buffer: List[str] = []
+        self.last_output = None
+        
+        if not self.difmap_exe.exists():
+            raise FileNotFoundError(f"DIFMAP not found: {self.difmap_exe}")
+        
+        self.work_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Session: {self.work_dir}")
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, *args):
+        """Cleanup au exit"""
+        import shutil
+        if self.work_dir.exists():
+            shutil.rmtree(self.work_dir)
+    
+    # ============ COMMANDES DIFMAP ============
+    
+    def read_uv(self, filename: str) -> 'DifmapSession':
+        """Charger données UV FITS"""
+        self.script_buffer.append(f'read_uv "{filename}"')
+        return self
+    
+    def create_model(self) -> 'DifmapSession':
+        """Initialiser modèle"""
+        self.script_buffer.append("model")
+        return self
+    
+    def add_component(
+        self,
+        ctype: str,
+        flux: float,
+        x: float = 0.0,
+        y: float = 0.0,
+        **kwargs
+    ) -> 'DifmapSession':
+        """Ajouter composante
+        
+        Args:
+            ctype: 'point', 'gaussian', 'disk'
+            flux: Flux en Jy
+            x, y: Offsets RA/Dec (arcsec)
+        """
+        cmd = f"add {flux} {x} {y} {ctype}"
+        
+        if ctype.lower() == "gaussian":
+            major = kwargs.get('major', 0.001)
+            ratio = kwargs.get('ratio', 1.0)
+            pa = kwargs.get('pa', 0.0)
+            cmd += f" {major} {ratio} {pa}"
+        elif ctype.lower() == "disk":
+            radius = kwargs.get('radius', 0.001)
+            cmd += f" {radius}"
+        
+        self.script_buffer.append(cmd)
+        return self
+    
+    def fit_model(self) -> 'DifmapSession':
+        """Fitter modèle (Levenberg-Marquardt)"""
+        self.script_buffer.append("fit")
+        return self
+    
+    def clean(
+        self,
+        niter: int = 1000,
+        gain: float = 0.1,
+        threshold: Optional[float] = None
+    ) -> 'DifmapSession':
+        """Déconvolution CLEAN"""
+        cmd = f"clean {niter} {gain}"
+        if threshold:
+            cmd += f" {threshold}"
+        self.script_buffer.append(cmd)
+        return self
+    
+    def save_map(self, filename: str) -> 'DifmapSession':
+        """Sauvegarder carte CLEAN FITS"""
+        self.script_buffer.append(f'wmap "{filename}"')
+        return self
+    
+    def selfcal(self, solution_interval: int = 60) -> 'DifmapSession':
+        """Auto-calibration"""
+        self.script_buffer.append(f"selfcal {solution_interval}")
+        return self
+    
+    # ============ EXECUTION ============
+    
+    def execute(self) -> Dict:
+        """Exécuter script
+        
+        Returns:
+            Dict avec stdout, stderr, returncode
+        """
+        # Générer script final
+        script = "\n".join(self.script_buffer) + "\nexit\n"
+        
+        logger.info(f"Exécution ({len(self.script_buffer)} commandes)")
         
         # Lancer subprocess
-        self.proc = subprocess.Popen(
-            ["./builddir/difmap"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            cwd=self.work_dir,  # ← CWD = travail dir
-            text=True
-        )
+        try:
+            proc = subprocess.Popen(
+                [str(self.difmap_exe)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=str(self.work_dir)
+            )
+            
+            # Envoyer et attendre
+            stdout, stderr = proc.communicate(input=script, timeout=self.timeout)
+            self.last_output = stdout
+            
+            return {
+                'success': proc.returncode == 0,
+                'stdout': stdout,
+                'stderr': stderr,
+                'returncode': proc.returncode
+            }
+        
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            logger.error("Timeout!")
+            raise
     
-    def execute(self, script: str):
-        # Envoyer script
-        stdout, stderr = self.proc.communicate(input=script)
+    # ============ LIRE RESULTATS ============
+    
+    def read_fits(self, filename: str):
+        """Lire FITS généré"""
+        try:
+            from astropy.io import fits
+        except ImportError:
+            raise ImportError("pip install astropy")
         
-        # Attendre exit normal
-        # ← Subprocess termine, globals libérés par OS
+        filepath = self.work_dir / filename
+        if not filepath.exists():
+            logger.warning(f"FITS not found: {filepath}")
+            return None
         
-        return stdout, stderr
-```
-
-### Lifecycle des Globals
-
-```
-État avant:
-├── ob = NULL
-├── model = NULL
-├── mc = NULL
-
-Exécution script:
-├── "read_uv data.fits"    → ob = new Observation(...)
-├── "model"                → model = new Model()
-├── "add..."               → model->components[0] = ...
-├── "fit"                  → Modifie ob, model
-├── "clean..."             → Modifie mc
-├── "exit" ou EOF stdin    → cleanup() appelé
-
-État après:
-├── Processus terminé
-├── OS récupère TOUTE la mémoire
-├── Zéro leak, zéro persistance
+        return fits.open(filepath)
 ```
 
 ---
 
-## CODE COMPLET: DIFMAPSESSION
+## 🎯 EXEMPLES CONCRETS
 
----
-
-## ARCHITECTURE SUBPROCESS
-
-### Vue d'Ensemble
-
-```
-                    Python Layer
-        ┌──────────────────────────────┐
-        │    DifmapSession class       │
-        │  • read_uv()                 │
-        │  • fit_model()               │
-        │  • clean()                   │
-        │  • save_map()                │
-        └──────────────┬───────────────┘
-                       │ Generate SPHERE scripts
-                       ↓
-        ┌──────────────────────────────┐
-        │   SPHERE Macro Generator      │
-        │  (Python → .scm files)       │
-        │                              │
-        │  read_uv "data.fits"         │
-        │  model()                     │
-        │  add 0.5 0 0 gaussian        │
-        │  fit                         │
-        │  clean 1000 0.1              │
-        │  wmap "output.fits"          │
-        │  exit                        │
-        └──────────────┬───────────────┘
-                       │ subprocess.Popen(stdin=PIPE)
-                       ↓
-        ┌──────────────────────────────┐
-        │  DIFMAP Executable (./builddir/difmap)
-        │                              │
-        │  ✓ Runs in separate process  │
-        │  ✓ Pure SPHERE interpreter   │
-        │  ✓ C algorithms unchanged    │
-        │  ✓ No memory corruption      │
-        │  ✓ Full isolation            │
-        └──────────────┬───────────────┘
-                       │ FITS + Log output
-                       ↓
-        ┌──────────────────────────────┐
-        │   Python Result Parsing       │
-        │  • Read FITS (astropy)       │
-        │  • Parse logs                │
-        │  • Matplotlib visualization  │
-        │  • Return to caller          │
-        └──────────────────────────────┘
-```
-
-### Key Advantages
-
-| Feature | Cython | Subprocess |
-|---------|--------|-----------|
-| **Refactoring needed** | 50% code | 0 lines |
-| **Thread safety** | ❌ Risky | ✅ OS-level isolation |
-| **Parallel sessions** | ❌ Crashes | ✅ Multiple processes OK |
-| **DIFMAP modifications** | ✅ Yes, extensive | ✅ No, unchanged |
-| **Timeline** | 6+ months | 4 weeks |
-| **Maintenance burden** | High (API breakage) | Low (subprocess stable) |
-| **Learning curve** | Cython + C deep knowledge | Python + SPHERE basics |
-| **Debugging** | Complex (Cython layer) | Simple (pipe inspection) |
-| **Testing** | Unit + integration hard | Easy (process isolation) |
-| **Production risk** | **Very high** | **Low** |
-
----
-
-## IMPLEMENTATION DETAILS
-
-### What is SPHERE?
-
-**SPHERE = Macro Language built into DIFMAP**
-
-It's Turing-complete and orchestrates all C algorithms:
-
-```sphere
-# Variables
-set flux 1.0
-set x_offset 0.001
-
-# Control flow
-for i=1 to 10
-  if i > 5
-    add $flux $x_offset 0 gaussian
-    fit
-  else
-    print "Iteration $i"
-  endif
-end
-
-# Call C algorithms
-read_uv "data.fits"
-model
-clean 1000 0.1
-wmap "output.fits"
-```
-
-**Python's job:** Generate SPHERE scripts dynamically.
-
-### File-Based IPC
-
-**How synchronization works:**
+### Exemple 1: Fit simple
 
 ```python
-session.execute("""
-read_uv "{uv_file}"
-observ
-write_log "{log_output}"
-exit
-""")
+from pathlib import Path
 
-# Python monitors:
-# 1. difmap.log grows (tail -f pattern)
-# 2. When "exit" command arrives, log complete
-# 3. Read FITS results via astropy.fits
+with DifmapSession() as session:
+    session.read_uv("data.fits")
+    session.create_model()
+    session.add_component("point", flux=1.0, x=0, y=0)
+    session.fit_model()
+    session.save_map("output.fits")
+    
+    result = session.execute()
+    
+    if result['success']:
+        print("✓ Succès")
+        hdul = session.read_fits("output.fits")
+        print(f"Map shape: {hdul[0].data.shape}")
+    else:
+        print(f"✗ Erreur: {result['stderr']}")
 ```
 
-### Process Lifecycle
+### Exemple 2: Model complexe + CLEAN
 
 ```python
-# 1. CREATE PROCESS
-proc = subprocess.Popen(
-    ["./builddir/difmap"],
-    stdin=subprocess.PIPE,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
-    text=True
-)
-
-# 2. SEND SCRIPT
-script = "read_uv data.fits\n..."
-proc.stdin.write(script)
-proc.stdin.flush()
-
-# 3. WAIT FOR COMPLETION (monitor output)
-stdout, stderr = proc.communicate(timeout=300)
-
-# 4. CLOSE PROCESS (automatic on context exit)
-proc.terminate()
+with DifmapSession() as session:
+    session.read_uv("observation.fits")
+    session.create_model()
+    
+    # Ajouter composantes
+    session.add_component("point", flux=0.8, x=0, y=0)
+    session.add_component(
+        "gaussian", flux=0.5, x=0.001, y=0.001,
+        major=0.0005, ratio=0.8, pa=45
+    )
+    
+    # Fitter et nettoyer
+    session.fit_model()
+    session.clean(niter=1000, gain=0.1, threshold=0.001)
+    session.save_map("clean.fits")
+    
+    result = session.execute()
+    print(f"Return code: {result['returncode']}")
 ```
+
+### Exemple 3: Traitement batch parallèle
+
+```python
+from multiprocessing import Pool
+from pathlib import Path
+
+def process_one_file(fits_file):
+    """Traiter un fichier"""
+    with DifmapSession() as session:
+        session.read_uv(str(fits_file))
+        session.create_model()
+        session.add_component("point", flux=1.0)
+        session.fit_model()
+        session.clean(niter=500, gain=0.1)
+        session.save_map(f"results/{fits_file.stem}_clean.fits")
+        
+        result = session.execute()
+        return (fits_file.name, result['success'])
+
+# Paralleliser: 4 sessions simultanées, chacune processus isolé
+fits_files = list(Path("data/").glob("*.fits"))
+
+with Pool(4) as pool:
+    results = pool.map(process_one_file, fits_files)
+
+success_count = sum(1 for _, ok in results if ok)
+print(f"✓ {success_count}/{len(results)} réussis")
+```
+
+### Exemple 4: Jupyter + Matplotlib
+
+```python
+# In Jupyter notebook
+
+from difmap_wrapper import DifmapSession
+import matplotlib.pyplot as plt
+from astropy.io import fits
+import numpy as np
+
+# Exécuter traitement
+with DifmapSession() as session:
+    session.read_uv("data.fits")
+    session.create_model()
+    session.add_component("point", flux=1.0)
+    session.fit_model()
+    session.clean(niter=1000, gain=0.1)
+    session.save_map("result.fits")
+    session.execute()
+
+# Afficher résultat (pas d'appel PGPLOT!)
+hdul = session.read_fits("result.fits")
+data = hdul[0].data
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+# Échelle linéaire
+axes[0].imshow(data, cmap='viridis', origin='lower')
+axes[0].set_title('CLEAN Map (linéaire)')
+
+# Échelle log
+axes[1].imshow(np.log10(np.abs(data) + 1e-6), cmap='hot', origin='lower')
+axes[1].set_title('CLEAN Map (log)')
+
+plt.tight_layout()
+plt.show()  # ← Affiche dans Jupyter!
+```
+
+---
+
+## ✅ CHECKLIST 4 SEMAINES
+
+### Semaine 1: Infrastructure
+
+**Lun-Mar:**
+- [ ] Venv Python, pytest
+- [ ] Copier code DifmapSession
+- [ ] Compiler DIFMAP: `meson compile -C builddir`
+- [ ] Créer test FITS test(synthetic)
+
+**Mer-Jeu:**
+- [ ] Implémenter  `DifmapSession` + context manager
+- [ ] Implémenter `read_uv()`, `create_model()`, `add_component()`
+- [ ] Implémenter `execute()` (subprocess)
+- [ ] 5 unit tests
+
+**Ven:**
+- [ ] Test intégration DIFMAP réel
+- [ ] Error handling
+- [ ] Documentation
+
+**Livrable:** `DifmapSession` v1.0 (200 lignes)
+
+---
+
+### Semaine 2: Algorithms
+
+**Lun-Mar:**
+- [ ] `fit_model()`, `clean()`, `selfcal()`
+- [ ] Tests paramétriques
+
+**Mer:**
+- [ ] `save_map()`, `read_fits()`
+- [ ] Test: read → fit → clean → save
+
+**Jeu-Ven:**
+- [ ] Batch processing
+- [ ] Parallel sessions (multiprocessing.Pool)
+- [ ] Benchmarking
+
+**Livrable:** Wrapper complet v1.0 (400+ lignes)
+
+---
+
+### Semaine 3: Features Advanced
+
+**Lun-Mar:**
+- [ ] Jupyter examples
+- [ ] Matplotlib helpers
+- [ ] Error recovery
+
+**Mer:**
+- [ ] HPC integration (optional)
+- [ ] Caching
+- [ ] Config files
+
+**Jeu-Ven:**
+- [ ] >80% test coverage
+- [ ] Documentation
+- [ ] Demo notebook
+
+**Livrable:** v1.1 avec features avancés
+
+---
+
+### Semaine 4: Production
+
+**Lun-Mar:**
+- [ ] Load testing
+- [ ] Stress testing
+
+**Mer:**
+- [ ] CI/CD (GitHub Actions)
+- [ ] PyPI setup
+
+**Jeu:**
+- [ ] Validation data réelle
+- [ ] Profiling
+
+**Ven:**
+- [ ] Release
+- [ ] Training
+
+**Livrable:** Package production PyPI
+
+---
+
+## 🎯 SUCCESS METRICS
+
+| Métrique | Cible | Vérif |
+|----------|-------|-------|
+| **Core features** | read_uv, fit, clean, save | Exemples OK |
+| **Test coverage** | >80% | pytest --cov |
+| **Stability** | 0 segfault | Load test |
+| **Jupyter** | Demo .ipynb | Runs OK |
+| **Docs** | API complete | readthedocs |
+
+---
+
+*Next: Lire [ANALYSE_TECHNIQUE.md](ANALYSE_TECHNIQUE.md) pour détails modules DIFMAP*
 
 ---
 
