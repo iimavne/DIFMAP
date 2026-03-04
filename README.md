@@ -302,30 +302,35 @@ class DifmapSession:
         return fits.open(filename)
 ```
 
-### Workflow Typique
+### Workflow Scientifique: CLEAN + Selfcal (Approche standard radio)
 
 ```python
 session = DifmapSession()
 
-# 1. Charger données UV
-session.execute('read_uv "raw.fits"')
+# 1. Charger données UV et sélectionner polarisation
+session.read_uv("raw.fits")
+session.select_data(polarization='I')  # 🔴 ESSENTIEL!
 
-# 2. Créer modèle
-session.model()
-session.add_component(flux=0.5, x=0, y=0, shape="gaussian")
+# 2. Nettoyer points mauvais (interactive)
+session.interactive_edit()
 
-# 3. Fitter
-session.fit_model()
+# 3. Première déconvolution CLEAN
+session.clean(niter=500, gain=0.05, threshold=0.001)
 
-# 4. CLEAN
-session.clean(niter=1000, gain=0.1)
+# 4. Auto-calibration (résout gains antennes)
+session.selfcal(solution_interval=60)
 
-# 5. Sauvegarder
-session.save_map("output.fits")
+# 5. Deuxième CLEAN avec données recalibrées
+session.clean(niter=1000, gain=0.1, threshold=0.0005)
 
-# 6. Lire en Python
-data = session.read_fits("output.fits")
+# 6. Sauvegarder image
+session.save_map("clean_map.fits")
+
+# 7. Lire en Python
+data = session.read_fits("clean_map.fits")
 ```
+
+**Alternative:** Pour modèles paramétriques simples (binaires), utiliser fit_model() au lieu de CLEAN. Voir GUIDE_IMPLEMENTATION.md exemple 1.
 
 ### Avantages
 

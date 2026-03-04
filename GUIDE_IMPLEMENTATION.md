@@ -346,11 +346,33 @@ class DifmapSession:
     
     # ============ EXECUTION ============
     
+    def select_data(self, polarization: str = 'I') -> 'DifmapSession':
+        """Sélectionner données UV (ESSENTIEL après read_uv)
+        
+        Args:
+            polarization: 'I', 'RR', 'LL', 'RL', 'LR', etc.
+        """
+        self.script_buffer.append(f"select {polarization}")
+        return self
+    
+    def interactive_edit(self) -> 'DifmapSession':
+        """Lancer édition interactive (vplot)
+        
+        Ouvre fenêtre PGPLOT pour éditer visibilités à la souris.
+        L'utilisateur clique pour marquer points mauvais, puis 'Q' pour quitter.
+        Cette étape est indispensable avant CLEAN sur données réelles.
+        """
+        self.script_buffer.append("vplot")
+        return self
+    
     def execute(self) -> Dict:
         """Exécuter script
         
         Returns:
-            Dict avec stdout, stderr, returncode
+            Dict avec stdout, stderr, returncode, success
+            
+        NOTE: success vérifie à la fois returncode ET les logs d'erreur
+        (Difmap 1993 ne gère pas toujours bien les codes sortie POSIX)
         """
         # Générer script final
         script = "\n".join(self.script_buffer) + "\nexit\n"
@@ -372,17 +394,45 @@ class DifmapSession:
             stdout, stderr = proc.communicate(input=script, timeout=self.timeout)
             self.last_output = stdout
             
+            # Parser les logs pour détecter erreurs Difmap
+            # (returncode peut être 0 même en cas d'erreur!)
+            log_errors = self._parse_error_log(stdout, stderr)
+            success = proc.returncode == 0 and not log_errors
+            
             return {
-                'success': proc.returncode == 0,
+                'success': success,
                 'stdout': stdout,
                 'stderr': stderr,
-                'returncode': proc.returncode
+                'returncode': proc.returncode,
+                'errors': log_errors
             }
         
         except subprocess.TimeoutExpired:
             proc.kill()
             logger.error("Timeout!")
             raise
+    
+    def _parse_error_log(self, stdout: str, stderr: str) -> List[str]:
+        """Parser logs pour détecter erreurs Difmap
+        
+        Difmap imprime erreurs au stdout, pas stderr!
+        Keywords: 'Error', 'Syntax error', 'not found', 'No UV data'
+        """
+        errors = []
+        
+        for line in (stdout + "\n" + stderr).split("\n"):
+            line = line.lower()
+            if any(keyword in line for keyword in [
+                "error occured",
+                "syntax error", 
+                "not found",
+                "no uv data has been selected",
+                "command not recognized",
+                "illegal"
+            ]):
+                errors.append(line.strip())
+        
+        return errors
     
     # ============ LIRE RESULTATS ============
     
@@ -405,16 +455,26 @@ class DifmapSession:
 
 ## 🎯 EXEMPLES CONCRETS
 
-### Exemple 1: Fit simple
+### Exemple 1: Modélisation paramétrique simple
 
 ```python
 from pathlib import Path
 
 with DifmapSession() as session:
+    # Charger et sélectionner
     session.read_uv("data.fits")
+    session.select_data(polarization='I')  # Essentiel!
+    
+    # Créer modèle paramétrique
     session.create_model()
     session.add_component("point", flux=1.0, x=0, y=0)
+    session.add_component("gaussian", flux=0.3, x=0.0005, y=0, 
+                         major=0.001, ratio=0.8, pa=45)
+    
+    # Fitter ces composantes
     session.fit_model()
+    
+    # Restaurer et sauvegarder
     session.save_map("output.fits")
     
     result = session.execute()
@@ -424,59 +484,89 @@ with DifmapSession() as session:
         hdul = session.read_fits("output.fits")
         print(f"Map shape: {hdul[0].data.shape}")
     else:
-        print(f"✗ Erreur: {result['stderr']}")
+        print(f"✗ Erreurs détectées: {result['errors']}")
 ```
 
-### Exemple 2: Model complexe + CLEAN
+**Use case:** Quand on connaît structure source (ex: binaire, few composantes Gaussiennes).
+
+### Exemple 2: Déconvolution CLEAN + Self-calibration (WORKFLOW SCIENTIFIQUE)
 
 ```python
+# CORRECT: Workflow radioastronomique standard
+# read_uv → select → clean → selfcal → clean → wmap
+
 with DifmapSession() as session:
+    # Charger données
     session.read_uv("observation.fits")
-    session.create_model()
+    session.select_data(polarization='I')  # 🔴 ESSENTIEL! Sinon error: "No UV data selected"
     
-    # Ajouter composantes
-    session.add_component("point", flux=0.8, x=0, y=0)
-    session.add_component(
-        "gaussian", flux=0.5, x=0.001, y=0.001,
-        major=0.0005, ratio=0.8, pa=45
-    )
+    # Édition interactive (nettoyer points mauvais à la souris)
+    session.interactive_edit()  # vplot
     
-    # Fitter et nettoyer
-    session.fit_model()
-    session.clean(niter=1000, gain=0.1, threshold=0.001)
-    session.save_map("clean.fits")
+    # Première déconvolution
+    session.clean(niter=500, gain=0.05, threshold=0.001)
+    
+    # Auto-calibration (résout gains station)
+    session.selfcal(solution_interval=60)
+    
+    # Deuxième déconvolution (après recalibration)
+    session.clean(niter=1000, gain=0.1, threshold=0.0005)
+    
+    # Sauvegarder résultat
+    session.save_map("clean_map.fits")
     
     result = session.execute()
-    print(f"Return code: {result['returncode']}")
+    if result['success']:
+        print("✓ Traitement réussi")
+    else:
+        print(f"✗ Erreurs: {result['errors']}")
 ```
 
-### Exemple 3: Traitement batch parallèle
+**Workflow scientifique expliqué:**
+1. **read_uv + select**: Charger données et choisir polarisation
+2. **interactive_edit**: Nettoyer points mauvais (impulsions radio, météore)
+3. **clean #1**: Déconvolution rapide avec gains bas
+4. **selfcal**: Corriger gains/phases de chaque antenne
+5. **clean #2**: Meilleure déconvolution avec données recalibrées
+6. **wmap**: Sauvegarder image FITS
+
+### Exemple 3: Traitement batch parallèle (CLEAN automisé)
 
 ```python
 from multiprocessing import Pool
 from pathlib import Path
 
 def process_one_file(fits_file):
-    """Traiter un fichier"""
+    """Traiter un fichier avec workflow CLEAN standard"""
     with DifmapSession() as session:
         session.read_uv(str(fits_file))
-        session.create_model()
-        session.add_component("point", flux=1.0)
-        session.fit_model()
-        session.clean(niter=500, gain=0.1)
+        session.select_data(polarization='I')  # Ne pas oublier!
+        
+        # Workflow: clean → selfcal → clean
+        session.clean(niter=300, gain=0.05)
+        session.selfcal(solution_interval=30)
+        session.clean(niter=1000, gain=0.1, threshold=0.001)
+        
         session.save_map(f"results/{fits_file.stem}_clean.fits")
         
         result = session.execute()
-        return (fits_file.name, result['success'])
+        return (fits_file.name, result['success'], result.get('errors', []))
 
+# Paralleliser: 4 sessions simultanées, chacune processus isolé
 # Paralleliser: 4 sessions simultanées, chacune processus isolé
 fits_files = list(Path("data/").glob("*.fits"))
 
 with Pool(4) as pool:
     results = pool.map(process_one_file, fits_files)
 
-success_count = sum(1 for _, ok in results if ok)
+# Unpacker les 3-tuples (filename, success, errors)
+success_count = sum(1 for _, ok, _ in results if ok)
+failed = [(f, errs) for f, ok, errs in results if not ok]
+
 print(f"✓ {success_count}/{len(results)} réussis")
+if failed:
+    for fname, errors in failed:
+        print(f"  {fname}: {errors}")
 ```
 
 ### Exemple 4: Jupyter + Matplotlib
@@ -489,17 +579,23 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 import numpy as np
 
-# Exécuter traitement
+# Exécuter traitement (workflow CLEAN)
 with DifmapSession() as session:
     session.read_uv("data.fits")
-    session.create_model()
-    session.add_component("point", flux=1.0)
-    session.fit_model()
-    session.clean(niter=1000, gain=0.1)
+    session.select_data(polarization='I')  # Essentiel!
+    
+    # Workflow: clean → selfcal → clean
+    session.clean(niter=500, gain=0.05, threshold=0.001)
+    session.selfcal(solution_interval=60)
+    session.clean(niter=1000, gain=0.1, threshold=0.0005)
+    
     session.save_map("result.fits")
-    session.execute()
+    result = session.execute()
+    
+    if not result['success']:
+        print(f"Erreurs: {result['errors']}")
 
-# Afficher résultat (pas d'appel PGPLOT!)
+# Afficher résultat (pas d'appel PGPLOT, pure Matplotlib!)
 hdul = session.read_fits("result.fits")
 data = hdul[0].data
 
@@ -511,10 +607,10 @@ axes[0].set_title('CLEAN Map (linéaire)')
 
 # Échelle log
 axes[1].imshow(np.log10(np.abs(data) + 1e-6), cmap='hot', origin='lower')
-axes[1].set_title('CLEAN Map (log)')
+axes[1].set_title('CLEAN Map (log échelle)')
 
 plt.tight_layout()
-plt.show()  # ← Affiche dans Jupyter!
+plt.show()  # ← Affiche dans Jupyter, pas d'X11 nécessaire!
 ```
 
 ---

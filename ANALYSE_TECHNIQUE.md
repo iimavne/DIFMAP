@@ -391,6 +391,31 @@ Extensions RANDOM GROUP:
   └─ ~200 paramètres par visibilité
 ```
 
+**⚠️ CLARIFICATION: FITS vs UVF vs UVD**
+
+DIFMAP utilise TROIS formats différents:
+
+1. **FITS** (format de échange, AIPS standard):
+   - `read_uv "data.fits"` → charge observations
+   - `wmap "image.fits"` → sauvegarde image CLEAN finale
+   - Format binaire compressible, compatible AIPS/CASA
+
+2. **UVF** (format propriétaire DIFMAP, unedited):
+   - Sauvégarde interne: données brutes sans modifications
+   - Lecture rapide: déjà parsées en mémoire DIFMAP
+   - Commande: `wobs "output.uvf"` → sauvegarde données brutes
+
+3. **UVD** (format propriétaire DIFMAP, data edited):
+   - Sauvégarde après édition interactive (vplot)
+   - Contient marques données mauvaises supprimées
+   - Commande: `wedit "output.uvd"` → après interactive_edit()
+
+**Pour le wrapper Python:**
+- **Input:** Utiliser FITS (`read_uv "data.fits"`)
+- **Output image:** Utiliser FITS (`wmap "map.fits"`)
+- **Output données recalibrées:** Utiliser UVF (`wobs "recal.uvf"`)
+- NE PAS utiliser UVD (binaire propriétaire non documenté)
+
 ---
 
 ### 4. slalib_src/ - Bibliothèque Astronomique (35 fichiers)
