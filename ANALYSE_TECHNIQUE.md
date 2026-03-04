@@ -1,196 +1,196 @@
 # ANALYSE TECHNIQUE - Architecture DIFMAP
 
-**Detailed reference for DIFMAP internals and module breakdown**
+**Référence détaillée des internals DIFMAP et décomposition modulaire**
 
 ---
 
-## TABLE OF CONTENTS
+## TABLE DES MATIÈRES
 
-1. [Project Overview](#project-overview)
+1. [Vue d'ensemble](#vue-densemble)
 2. [Architecture](#architecture)
-3. [Module Breakdown](#module-breakdown)
-4. [Key Data Structures](#key-data-structures)
-5. [Critical Interfaces](#critical-interfaces)
-6. [SPHERE Macro Language](#sphere-macro-language)
-7. [Problem Points & Solutions](#problem-points--solutions)
-8. [Reference Tables](#reference-tables)
+3. [Décomposition des modules](#décomposition-des-modules)
+4. [Structures de données clés](#structures-de-données-clés)
+5. [Interfaces critiques](#interfaces-critiques)
+6. [Langage macro SPHERE](#langage-macro-sphere)
+7. [Points problématiques & solutions](#points-problématiques--solutions)
+8. [Tables de référence](#tables-de-référence)
 
 ---
 
-## PROJECT OVERVIEW
+## VUE D'ENSEMBLE
 
-### What is DIFMAP?
+### Qu'est-ce que DIFMAP?
 
-**DIFMAP** (Difference Mapping Program) is a specialized astronomy software developed at Caltech for:
-- Reading UV (visibility) FITS files from VLBI observations
-- Building component models (point sources, Gaussians, extended structures)
-- Fitting models to radio visibility data using Levenberg-Marquardt
-- Performing self-calibration on model residuals
-- Deconvolving images using CLEAN algorithm
-- Generating publication-quality maps
+**DIFMAP** (Difference Mapping Program) est un logiciel d'astronomie spécialisé développé à Caltech pour:
+- Lire des fichiers FITS UV (visibilités) d'observations VLBI
+- Construire des modèles de composantes (sources ponctuelles, gaussiennes, structures étendues)
+- Fitter des modèles à des données de visibilité radio avec Levenberg-Marquardt
+- Effectuer l'auto-calibration sur résidus
+- Déconvoluer des images avec l'algorithme CLEAN
+- Générer des cartes de qualité publication
 
-### Key Statistics
+### Statistiques Clés
 
-| Metric | Value |
-|--------|-------|
-| **Total lines of code** | ~100,000 |
-| **Primary language** | C |
-| **Secondary language** | Fortran (f77main.f entry point) |
-| **Build system** | Meson + Ninja |
-| **Source files** | 150+ |
-| **External libs** | PGPLOT 5.0.2+, GSL, FITS I/O, X11 |
-| **Global variables** | 50+ (problem for threading!) |
+| Métrique | Valeur |
+|----------|--------|
+| **Lignes de code totales** | ~100,000 |
+| **Langage primaire** | C |
+| **Langage secondaire** | Fortran (point d'entrée f77main.f) |
+| **Système de build** | Meson + Ninja |
+| **Fichiers source** | 150+ |
+| **Librairies externes** | PGPLOT 5.0.2+, GSL, FITS I/O, X11 |
+| **Variables globales** | 50+ (problématique pour threading!) |
 
-### Core Workflow
+### Workflow Fondamental
 
 ```
-1. Read UV FITS file
-   └─→ Load visibility amplitudes/phases/flags
+1. Lire fichier FITS UV
+   └─→ Charger amplitudes/phases/flags de visibilité
    
-2. Create model of source
-   └─→ Add point/Gaussian/disk components
+2. Créer modèle de source
+   └─→ Ajouter composantes point/gaus/disque
    
-3. Fit model to data
-   └─→ Levenberg-Marquardt optimization
+3. Fitter modèle aux données
+   └─→ Optimisation Levenberg-Marquardt
    
-4. Deconvolve (optional)
-   └─→ CLEAN iterations on residuals
+4. Déconvoluer (optionnel)
+   └─→ Itérations CLEAN sur résidus
    
-5. Self-calibrate (optional)
-   └─→ Re-solve for station gains/phases
+5. Auto-calibrer (optionnel)
+   └─→ Résoudre gains/phases stations
    
-6. Save result
-   └─→ Output FITS map + model parameters
+6. Sauvegarder résultats
+   └─→ Carte FITS + paramètres modèle
 ```
 
 ---
 
 ## ARCHITECTURE
 
-### Build System
+### Système de Construction
 
 ```
-meson.build (root config)
-├── Detects GNU Fortran, GCC C compiler
-├── Checks for PGPLOT library availability
-├── Configures optimizations:
-│   ├─ C: -O2 (standard optimization)
-│   └─ Fortran: -O0 (avoid numerical instabilities)
-├── Enables position-independent code (-fPIC)
-└── Generates builddir/difmap executable
+meson.build (config racine)
+├── Détecte Fortran GNU, compilateur GCC C
+├── Vérifie disponibilité librairie PGPLOT
+├── Configure optimisations:
+│   ├─ C: -O2 (optimisation standard)
+│   └─ Fortran: -O0 (éviter instabilités numériques)
+├── Active code indépendant de position (-fPIC)
+└── Génère exécutable builddir/difmap
 
-Ninja build sequence:
-├── Static libraries: libsphere.a, libfits.a, libslalib.a, ...
-├── Link all libraries
-└── Final executable: builddir/difmap
+Séquence build Ninja:
+├── Librairies statiques: libsphere.a, libfits.a, libslalib.a, ...
+├── Relie toutes librairies
+└── Exécutable final: builddir/difmap
 ```
 
-### Process Flow
+### Flux de Processus
 
 ```
 ┌──────────────────────────────────────────┐
-│ Python subproces.Popen() starts difmap   │
+│ Python subprocess.Popen() lance difmap   │
 ├──────────────────────────────────────────┤
-│ f77main.f (Fortran entry)                │
-│ └─→ Calls C main_difmap()                │
+│ f77main.f (point d'entrée Fortran)       │
+│ └─→ Appelle main_difmap() C              │
 ├──────────────────────────────────────────┤
-│ sphere.c initializes SPHERE interpreter  │
-│ └─→ Registers C function descriptors     │
+│ sphere.c initialise interpréteur SPHERE  │
+│ └─→ Enregistre descripteurs fonction C   │
 │     └─→ read_uv, model, add, fit, clean, │
 │         selfcal, wmap, etc.              │
 ├──────────────────────────────────────────┤
-│ SPHERE reads commands from stdin         │
+│ SPHERE lit commandes desde stdin         │
 │ └─→ Lexical → Parse → Compile → Execute │
 ├──────────────────────────────────────────┤
-│ User commands (or Python script)         │
-│ execute C algorithms                     │
-│ └─→ Modifies static observation/model    │
+│ Commandes utilisateur (ou script Python) │
+│ exécutent algos C                        │
+│ └─→ Modifient observation/modèle statics │
 ├──────────────────────────────────────────┤
-│ Output written to:                       │
-│ ├─ difmap.log (command output)           │
-│ ├─ *.fits (data files)                   │
-│ └─ *.ps (PostScript plots)               │
+│ Output écrit à:                          │
+│ ├─ difmap.log (sortie commandes)        │
+│ ├─ *.fits (fichiers données)            │
+│ └─ *.ps (graphiques PostScript)         │
 └──────────────────────────────────────────┘
 ```
 
 ---
 
-## MODULE BREAKDOWN
+## DÉCOMPOSITION DES MODULES
 
-### 1. difmap_src/ - Core Application (85 files)
+### 1. difmap_src/ - Application Principale (85 fichiers)
 
-**Purpose:** Main VLBI imaging algorithms and data structures
+**Objectif:** Algorithmes d'imagerie VLBI et structures de données
 
-#### Sub-modules:
+#### Sous-modules:
 
-**UV Data Management**
-- `obs.c`, `obs.h`: Observation struct (antennae, sources, visibility data)
-- `uvf_read.c`, `uvf_write.c`: FITS I/O for UV data
-- `subarray.c`: Multi-subarray support
-- `obhead.c`: FITS header parsing
+**Gestion Données UV**
+- `obs.c`, `obs.h`: Struct Observation (antennes, sources, données visibilité)
+- `uvf_read.c`, `uvf_write.c`: I/O FITS pour données UV
+- `subarray.c`: Support multi-subarray
+- `obhead.c`: Parse en-têtes FITS
 
-**Component Modeling**
-- `model.c`, `model.h`: Component definitions (point, Gaussian, disk, ring, ellipse)
-- `modeltab.c`: Model table management
-- `modfit.c`: Levenberg-Marquardt fitting
-- `modvis.c`: Compute synthetic visibilities from model
+**Modélisation Composantes**
+- `model.c`, `model.h`: Définitions composantes (point, gaus, disque, anneau, ellipse)
+- `modeltab.c`: Gestion table modèle
+- `modfit.c`: Fitting Levenberg-Marquardt
+- `modvis.c`: Calcul visibilités synthétiques du modèle
 
 **Calibration**
-- `slfcal.c`: Self-calibration algorithm (solve station gains/phases)
-- `telcor.c`: Telescope-specific corrections
-- `clphs.c`: Closure phase calculations
-- `obutil.c`: Observation utilities
+- `slfcal.c`: Algorithme auto-calibration (résoudre gains/phases station)
+- `telcor.c`: Corrections télescope-spécifiques
+- `clphs.c`: Calculs phase de fermeture
+- `obutil.c`: Utilitaires Observation
 
-**Deconvolution**
-- `mapclean.c`: CLEAN algorithm implementation
-- `mapcln.h`: CLEAN state structures
-- `newfft.c`: FFT for Fourier transforms
+**Déconvolution**
+- `mapclean.c`: Implémentation algorithme CLEAN
+- `mapcln.h`: Structures état CLEAN
+- `newfft.c`: FFT transformer Fourier
 
-**Visualization**
-- `maplot.c`: Map plotting (uses PGPLOT)
-- `uvplot.c`: UV coverage plots
-- `modplot.c`: Model component plots
-- `specplot.c`: Spectral plots
+**Visualisation**
+- `maplot.c`: Traçage carte (utilise PGPLOT)
+- `uvplot.c`: Graphiques couverture UV
+- `modplot.c`: Graphiques composantes modèle
+- `specplot.c`: Graphiques spectraux
 
-**Mathematical Core**
+**Noyau Mathématique**
 - `lmfit.c`: Levenberg-Marquardt least-squares fitting
-- `matinv.c`: Matrix operations (inversion, multiplication)
-- `besj.c`, `besj.h`: Bessel functions J_n
-- `dnint.c`: Double-precision integer conversion
-- `minmax.c`: Min/max operations
-- `fnint.c`: Float integer conversion
+- `matinv.c`: Opérations matrice (inversion, multiplication)
+- `besj.c`, `besj.h`: Fonctions Bessel J_n
+- `dnint.c`: Conversion double-précision entier
+- `minmax.c`: Opérations min/max
+- `fnint.c`: Conversion float entier
 
 **Transformations**
-- `uvrotate.c`: UV plane rotation
-- `uvtrans.c`: UV coordinate transformations
-- `costran.c`: Coordinate system transformations
-- `uvaver.c`: UV averaging
-- `uvinvert.c`: Vector inversion
+- `uvrotate.c`: Rotation plan UV
+- `uvtrans.c`: Transformations coordonnées UV
+- `costran.c`: Transformations système coordonnées
+- `uvaver.c`: Moyennage UV
+- `uvinvert.c`: Inversion vecteur
 
-**Command Framework**
-- `difmap.c` (7778 lines!): Main command processor, variable tables, function registration
-- `if.c`: IF/condition processing
-- `startup.c`: Initialization
-- `version.h`: Version info
+**Cadre Commandes**
+- `difmap.c` (7778 lignes!): Processeur commandes principal, tables variables, registration fonctions
+- `if.c`: Traitement IF/conditions
+- `startup.c`: Initialisation
+- `version.h`: Info version
 
-**UI/Display**
-- `ifpage.c`, `ifpage.h`: IF/window display
-- `uvpage.c`, `uvpage.h`: UV page handling
-- `mapwin.c`, `mapwin.h`: Map window management
-- `dpage.c`, `dpage.h`: Display page handler
-- `vedit.c`, `vedit.h`: Visibility editor
+**UI/Affichage**
+- `ifpage.c`, `ifpage.h`: Affichage IF/fenêtre
+- `uvpage.c`, `uvpage.h`: Gestion page UV
+- `mapwin.c`, `mapwin.h`: Gestion fenêtre carte
+- `dpage.c`, `dpage.h`: Gestionnaire page affichage
+- `vedit.c`, `vedit.h`: Éditeur visibilité
 
-**Utilities**
-- `symtab.c`: Symbol table management
-- `cksum.c`, `cksum.h`: Checksum computation
-- `color.c`, `color.h`: Color management
-- `units.c`, `units.h`: Unit conversions
-- `freelist.c`, `freelist.h`: Memory management
-- `markerlist.c`: Marker management
-- `planet.c`: Planetary positions
-- `pb.c`, `pb.h`: Primary beam
+**Utilitaires**
+- `symtab.c`: Gestion table symboles
+- `cksum.c`, `cksum.h`: Calcul checksum
+- `color.c`, `color.h`: Gestion couleurs
+- `units.c`, `units.h`: Conversions unités
+- `freelist.c`, `freelist.h`: Gestion mémoire
+- `markerlist.c`: Gestion marqueurs
+- `planet.c`: Positions planètes
+- `pb.c`, `pb.h`: Faisceau primaire
 
-#### Key Data Structures:
+#### Structures de Données Clés:
 
 ```c
 // In obs.h
@@ -250,55 +250,55 @@ typedef struct {
 
 ---
 
-### 2. sphere_src/ - Macro Interpreter (20 files)
+### 2. sphere_src/ - Interpréteur Macro (20 fichiers)
 
-**Purpose:** Turing-complete scripting language for orchestrating DIFMAP algorithms
+**But:** Langage scripting Turing-complet pour orchestrer algorithmes DIFMAP
 
-#### Components:
+#### Composants:
 
 ```
-sphere.c         ← Main entry point
-├── lex.c        - Lexical scanner (tokenization)
-├── compile.c    - Parser & compiler (tokens → bytecode)
-├── run.c        - Bytecode interpreter
-├── func.c       - Built-in functions (read_uv, clean, fit, etc.)
-├── table.c      - Symbol table (variables, arrays)
-├── ops.c        - Operators (arithmetic, comparison, logical)
-├── var.c        - Variable management
-├── plotlib.c    - PGPLOT interface wrapper
-└── help.c       - Help system
+sphere.c         ← Point d'entrée principal
+├── lex.c        - Scanner lexical (tokenization)
+├── compile.c    - Parser & compilateur (tokens → bytecode)
+├── run.c        - Interpréteur bytecode
+├── func.c       - Fonctions intégrées (read_uv, clean, fit, etc.)
+├── table.c      - Table symboles (variables, tableaux)
+├── ops.c        - Opérateurs (arith, comparaison, logique)
+├── var.c        - Gestion variables
+├── plotlib.c    - Wrapper interface PGPLOT
+└── help.c       - Système aide
 ```
 
-#### SPHERE Language Features:
+#### Caractéristiques Langage SPHERE:
 
 ```sphere
 # Variables
 set flux 1.5
 set x_off 0.001
 
-# Arrays
+# Tableaux
 array src[10]
 array data[256, 256]
 
-# Control flow
+# Contrôle flux
 for i=1 to 100
   if i > 50
-    print "Iteration $i"
+    print "Itération $i"
     add $flux $x_off 0 gaussian
     fit
   else
-    print "Early stage"
+    print "Début"
   endif
 end
 
 while condition
-  # ... loop body
+  # ... corps boucle
 end
 
-# Arithmetic
+# Opérations arithmétiques
 set result = (flux * 2.0) + offset
 
-# Function calls (calling C algorithms)
+# Appels fonctions (invoque algorithmes C)
 read_uv "data.fits"
 model
 add 1.0 0 0 point
@@ -306,14 +306,14 @@ fit
 clean 1000 0.1
 wmap "output.fits"
 
-# String manipulation
-set filename = "results_" & date & ".fits"
+# Manipulation chaînes
+set filename = "resultats_" & date & ".fits"
 ```
 
-#### How SPHERE Connects to C:
+#### Comment SPHERE Connecte C:
 
 ```c
-// In difmap.c
+// Dans difmap.c
 static USER_FN_PROTO my_functions[] = {
     {NULL, "read_uv", 1, uvf_input},        // read_uv file
     {NULL, "model", 0, model_init},         // model
@@ -324,7 +324,7 @@ static USER_FN_PROTO my_functions[] = {
     {NULL, "wmap", 1, uvf_output},          // wmap filename
     {NULL, "observ", 0, print_obs},         // observ (print observation)
     {NULL, "modelpars", 0, print_model},    // modelpars (print model)
-    // ... ~100 more functions
+    // ... ~100 plus de fonctions
     {NULL, NULL, 0, NULL}
 };
 
@@ -332,37 +332,37 @@ static Variable vars[] = {
     {"uvhwhm", R_ONLY, &invpar.uvhwhm, ...},
     {"uvmin", R_ONLY, &invpar.uvmin, ...},
     {"clean_gain", R_WRITE, &mc->gain, ...},
-    // ... ~200 more variables
+    // ... ~200 plus de variables
 };
 
-// SPHERE registration (in sphere.c):
+// Enregistrement SPHERE (dans sphere.c):
 for each function in my_functions:
     register_function(function.name, function.nargs, function.ptr)
 for each variable in vars:
     register_variable(variable.name, variable.ptr, variable.flags)
 ```
 
-**Key insight:** SPHERE is the **only** way to invoke C algorithms. Python doesn't call C directly—it generates SPHERE scripts.
+**Insight clé:** SPHERE est le **SEUL** moyen d'invoquer algorithmes C. Python n'appelle pas C directement—il génère scripts SPHERE.
 
 ---
 
-### 3. fits_src/ - FITS Format Support (10 files)
+### 3. fits_src/ - Support Format FITS (10 fichiers)
 
-**Purpose:** Read/write FITS files (astronomy standard binary data format)
+**But:** Lire/écrire fichiers FITS (standard astronomie format binaire données)
 
-#### Key Files:
+#### Fichiers Clés:
 
-- `fits.c`, `fits.h`: Main FITS routines
-- `fits_util.c`: Utility functions
-- `fitline.c`: Line reading
-- `fitkey.c`: FITS keyword parsing
+- `fits.c`, `fits.h`: Routines FITS principales
+- `fits_util.c`: Fonctions utilitaires
+- `fitline.c`: Lecture lignes
+- `fitkey.c`: Parsing mots-clés FITS
 
-#### FITS Data Structure:
+#### Structure Données FITS:
 
 ```c
-// Simplified
+// Simplifié
 typedef struct {
-    int nhdu;           // Number of HDUs (extensions)
+    int nhdu;           // Nombre HDUs (extensions)
     HDU **hdu;
 } Fits;
 
@@ -370,177 +370,177 @@ typedef struct {
     Hdutype type;       // PRIMARY, TABLE, IMAGE, BINTAB
     int naxis;
     long *naxes;        // Dimensions
-    Bitpix bitpix;      // Data type
-    char **keywords;    // FITS keywords
-    void *data;         // Raw data array
+    Bitpix bitpix;      // Type données
+    char **keywords;    // Mots-clés FITS
+    void *data;         // Tableau données brutes
 } HDU;
 ```
 
-#### UV FITS Format (Standard):
+#### Format FITS UV (Standard):
 
 ```
-PRIMARY HDU:
-  ├─ GROUPS= T (grouped table format)
-  ├─ PSCAL, PZERO (scaling factors)
-  └─ PARANGLE, source data
+HDU PRINCIPAL:
+  ├─ GROUPS= T (format table groupée)
+  ├─ PSCAL, PZERO (facteurs mise à l'échelle)
+  └─ PARANGLE, données source
 
-RANDOM GROUP Extensions:
-  ├─ Complex visibility (u, v, w coordinates)
-  ├─ Amplitude, phase, weight
-  ├─ Time, station info
-  └─ ~200 parameters per visibility
+Extensions RANDOM GROUP:
+  ├─ Visibilité complexe (coordonnées u, v, w)
+  ├─ Amplitude, phase, poids
+  ├─ Temps, information station
+  └─ ~200 paramètres par visibilité
 ```
 
 ---
 
-### 4. slalib_src/ - Astronomical Library (35 files)
+### 4. slalib_src/ - Bibliothèque Astronomique (35 fichiers)
 
-**Purpose:** Standard Low-Level Astronomy Library (SLA)
+**But:** Standard Low-Level Astronomy Library (SLA)
 
 ```
 ephem/
-  ├─ planet.c: Planetary ephemerides
-  ├─ refco.c: Atmospheric refraction corrections
-  └─ geod.c: Geodetic transformations
+  ├─ planet.c: Éphémérides planètes
+  ├─ refco.c: Corrections réfraction atmosphérique
+  └─ geod.c: Transformations géodésiques
 
 coords/
-  ├─ eqecl.c: Equatorial ↔ Ecliptic
-  ├─ prec.c: Precession transformations
-  ├─ fk4_fk5.c: Catalog epoch conversions
-  └─ hms.c: Hour-minute-second parsing
+  ├─ eqecl.c: Équatorial ↔ Écliptique
+  ├─ prec.c: Transformations précession
+  ├─ fk4_fk5.c: Conversions époque catalogue
+  └─ hms.c: Parsing heure-minute-seconde
 
 math/
-  ├─ dvn.c: Vector normalization
-  ├─ dmat.c: Matrix operations
-  └─ euler.c: Euler angle transformations
+  ├─ dvn.c: Normalisation vecteur
+  ├─ dmat.c: Opérations matrice
+  └─ euler.c: Transformations angle Euler
 ```
 
 ---
 
-### 5. libtecla_src/ - Terminal Editor (20 files)
+### 5. libtecla_src/ - Éditeur Terminal (20 fichiers)
 
-**Purpose:** Interactive command-line editing (like GNU Readline but more portable)
+**But:** Édition ligne de commande interactive (comme GNU Readline mais plus portable)
 
-Features:
-- Command history (up/down arrows)
-- Tab completion
-- Vi/Emacs editing modes
-- Parenthesis matching
+Caractéristiques:
+- Historique commandes (flèches haut/bas)
+- Complétion tab
+- Modes édition Vi/Emacs
+- Appariement parenthèses
 
-Not critical for wrapper (can be disabled in interactive mode).
+Non critique pour wrapper (peut être désactivé mode interactif).
 
 ---
 
-### 6. Supporting Libraries
+### 6. Bibliothèques Soutien
 
-**logio_src/**: Logging and I/O utilities
-- `logio.c`: Output buffering
+**logio_src/**: Utilitaires logging et I/O
+- `logio.c`: Buffering sortie
 - `page.c`: Pagination
 
-**pager_src/**: Text paging (for viewing large outputs)
-- `pager.c`: Terminal paging
+**pager_src/**: Pagination texte (pour affichage sorties larges)
+- `pager.c`: Pagination terminal
 
-**recio_src/**: Record I/O
-- `recio.c`: Fixed-record reading
+**recio_src/**: I/O Record
+- `recio.c`: Lecture record fixe
 
-**scrfil_src/**: Scratch file management
-- `scrfil.c`: Temporary file handling
+**scrfil_src/**: Gestion fichier scratch
+- `scrfil.c`: Gestion fichier temporaire
 
-**sphere_src/**: (Covered above)
+**sphere_src/**: (Voir section 2 ci-dessus)
 
-**cpg_src/**: PGPLOT C wrapper
-- `cpgplot.h`: C-language bindings for Fortran PGPLOT library
+**cpg_src/**: Wrapper PGPLOT C
+- `cpgplot.h`: Bindings langage C pour bibliothèque PGPLOT Fortran
 
 ---
 
-## KEY DATA STRUCTURES
+## STRUCTURES DE DONNÉES CLÉS
 
-### Global Singleton Pattern
+### Pattern Singleton Global
 
-DIFMAP uses extensive static globals instead of passing contexts:
+DIFMAP utilise extensions globales statiques plutôt que de passer contextes:
 
 ```c
-// In different .c files, marked static
+// Dans fichiers différents .c, marqués static
 
-static Observation *ob = NULL;   // Current observation
-static Model *model = NULL;      // Current model
-static Mapcln *mc = NULL;        // Current CLEAN state
+static Observation *ob = NULL;   // Observation courante
+static Model *model = NULL;      // Modèle courant
+static Mapcln *mc = NULL;        // État CLEAN courant
 
-// Callbacks to modify them:
+// Callbacks pour les modifier:
 void read_uv(char *filename) {
-    // Load into global ob
+    // Charger dans ob global
     ob = load_obs_from_fits(filename);
 }
 
 void add_component(float flux, ...) {
-    // Add to global model
+    // Ajouter au modèle global
     if (model == NULL) model = create_model();
     model->components[model->ncmp++] = ...;
 }
 ```
 
-**Problem:** This makes the C library inherently non-reentrant.
-**Solution:** Use subprocess isolation (process = separate globals).
+**Problème:** Cela rend bibliothèque C intrinsèquement non-rentrante.
+**Solution:** Utiliser isolation subprocess (processus = globals séparés).
 
-### Observation Structure
+### Structure Observation
 
 ```c
 typedef struct {
-    Source *source;        // Target source info
-    Station *tel;          // Array of telescopes
-    int ntel;             // Number of telescopes
+    Source *source;        // Info source cible
+    Station *tel;          // Tableau télescopes
+    int ntel;             // Nombre télescopes
     
-    UVData *data;         // Visibility data
-    int nbas;             // Number of baselines
+    UVData *data;         // Données visibilité
+    int nbas;             // Nombre baselines
     
-    float freqoff;        // Frequency offset
+    float freqoff;        // Offset fréquence
     double mjd;           // Modified Julian Date
-    char project[32];     // Project code
+    char project[32];     // Code projet
     
-    // ... 30+ more fields
+    // ... 30+ champs plus
 } Observation;
 ```
 
-### Model Component
+### Composante Modèle
 
 ```c
 typedef struct {
     float flux;           // Jy
-    float x, y;           // arcseconds (RA, Dec offset from phase center)
+    float x, y;           // arcseconde (RA, Dec décalage centre phase)
     
-    // For Gaussians/extended models:
-    float major;          // FWHM major axis (arcsec)
-    float ratio;          // Minor/major axial ratio
-    float phi;            // Position angle (degrees)
+    // Pour Gaussiennes/modèles étendus:
+    float major;          // FWHM axe majeur (arcsec)
+    float ratio;          // Ratio axial mineur/majeur
+    float phi;            // Angle position (degrees)
     
-    // For fitting:
-    int freepar;          // Bitmap: which params are free to fit?
-    float dflux, dx, dy;  // Uncertainties after fitting
+    // Pour fitting:
+    int freepar;          // Bitmap: quels paramètres libres pour fit?
+    float dflux, dx, dy;  // Incertitudes après fitting
     float dmajor, dratio, dphi;
     
     Modtyp type;          // POINT, GAUS, DISK, RING, etc.
 } Modcmp;
 ```
 
-### CLEAN State
+### État CLEAN
 
 ```c
 typedef struct {
-    float *map;           // 2D image array (nx × ny floats)
-    float *residuals;     // Residual map
-    int nx, ny;           // Pixel dimensions
+    float *map;           // Tableau image 2D (nx × ny floats)
+    float *residuals;     // Carte résiduelle
+    int nx, ny;           // Dimensions pixel
     
-    float bmaj, bmin;     // Beam major/minor (arcsec)
-    float bpa;            // Beam position angle (degrees)
+    float bmaj, bmin;     // Faisceau majeur/mineur (arcsec)
+    float bpa;            // Angle position faisceau (degrees)
     
-    int n_clean_iter;     // Iterations done
-    float gain;           // Loop gain (0-1)
-    float threshold;      // Stopping threshold (Jy/beam)
+    int n_clean_iter;     // Itérations complétées
+    float gain;           // Gain boucle (0-1)
+    float threshold;      // Seuil arrêt (Jy/beam)
     
-    // List of CLEAN components found:
+    // Liste composantes CLEAN trouvées:
     struct {
         float flux;
-        int ix, iy;       // Pixel location
+        int ix, iy;       // Localisation pixel
     } *clean_comps;
     int n_comps;
 } Mapcln;
@@ -548,229 +548,228 @@ typedef struct {
 
 ---
 
-## CRITICAL INTERFACES
+## INTERFACES CRITIQUES
 
-### To DIFMAP from SPHERE:
+### Vers DIFMAP depuis SPHERE:
 
-These are the main "entry points" you'll use in SPHERE scripts:
+Voici points d'entrée principaux que vous utiliserez dans scripts SPHERE:
 
 ```sphere
-# Data Loading
-read_uv "filename.fits"     # Load UV FITS
-write_uv "filename.fits"    # Save UV FITS
+# Chargement Données
+read_uv "filename.fits"     # Charger UV FITS
+write_uv "filename.fits"    # Sauvegarder UV FITS
 
-# Modeling
-model                       # Initialize model
-add flux x y type major ratio pa   # Add component
-delete_component index      # Remove component
-modelpars                   # Print current model
+# Modélisation
+model                       # Initialiser modèle
+add flux x y type major ratio pa   # Ajouter composante
+delete_component index      # Supprimer composante
+modelpars                   # Afficher modèle courant
 
 # Fitting
 fit                         # Levenberg-Marquardt fit
-selfcal interval           # Self-calibration
+selfcal interval           # Auto-calibration
 
-# Cleaning
-clean niter gain threshold method   # CLEAN deconvolution
+# Nettoyage
+clean niter gain threshold method   # Déconvolution CLEAN
 
-# Output
-wmap "filename.fits"        # Write image FITS
+# Sortie
+wmap "filename.fits"        # Écrir image FITS
 
 # Inspection
-observ                      # Print observation info
-uvstat                      # UV statistics
-mapstat                     # Map statistics
+observ                      # Afficher info observation
+uvstat                      # Statistiques UV
+mapstat                     # Statistiques carte
 
-# Plotting (uses PGPLOT → image files)
-uvplot                      # Draw UV coverage
-modplot                     # Draw model components
-mapplot                     # Draw CLEAN map
+# Traçage (utilise PGPLOT → fichiers image)
+uvplot                      # Tracer couverture UV
+modplot                     # Tracer composantes modèle
+mapplot                     # Tracer carte CLEAN
 ```
 
 ---
 
-## SPHERE MACRO LANGUAGE
+## LANGAGE MACRO SPHERE
 
-### Why SPHERE?
+### Pourquoi SPHERE?
 
-**Alternative:** Wrap every C function individually
-- Result: 500+ functions to wrap
-- Maintenance: Nightmare (API breakage in DIFMAP update)
+**Alternative:** Wrapper chaque fonction C individuellement
+- Résultat: 500+ fonctions à wrapper
+- Maintenance: Cauchemar (bris API update DIFMAP)
 
-**Better:** Use SPHERE (already there!)
-- SPHERE already orchestrates algorithms intelligently
-- Python just generates SPHERE scripts dynamically
-- Changes to C internals don't affect Python
+**Mieux:** Utiliser SPHERE (déjà là!)
+- SPHERE orchestrat déjà algorithmes intelligemment
+- Python juste génère scripts SPHERE dynamiquement
+- Changements C internes n'affectent pas Python
 
-### SPHERE Basics
+### Bases SPHERE
 
 ```sphere
-# Comments
-# This is a comment
+# Commentaires
+# Ceci est un commentaire
 
 # Variables
 set myvar 3.14
 set name "test"
 
-# String concatenation
-set path "results/" & name & ".fits"
+# Concaténation chaîne
+set path "resultats/" & name & ".fits"
 
-# Arithmetic
+# Opérations arithmétiques
 set result = (10 + 5) * 2 - 3 / 0.5
 
-# Arrays
+# Tableaux
 array data[1000]
 set data[5] = 3.14
 
-# Control flow
+# Contrôle flux
 for i=1 to 10
-  print "Iteration " & i
+  print "Itération " & i
   if i > 5
-    print "  More than 5!"
+    print "  Plus que 5!"
   else
-    print "  Still building up"
+    print "  Toujours construction"
   endif
 end
 
-# While loops
+# Boucles while
 set x = 1
 while x < 100
   set x = x * 2
 end
 
-# Function calls
+# Appels fonctions
 read_uv "data.fits"
-observ              # Print observation
+observ              # Afficher observation
 
-# Model creation
-model               # Initialize
+# Création modèle
+model               # Initialiser
 add 1.0 0 0 point   # flux x y type
 add 0.5 0.001 0 gaussian 0.001 0.8 45
-fit                 # Fit model
+fit                 # Fitting modèle
 
-# Cleaning
 clean 1000 0.1      # niter gain
 
-# Save
+# Sauvegarde
 wmap "output.fits"
 
-# Exit
+# Sortie
 exit
 ```
 
 ---
 
-## PROBLEM POINTS & SOLUTIONS
+## POINTS PROBLÉMATIQUES & SOLUTIONS
 
-### Problem #1: Static Globals (Memory Safety)
+### Problème #1: Globals Statiques (Sécurité Mémoire)
 
-**Issue:** Globals prevent multiple simultaneous sessions
+**Problème:** Globals empêchent sessions multiples simultanées
 ```c
-static Observation *ob = NULL;  // Only one!
-static Model *model = NULL;     // Only one!
+static Observation *ob = NULL;  // Un seul!
+static Model *model = NULL;     // Un seul!
 ```
 
-**Solution:** Subprocess isolation (one process = one set of globals)
+**Solution:** Isolation subprocess (un processus = un ensemble globals)
 
 ---
 
-### Problem #2: PGPLOT Dependency (Display)
+### Problème #2: Dépendance PGPLOT (Affichage)
 
-**Issue:** PGPLOT requires X11 graphics on servers
+**Problème:** PGPLOT nécessite X11 graphics sur serveurs
 
-**Solution:** Use headless modes
-- PDF device: `/pdf` (PostScript → PDF)
-- PS device: `/ps` (PostScript file)
-- No display needed
+**Solution:** Utiliser modes headless
+- Device PDF: `/pdf` (PostScript → PDF)
+- Device PS: `/ps` (Fichier PostScript)
+- Pas d'affichage nécessaire
 
-**From Python:** Use matplotlib for visualization (not PGPLOT)
+**Depuis Python:** Utiliser matplotlib pour visualisation (pas PGPLOT)
 
 ---
 
-### Problem #3: FITS Files (I/O Synchronization)
+### Problème #3: Fichiers FITS (Synchronisation I/O)
 
-**Issue:** How does Python know when DIFMAP is done?
+**Problème:** Comment Python sait quand DIFMAP est terminé?
 
-**Solution:** File-based IPC
+**Solution:** I/O basé fichier
 ```python
-# 1. Send commands
+# 1. Envoyer commandes
 proc.stdin.write("read_uv data.fits\nfit\nexit\n")
 
-# 2. Wait for completion
+# 2. Attendre complétion
 stdout, stderr = proc.communicate()
 
-# 3. Read FITS results
+# 3. Lire résultats FITS
 from astropy.io import fits
 hdul = fits.open('output.fits')
 ```
 
 ---
 
-### Problem #4: Version Compatibility
+### Problème #4: Compatibilité Version
 
-**Issue:** DIFMAP may change between releases
+**Problème:** DIFMAP peut changer entre releases
 
-**Solution:** SPHERE API is stable (20+ years)
-- Python just generates SPHERE scripts
-- Updates to C internals transparent
-- Backwards compatibility guaranteed
+**Solution:** API SPHERE est stable (20+ ans)
+- Python juste génère scripts SPHERE
+- Mises à jour C internes transparentes
+- Compatibilité rétroactive garantie
 
 ---
 
-## REFERENCE TABLES
+## TABLEAUX RÉFÉRENCE
 
-### DIFMAP Component Types
+### Types Composantes DIFMAP
 
-| Type | Syntax | Parameters | Use Case |
-|------|--------|------------|----------|
-| **Point** | `add flux x y point` | flux, x, y | Unresolved sources |
-| **Gaussian** | `add flux x y gaussian major ratio pa` | major, ratio, pa | Resolved sources |  
-| **Disk** | `add flux x y disk radius` | radius | Uniform disk |
-| **Ring** | `add flux x y ring radius` | radius | Elliptical ring |
-| **Rectangle** | `add flux x y rect major ratio pa` | (see Gaussian) | Rectangular |
+| Type | Syntaxe | Paramètres | Cas Usage |
+|------|---------|-----------|----------|
+| **Point** | `add flux x y point` | flux, x, y | Sources non-résolues |
+| **Gaussienne** | `add flux x y gaussian major ratio pa` | major, ratio, pa | Sources résolues |  
+| **Disque** | `add flux x y disk radius` | radius | Disque uniforme |
+| **Anneau** | `add flux x y ring radius` | radius | Anneau elliptique |
+| **Rectangle** | `add flux x y rect major ratio pa` | (voir Gaussienne) | Rectangle |
 
-**Parameters:**
-- `flux`: Jy (emission or absorption)
-- `x, y`: arcsecond offsets from phase center
-- `major`: FWHM major axis (arcsec)
-- `ratio`: Minor/major axial ratio (0-1)
-- `pa`: Position angle (degrees, East from North)
+**Paramètres:**
+- `flux`: Jy (émission ou absorption)
+- `x, y`: Décalages arcseconde centre phase
+- `major`: FWHM axe majeur (arcsec)
+- `ratio`: Ratio axial mineur/majeur (0-1)
+- `pa`: Angle position (degrees, Est depuis Nord)
 
-### CLEAN Parameters
+### Paramètres CLEAN
 
-| Parameter | Default | Range | Meaning |
-|-----------|---------|-------|---------|
-| `niter` | 1000 | 1-∞ | Max iterations |
-| `gain` | 0.1 | 0-1 | Loop gain (fraction of peak removed per iteration) |
-| `threshold` | auto | Jy/beam | Stop when peak residual < threshold |
-| `method` | "normal" | "normal", "sdiff" | Algorithm variant |
+| Paramètre | Défaut | Plage | Sens |
+|-----------|--------|-------|------|
+| `niter` | 1000 | 1-∞ | Itérations max |
+| `gain` | 0.1 | 0-1 | Gain boucle (fraction pic ôtée par itération) |
+| `threshold` | auto | Jy/beam | Arrêter quand résidu pic < seuil |
+| `method` | "normal" | "normal", "sdiff" | Variante algorithme |
 
-### Self-Calibration Parameters
+### Paramètres Auto-Calibration
 
-| Parameter | Meaning |
-|-----------|---------|
-| `solution_interval` | Time interval for gain solutions (seconds) |
-| Algorithm | Solves for complex gain per station per interval |
+| Paramètre | Sens |
+|-----------|------|
+| `solution_interval` | Intervalle temps solutions gain (secondes) |
+| Algorithme | Résout gain complexe par station par intervalle |
 
-### FITS Keywords (UV Data)
+### Mots-clés FITS (Données UV)
 
-| Keyword | Type | Meaning |
-|---------|------|---------|
-| `OBJECT` | char | Source name |
+| Mot-clé | Type | Sens |
+|---------|------|------|
+| `OBJECT` | char | Nom source |
 | `CRVAL1, CRVAL2` | float | RA, Dec (degrees) |
-| `CRPIX1, CRPIX2` | float | Reference pixel |
-| `CDELT1, CDELT2` | float | Pixel scale (degrees) |
-| `DATE-OBS` | char | Observation date (ISO) |
-| `TELESCOP` | char | Array name |
-| `INSTRUME` | char | Instrument/project |
+| `CRPIX1, CRPIX2` | float | Pixel référence |
+| `CDELT1, CDELT2` | float | Échelle pixel (degrees) |
+| `DATE-OBS` | char | Date observation (ISO) |
+| `TELESCOP` | char | Nom tableau |
+| `INSTRUME` | char | Instrument/projet |
 
 ---
 
-## NEXT STEPS
+## PROCHAINES ÉTAPES
 
-For implementation details, see [GUIDE_IMPLEMENTATION.md](GUIDE_IMPLEMENTATION.md).
+Pour détails implémentation, voir [GUIDE_IMPLEMENTATION.md](GUIDE_IMPLEMENTATION.md).
 
-For specific Python wrapper code, see [GUIDE_IMPLEMENTATION.md](GUIDE_IMPLEMENTATION.md) section "Code Complete: DifmapSession".
+Pour code spécifique Python wrapper, voir [GUIDE_IMPLEMENTATION.md](GUIDE_IMPLEMENTATION.md) section "Code Complet: DifmapSession".
 
 ---
 
-*Last Updated: 4 March 2026*
+*Dernière Mise à Jour: 4 Mars 2026*
