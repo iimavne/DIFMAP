@@ -391,7 +391,7 @@ Extensions RANDOM GROUP:
   └─ ~200 paramètres par visibilité
 ```
 
-**⚠️ CLARIFICATION: FITS vs UVF vs UVD**
+**CLARIFICATION: FITS vs UVF vs UVD**
 
 DIFMAP utilise TROIS formats différents:
 

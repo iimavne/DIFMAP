@@ -196,7 +196,7 @@ plt.show()  # ← Jupyter display OK!
 
 ---
 
-## ✅ ARCHITECTURE SUBPROCESS (Résout tous les problèmes)
+## ARCHITECTURE SUBPROCESS (Résout tous les problèmes)
 
 ### Résumé Simple
 
@@ -474,7 +474,7 @@ class DifmapSession:
 
 ---
 
-## 🎯 EXEMPLES CONCRETS
+## EXEMPLES CONCRETS
 
 ### Exemple 1: Modélisation paramétrique simple
 
