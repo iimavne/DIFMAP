@@ -13,15 +13,10 @@ gfortran_version
 *.dylib
 
 # ==========================================
-# Nouveau système de build (Meson / Ninja)
+# Systèmes de build (Nouveau et Ancien)
 # ==========================================
 builddir/
 build/
-.meson*
-
-# ==========================================
-# Ancien système de build (Scripts Configure & Make)
-# ==========================================
 Makefile
 */makefile
 make.configure
@@ -39,22 +34,41 @@ doc/help.tex
 doc/help.dvi
 
 # ==========================================
-# Logs et fichiers temporaires Difmap
+# Logs, Markdown et Fichiers temporaires
 # ==========================================
 *.log
 difmap.log*
 difmap.log_*
+*.md
+# !README.md  # Décommente cette ligne si tu veux quand même garder le README.md principal
 core
-scrfil_src/scrfile* # Fichiers scratch temporaires
+scrfil_src/scrfile*
 
 # ==========================================
-# Fichiers de données (Optionnel mais recommandé)
+# Fichiers de données et sorties VLBI/Difmap
 # ==========================================
-# Évite de commiter par erreur vos gros fichiers de données
+# Évite de commiter les gros fichiers de données et les résultats de script
 *.fits
 *.uvf
 *.uv
+*.uvd
+*.edit
+*.par
+*.win
+*.mod
+*.CMP_N
+*.ps
+*.color.ps
 
+# ==========================================
+# Environnement Python (Pour ton wrapper)
+# ==========================================
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+*.egg-info/
 
 # ==========================================
 # Fichiers systèmes et éditeurs
