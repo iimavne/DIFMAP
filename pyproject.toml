@@ -1,0 +1,13 @@
+[build-system]
+requires = ["meson-python", "cython", "numpy"]
+build-backend = "mesonpy"
+
+[project]
+name = "difmap_smartedit"
+version = "2.5.0"
+description = "Python binding for Difmap"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "astropy"
+]

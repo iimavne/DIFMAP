@@ -39,6 +39,11 @@ curses_dep = dependency('ncurses', required : true)
 tinfo_dep = cc.find_library('tinfo', required : true) 
 pgplot_dep = cc.find_library('pgplot', required : true)
 cpgplot_dep = cc.find_library('cpgplot', required : true)
+py3 = import('python').find_installation()
+py3_dep = py3.dependency()
+pybind11_dep = dependency('pybind11', required : true)
+cython = find_program('cython')
+numpy_inc_dir = run_command(py3, '-c', 'import numpy; print(numpy.get_include())', check : true).stdout().strip()
 
 ################################################################################
 # SECTION 3: CONFIGURATION DES RÉPERTOIRES D'INCLUSION (INCLUDE PATHS)
@@ -147,6 +152,30 @@ difmap_sources = [
   'difmap_src/specplot.c', 'difmap_src/markerlist.c', 'difmap_src/mc.c', libfits_h
 ]
 
+# 1. On définit comment transformer le .pyx en .c
+cython_gen = generator(cython,
+  output : '@BASENAME@.c',
+  arguments : ['@INPUT@', '--output-file', '@OUTPUT@', '--fast-fail'])
+
+binding_c = cython_gen.process('binding/difmap_native.pyx')
+
+py3.extension_module('difmap_native',
+  [binding_c] + difmap_sources,
+  include_directories : [inc, inc_build],
+  c_args : ['-I' + numpy_inc_dir], # <--- LA CORRECTION EST ICI (Méthode infaillible)
+  link_with : [
+    libsphere, liblogio, libpager, libfits, 
+    librecio, libslalib, libscrfil
+  ],
+  link_whole : [libtecla],
+  dependencies : [
+    m_dep, gsl_dep, pgplot_dep, cpgplot_dep, 
+    x11_dep, curses_dep, tinfo_dep, py3_dep
+  ],
+  install : true
+)
+
+# On garde l'exécutable classique à côté pour tes tests manuels
 executable('difmap',
   difmap_sources,
   include_directories : [inc, inc_build],
@@ -161,6 +190,3 @@ executable('difmap',
   ],
   install : true
 )
-
-
-
