@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.4.553">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Documentation Difmap Python - Chapitre 3 : Implémentation Technique</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "sidebar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "start",
+  "type": "textbox",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+<link rel="stylesheet" href="styles.css">
+</head>
+
+<body class="nav-sidebar docked">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./03_implementation_technique.html">Chapitre 3 : Implémentation Technique</a></li></ol></nav>
+        <a class="flex-grow-1" role="button" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation docked overflow-auto">
+    <div class="pt-lg-2 mt-2 text-left sidebar-header">
+    <div class="sidebar-title mb-0 py-0">
+      <a href="./">Documentation Difmap Python</a> 
+    </div>
+      </div>
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">docs</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./01_contexte_et_existant.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Chapitre 1 : Contexte historique et anlyse de l’existant</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./02_nouvelle_architecture.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Chapitre 2 : La Nouvelle Architecture</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./03_implementation_technique.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Chapitre 3 : Implémentation Technique</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#le-moteur-natif-difmap.c-comme-façade-dapi" id="toc-le-moteur-natif-difmap.c-comme-façade-dapi" class="nav-link active" data-scroll-target="#le-moteur-natif-difmap.c-comme-façade-dapi">3.1. Le moteur natif : <code>difmap.c</code> comme Façade d’API</a>
+  <ul class="collapse">
+  <li><a href="#a.-le-défi-dompter-le-singleton-global" id="toc-a.-le-défi-dompter-le-singleton-global" class="nav-link" data-scroll-target="#a.-le-défi-dompter-le-singleton-global">A. Le défi : Dompter le “Singleton Global”</a></li>
+  <li><a href="#b.-analyse-détaillée-et-exemples-de-code" id="toc-b.-analyse-détaillée-et-exemples-de-code" class="nav-link" data-scroll-target="#b.-analyse-détaillée-et-exemples-de-code">B. Analyse détaillée et exemples de code</a></li>
+  <li><a href="#c.-table-de-correspondance-des-points-dentrée" id="toc-c.-table-de-correspondance-des-points-dentrée" class="nav-link" data-scroll-target="#c.-table-de-correspondance-des-points-dentrée">C. Table de correspondance des points d’entrée</a></li>
+  </ul></li>
+  <li><a href="#le-binding-cython-architecture-de-linteropérabilité-binding" id="toc-le-binding-cython-architecture-de-linteropérabilité-binding" class="nav-link" data-scroll-target="#le-binding-cython-architecture-de-linteropérabilité-binding">3.2. Le Binding Cython : Architecture de l’interopérabilité (<code>binding/</code>)</a>
+  <ul class="collapse">
+  <li><a href="#déclaration-des-interfaces-cdifmap.pxd" id="toc-déclaration-des-interfaces-cdifmap.pxd" class="nav-link" data-scroll-target="#déclaration-des-interfaces-cdifmap.pxd">3.2.1. Déclaration des interfaces : <code>cdifmap.pxd</code></a></li>
+  <li><a href="#gestion-des-chaînes-de-caractères-sécurisation-du-transfert" id="toc-gestion-des-chaînes-de-caractères-sécurisation-du-transfert" class="nav-link" data-scroll-target="#gestion-des-chaînes-de-caractères-sécurisation-du-transfert">3.2.2. Gestion des chaînes de caractères : Sécurisation du transfert</a></li>
+  <li><a href="#optimisation-zéro-copie-memoryviews-et-numpy" id="toc-optimisation-zéro-copie-memoryviews-et-numpy" class="nav-link" data-scroll-target="#optimisation-zéro-copie-memoryviews-et-numpy">3.2.3. Optimisation “Zéro-Copie” : Memoryviews et NumPy</a></li>
+  <li><a href="#encapsulation-des-métadonnées-ergonomie" id="toc-encapsulation-des-métadonnées-ergonomie" class="nav-link" data-scroll-target="#encapsulation-des-métadonnées-ergonomie">3.2.4. Encapsulation des Métadonnées (Ergonomie)</a></li>
+  <li><a href="#synthèse-technique-du-binding" id="toc-synthèse-technique-du-binding" class="nav-link" data-scroll-target="#synthèse-technique-du-binding">3.2.5. Synthèse technique du Binding</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Chapitre 3 : Implémentation Technique</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>Cette section détaille le travaille effectuée sur le code source pour le transformer en moteur pilotable par Python.</p>
+<section id="le-moteur-natif-difmap.c-comme-façade-dapi" class="level2">
+<h2 class="anchored" data-anchor-id="le-moteur-natif-difmap.c-comme-façade-dapi">3.1. Le moteur natif : <code>difmap.c</code> comme Façade d’API</h2>
+<section id="a.-le-défi-dompter-le-singleton-global" class="level3">
+<h3 class="anchored" data-anchor-id="a.-le-défi-dompter-le-singleton-global">A. Le défi : Dompter le “Singleton Global”</h3>
+<p>Le plus grand défi technique de Difmap est son architecture dite “non-rentrante”. Dans le code d’origine, l’état complet d’une session (l’image, les antennes, les données) est stocké dans des variables globales marquées <code>static</code>. Cela signifie qu’elles ne sont visibles que depuis le fichier difmap.c.</p>
+<p>Historiquement, l’utilisateur interagissait avec ces variables via l’interpréteur de commandes SPHERE. Pour automatiser cela en Python, nous avons dû créer un point d’accès direct.</p>
+<p><strong>Pourquoi avoir choisi <code>difmap.c</code> ?</strong> Plutôt que de modifier 150 fichiers sources et de risquer de casser la logique mathématique, nous avons utilisé <code>difmap.c</code> comme une <strong>Façade</strong> (Design Pattern). C’est le fichier “maître” qui possède les accès à tous les objets critiques (<code>vlbob</code> pour l’observation, <code>vlbmap</code> pour l’image).</p>
+</section>
+<section id="b.-analyse-détaillée-et-exemples-de-code" class="level3">
+<h3 class="anchored" data-anchor-id="b.-analyse-détaillée-et-exemples-de-code">B. Analyse détaillée et exemples de code</h3>
+<p>Nous avons injecté dans <code>difmap.c</code> une interface programmatique (API) découpée en sections logiques. Voici le rôle précis de chacune :</p>
+<section id="sécurisation-de-létat-safe-getters" class="level4">
+<h4 class="anchored" data-anchor-id="sécurisation-de-létat-safe-getters">1. Sécurisation de l’état (Safe Getters)</h4>
+<p><strong>Le Problème :</strong> En C, lire une variable globale non initialisée (<code>NULL</code>) fait crasher Python instantanément (<em>Segmentation Fault</em>). <br> <strong>La Solution :</strong> Chaque “Getter” vérifie l’existence de l’objet avant de retourner sa valeur. <br></p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c code-with-copy"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">/* Récupère la largeur de l'image en pixels */</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> get_native_map_nx<span class="op">()</span> <span class="op">{</span> </span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Si vlbmap n'existe pas encore, on renvoie -1 au lieu de crasher</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="op">(</span>vlbmap <span class="op">!=</span> NULL<span class="op">)</span> <span class="op">?</span> vlbmap<span class="op">-&gt;</span>nx <span class="op">:</span> <span class="op">-</span><span class="dv">1</span><span class="op">;</span> </span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co">/* Récupère le nom de la galaxie source */</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="dt">char</span><span class="op">*</span> get_native_source_name<span class="op">()</span> <span class="op">{</span> </span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="op">(</span>vlbob <span class="op">!=</span> NULL<span class="op">)</span> <span class="op">?</span> vlbob<span class="op">-&gt;</span>source<span class="op">.</span>name <span class="op">:</span> <span class="st">"Aucune"</span><span class="op">;</span> </span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="gestion-stricte-du-cycle-de-vie-ram-reset-allocation" class="level4">
+<h4 class="anchored" data-anchor-id="gestion-stricte-du-cycle-de-vie-ram-reset-allocation">2. Gestion stricte du cycle de vie RAM (Reset &amp; Allocation)</h4>
+<p><strong>Le Problème :</strong> Difmap n’a pas été conçu pour charger des fichiers en boucle. Sans nettoyage, la RAM sature vite. <br> <strong>La Solution :</strong> On force la libération de la mémoire avant chaque nouvelle observation. <br></p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c code-with-copy"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> native_observe<span class="op">(</span><span class="dt">char</span> <span class="op">*</span>name<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">/* ÉTAPE 1 : Nettoyage de la RAM précédente (Crucial !) */</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    obs_end<span class="op">();</span> </span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">/* ÉTAPE 2 : Allocation de la nouvelle structure d'observation */</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    vlbob <span class="op">=</span> new_Observation<span class="op">(</span>name<span class="op">,</span> <span class="fl">0.0</span><span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">1</span><span class="op">,</span> NULL<span class="op">,</span> NO_POL<span class="op">,</span> fix_visibility_weights<span class="op">);</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span><span class="op">(</span>vlbob <span class="op">==</span> NULL<span class="op">)</span> <span class="cf">return</span> <span class="op">-</span><span class="dv">1</span><span class="op">;</span> <span class="co">// Échec de chargement</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    vlbspec <span class="op">=</span> new_Specattr<span class="op">(</span>vlbob<span class="op">);</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="automatisation-et-synchronisation-the-sync-hack" class="level4">
+<h4 class="anchored" data-anchor-id="automatisation-et-synchronisation-the-sync-hack">3. Automatisation et Synchronisation (“The Sync Hack”)</h4>
+<p><strong>Le Problème :</strong> Difmap possède deux systèmes d’images : le système moderne (<code>vlbmap</code>) et le vieux système Fortran (<code>mb_map</code>). Si on ne synchronise pas les deux, les calculs FFT ne s’affichent pas. <br> <strong>La Solution :</strong> On force les adresses mémoire à correspondre. <br></p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c code-with-copy"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> native_mapsize<span class="op">(</span><span class="dt">int</span> nx<span class="op">,</span> <span class="dt">float</span> cellsize<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> xinc <span class="op">=</span> xytorad<span class="op">(</span>cellsize<span class="op">);</span> <span class="co">// Conversion mas -&gt; radians</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">/* Allocation de la grille de pixels */</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    vlbmap <span class="op">=</span> new_MapBeam<span class="op">(</span>vlbmap<span class="op">,</span> nx<span class="op">,</span> xinc<span class="op">,</span> nx<span class="op">,</span> xinc<span class="op">);</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">/* LE SYNC </span><span class="al">HACK</span><span class="co"> : On force les pointeurs Fortran vers la RAM allouée par le C */</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    VOIDPTR<span class="op">(&amp;</span>mb_beam<span class="op">)</span> <span class="op">=</span> vlbmap<span class="op">-&gt;</span>beam<span class="op">;</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    VOIDPTR<span class="op">(&amp;</span>mb_map<span class="op">)</span>  <span class="op">=</span> vlbmap<span class="op">-&gt;</span>map<span class="op">;</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Mise à jour des dimensions pour tout le moteur</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    mb_map<span class="op">.</span>adim<span class="op">[</span><span class="dv">0</span><span class="op">]</span> <span class="op">=</span> nx<span class="op">;</span> mb_map<span class="op">.</span>adim<span class="op">[</span><span class="dv">1</span><span class="op">]</span> <span class="op">=</span> nx<span class="op">;</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    mb_map<span class="op">.</span>num_el  <span class="op">=</span> <span class="op">(</span><span class="dt">size_t</span><span class="op">)</span> <span class="op">(</span>nx <span class="op">*</span> nx<span class="op">);</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="exportation-des-pointeurs-le-principe-du-zéro-copie" class="level4">
+<h4 class="anchored" data-anchor-id="exportation-des-pointeurs-le-principe-du-zéro-copie">4. Exportation des pointeurs (Le principe du Zéro-Copie)</h4>
+<p>Principe du Zéro copie : Le zéro-copie consiste à faire « pointer » un tableau Python directement sur l’adresse mémoire (RAM) occupée par le moteur C, permettant un transfert de données instantané sans aucune duplication d’octets. <strong>Le Problème :</strong> Copier une image de <span class="math inline">\(2048 \times 2048\)</span> pixels de C vers Python prend du temps et de la RAM. <br> <strong>La Solution :</strong> On donne à Python l’adresse mémoire directe. <br></p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode c code-with-copy"><code class="sourceCode c"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span><span class="op">*</span> get_native_map_data<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">/* On renvoie l'adresse brute du tableau de pixels */</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span><span class="op">(</span>vlbmap <span class="op">==</span> NULL <span class="op">||</span> vlbmap<span class="op">-&gt;</span>map <span class="op">==</span> NULL<span class="op">)</span> <span class="cf">return</span> NULL<span class="op">;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> vlbmap<span class="op">-&gt;</span>map<span class="op">;</span> <span class="co">// Cython créera un tableau NumPy sur cette adresse</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="précision-de-la-physique-radians-vers-mas" class="level4">
+<h4 class="anchored" data-anchor-id="précision-de-la-physique-radians-vers-mas">5. Précision de la Physique (Radians vers mas)</h4>
+<p><strong>Le Problème :</strong> Travailler avec des nombres comme <span class="math inline">\(0.000000048\)</span> (radians) est illisible pour un humain. <br> <strong>La Solution :</strong> On intègre la constante de conversion astronomique. <br></p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode c code-with-copy"><code class="sourceCode c"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co">/* Facteur : 1 Radian = 206,264,806.247 milliarcsecondes */</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="pp">#define RTOMAS </span><span class="fl">206264806.247</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="dt">double</span> get_native_pixsize<span class="op">()</span> <span class="op">{</span> </span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Conversion instantanée au moment de la lecture</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="op">(</span>vlbmap<span class="op">)</span> <span class="op">?</span> vlbmap<span class="op">-&gt;</span>xinc <span class="op">*</span> RTOMAS <span class="op">:</span> <span class="fl">0.0</span><span class="op">;</span> </span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<hr>
+</section>
+</section>
+<section id="c.-table-de-correspondance-des-points-dentrée" class="level3">
+<h3 class="anchored" data-anchor-id="c.-table-de-correspondance-des-points-dentrée">C. Table de correspondance des points d’entrée</h3>
+<p>Ce tableau résume la liaison entre tes fonctions C et les méthodes que l’utilisateur verra en Python :</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Fonction C (<code>difmap.c</code>)</th>
+<th style="text-align: left;">Rôle Technique</th>
+<th style="text-align: left;">Équivalent Python</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;"><code>native_observe()</code></td>
+<td style="text-align: left;">Reset RAM + Chargement</td>
+<td style="text-align: left;"><code>session.load_obs()</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>native_mapsize()</code></td>
+<td style="text-align: left;">Allocation &amp; Sync Pointers</td>
+<td style="text-align: left;"><code>session.setup_image()</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>native_invert()</code></td>
+<td style="text-align: left;">Exécution FFT Inverse</td>
+<td style="text-align: left;"><code>session.invert()</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>native_select()</code></td>
+<td style="text-align: left;">Filtrage Stokes (ex: “RR”)</td>
+<td style="text-align: left;"><code>session.select()</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>get_native_map_data()</code></td>
+<td style="text-align: left;">Export adresse RAM (Zéro-Copie)</td>
+<td style="text-align: left;"><code>image.data</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>get_native_pixsize()</code></td>
+<td style="text-align: left;">Conversion Physique Rad <span class="math inline">\(\rightarrow\)</span> mas</td>
+<td style="text-align: left;"><code>image.pixel_size</code></td>
+</tr>
+</tbody>
+</table>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Résultat de cette implémentation
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Cette approche par <strong>Façade</strong> a permis de rendre Difmap “passif”. Le logiciel ne décide plus de ce qu’il fait ; il attend les ordres de la couche Python, tout en garantissant qu’aucune manipulation de mémoire ne vienne corrompre l’intégrité des calculs scientifiques.</p>
+</div>
+</div>
+</section>
+</section>
+<section id="le-binding-cython-architecture-de-linteropérabilité-binding" class="level1">
+<h1>3.2. Le Binding Cython : Architecture de l’interopérabilité (<code>binding/</code>)</h1>
+<p>Le dossier <code>binding/</code> constitue la couche d’abstraction intermédiaire du projet. Son rôle est de transformer les appels système de bas niveau (C) en objets de haut niveau (Python). Cette interface repose sur une séparation stricte entre la <strong>déclaration des interfaces</strong> (<code>.pxd</code>) et la <strong>logique de conversion</strong> (<code>.pyx</code>).</p>
+<section id="déclaration-des-interfaces-cdifmap.pxd" class="level2">
+<h2 class="anchored" data-anchor-id="déclaration-des-interfaces-cdifmap.pxd">3.2.1. Déclaration des interfaces : <code>cdifmap.pxd</code></h2>
+<p>Pour qu’un environnement Python puisse interagir avec des fonctions compilées en C, Cython nécessite un fichier de définition d’interface : <code>cdifmap.pxd</code>. Ce fichier fait office de contrat technologique.</p>
+<p>Contrairement à un <code>import</code> Python classique, l’instruction <strong><code>cimport</code></strong> réalise une liaison statique lors de la compilation. Cela permet d’appeler les fonctions du moteur Difmap avec un surcoût nul (<span class="math inline">\(O(1)\)</span>), car l’appel est résolu par le compilateur et non par l’interpréteur à l’exécution.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># binding/cdifmap.pxd</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>cdef extern <span class="im">from</span> <span class="st">"difmap_api.h"</span>:</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Déclaration des signatures exactes de l'API C</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="bu">int</span> native_observe(const char<span class="op">*</span> name)</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="bu">int</span> native_select(const char<span class="op">*</span> polarization)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="bu">int</span> native_invert()</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    <span class="bu">float</span><span class="op">*</span> get_native_map_data()</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    <span class="bu">int</span> get_native_map_nx()</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="bu">int</span> get_native_map_ny()</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    double get_native_bmaj()</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    double get_native_bmin()</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    double get_native_bpa()</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    double get_native_pixsize()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Important
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<blockquote class="blockquote">
+<p><strong>Note de maintenance :</strong> Toute nouvelle fonction ajoutée dans la façade C (<code>difmap.c</code>) doit être impérativement déclarée dans ce fichier <code>.pxd</code> pour être reconnue par le compilateur Cython sous l’alias <code>cdifmap</code>.</p>
+</blockquote>
+</div>
+</div>
+<hr>
+</section>
+<section id="gestion-des-chaînes-de-caractères-sécurisation-du-transfert" class="level2">
+<h2 class="anchored" data-anchor-id="gestion-des-chaînes-de-caractères-sécurisation-du-transfert">3.2.2. Gestion des chaînes de caractères : Sécurisation du transfert</h2>
+<p>Python manipule des objets <code>str</code> (Unicode), tandis que le moteur Difmap attend des pointeurs <code>char*</code> (octets). Une erreur de conversion ici provoquerait un plantage immédiat (<em>Segmentation Fault</em>). L’implémentation sécurise ce transfert via un encodage explicite :</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> observe(filepath: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">int</span>:</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Charge un fichier UV FITS dans la mémoire de Difmap."""</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 1. Encodage : Transformation de l'objet Python en buffer d'octets UTF-8</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    cdef <span class="bu">bytes</span> filepath_bytes <span class="op">=</span> filepath.encode(<span class="st">'utf-8'</span>)</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 2. Sécurisation : Passage du pointeur vers ces octets au moteur C</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Le type 'cdef bytes' assure la persistance de la mémoire durant l'appel</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> cdifmap.native_observe(filepath_bytes)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>L’utilisation du type <code>cdef bytes</code> est une sécurité critique : elle garantit que le tampon mémoire reste alloué tant que la fonction C s’exécute, prévenant les erreurs de type <em>dangling pointer</em>.</p>
+<hr>
+</section>
+<section id="optimisation-zéro-copie-memoryviews-et-numpy" class="level2">
+<h2 class="anchored" data-anchor-id="optimisation-zéro-copie-memoryviews-et-numpy">3.2.3. Optimisation “Zéro-Copie” : Memoryviews et NumPy</h2>
+<p>L’extraction des images (Dirty Map et Beam) constitue le point le plus sensible en termes de performance. Pour une résolution de <strong>2048x2048 pixels</strong> (soit plus de 4 millions de flottants), la duplication des données est proscrite.</p>
+<p>L’implémentation utilise la technique des <strong>Typed Memoryviews</strong> pour projeter une structure Python directement sur la RAM du moteur C :</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_map():</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Récupère la matrice de l'image sans aucune copie mémoire."""</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Récupération de l'adresse RAM brute et des dimensions</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    cdef <span class="bu">float</span><span class="op">*</span> map_ptr <span class="op">=</span> cdifmap.get_native_map_data()</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    cdef <span class="bu">int</span> nx <span class="op">=</span> cdifmap.get_native_map_nx()</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    cdef <span class="bu">int</span> ny <span class="op">=</span> cdifmap.get_native_map_ny()</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> map_ptr <span class="op">==</span> NULL <span class="kw">or</span> nx <span class="op">&lt;=</span> <span class="dv">0</span>:</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">raise</span> <span class="pp">RuntimeError</span>(<span class="st">"Flux interrompu : aucune image en mémoire."</span>)</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>    <span class="co"># ÉTAPE CRUCIALE : Transtypage (Cast) du pointeur en Memoryview 2D</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>    <span class="co"># La syntaxe &lt;float[:ny, :nx]&gt; définit la géométrie sur la RAM existante</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>    cdef <span class="bu">float</span>[:ny, :nx] view <span class="op">=</span> <span class="op">&lt;</span><span class="bu">float</span>[:ny, :nx]<span class="op">&gt;</span> map_ptr</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Conversion en tableau NumPy (vue directe) et correction astronomique</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> np.fliplr(np.asarray(view))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ul>
+<li><strong>Vitesse :</strong> Le transfert est instantané car NumPy ne fait que lire l’adresse mémoire fournie. <br></li>
+<li><strong>Correction RA (<code>fliplr</code>) :</strong> En radioastronomie, l’Ascension Droite croît vers la gauche. Comme le C stocke les pixels linéairement (gauche à droite), l’usage de <code>np.fliplr</code> réaligne les données sur la norme visuelle astronomique réelle.</li>
+</ul>
+<hr>
+</section>
+<section id="encapsulation-des-métadonnées-ergonomie" class="level2">
+<h2 class="anchored" data-anchor-id="encapsulation-des-métadonnées-ergonomie">3.2.4. Encapsulation des Métadonnées (Ergonomie)</h2>
+<p>Pour isoler l’utilisateur de la complexité des types C, le binding agrège les informations atomiques dans des structures Python standards (dictionnaires).</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_beam_info() <span class="op">-&gt;</span> <span class="bu">dict</span>:</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Extrait les paramètres de la PSF (Faisceau)."""</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Agrégation des métadonnées physiques préalablement converties par le C (mas)</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">"BMAJ"</span>: cdifmap.get_native_bmaj(), </span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>        <span class="st">"BMIN"</span>: cdifmap.get_native_bmin(),</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>        <span class="st">"BPA"</span>: cdifmap.get_native_bpa(),</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>        <span class="st">"PIXSIZE"</span>: cdifmap.get_native_pixsize()</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>    }</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Cette encapsulation permet une manipulation intuitive : l’astronome accède aux propriétés physiques via des clés explicites, sans se soucier de la gestion des pointeurs sous-jacents.</p>
+<hr>
+</section>
+<section id="synthèse-technique-du-binding" class="level2">
+<h2 class="anchored" data-anchor-id="synthèse-technique-du-binding">3.2.5. Synthèse technique du Binding</h2>
+<p>Le tableau suivant récapitule les mécanismes mis en œuvre pour garantir l’intégrité du système :</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Composant</th>
+<th style="text-align: left;">Mécanisme technique</th>
+<th style="text-align: left;">Rôle / Bénéfice</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;"><strong><code>cimport cdifmap</code></strong></td>
+<td style="text-align: left;">Liaison statique</td>
+<td style="text-align: left;">Supprime la latence d’appel (<span class="math inline">\(O(1)\)</span>).</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><strong><code>filepath.encode()</code></strong></td>
+<td style="text-align: left;">Conversion Unicode <span class="math inline">\(\rightarrow\)</span> C-String</td>
+<td style="text-align: left;">Assure la stabilité des I/O (pas de crash).</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><strong><code>&lt;float[:ny, :nx]&gt;</code></strong></td>
+<td style="text-align: left;">Transtypage de pointeur</td>
+<td style="text-align: left;">Définit la géométrie de l’image en RAM.</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><strong><code>np.asarray(view)</code></strong></td>
+<td style="text-align: left;"><strong>Zéro-Copie</strong></td>
+<td style="text-align: left;">Performance maximale (aucune duplication).</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><strong><code>np.fliplr()</code></strong></td>
+<td style="text-align: left;">Symétrie horizontale</td>
+<td style="text-align: left;">Conformité avec les cartes du ciel réelles.</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><strong><code>get_native_no_error()</code></strong></td>
+<td style="text-align: left;">Surveillance du registre d’erreurs</td>
+<td style="text-align: left;">Permet la levée d’exceptions Python propres.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+    var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+    var mailtoRegex = new RegExp(/^mailto:/);
+      var filterRegex = new RegExp('/' + window.location.host + '/');
+    var isInternal = (href) => {
+        return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+    }
+    // Inspect non-navigation links and adorn them if external
+ 	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool)');
+    for (var i=0; i<links.length; i++) {
+      const link = links[i];
+      if (!isInternal(link.href)) {
+        // undo the damage that might have been done by quarto-nav.js in the case of
+        // links that we want to consider external
+        if (link.dataset.originalHref !== undefined) {
+          link.href = link.dataset.originalHref;
+        }
+      }
+    }
+  function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+    const config = {
+      allowHTML: true,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start',
+    };
+    if (contentFn) {
+      config.content = contentFn;
+    }
+    if (onTriggerFn) {
+      config.onTrigger = onTriggerFn;
+    }
+    if (onUntriggerFn) {
+      config.onUntrigger = onUntriggerFn;
+    }
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      if (note) {
+        return note.innerHTML;
+      } else {
+        return "";
+      }
+    });
+  }
+  const xrefs = window.document.querySelectorAll('a.quarto-xref');
+  const processXRef = (id, note) => {
+    // Strip column container classes
+    const stripColumnClz = (el) => {
+      el.classList.remove("page-full", "page-columns");
+      if (el.children) {
+        for (const child of el.children) {
+          stripColumnClz(child);
+        }
+      }
+    }
+    stripColumnClz(note)
+    if (id === null || id.startsWith('sec-')) {
+      // Special case sections, only their first couple elements
+      const container = document.createElement("div");
+      if (note.children && note.children.length > 2) {
+        container.appendChild(note.children[0].cloneNode(true));
+        for (let i = 1; i < note.children.length; i++) {
+          const child = note.children[i];
+          if (child.tagName === "P" && child.innerText === "") {
+            continue;
+          } else {
+            container.appendChild(child.cloneNode(true));
+            break;
+          }
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(container);
+        }
+        return container.innerHTML
+      } else {
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        return note.innerHTML;
+      }
+    } else {
+      // Remove any anchor links if they are present
+      const anchorLink = note.querySelector('a.anchorjs-link');
+      if (anchorLink) {
+        anchorLink.remove();
+      }
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(note);
+      }
+      // TODO in 1.5, we should make sure this works without a callout special case
+      if (note.classList.contains("callout")) {
+        return note.outerHTML;
+      } else {
+        return note.innerHTML;
+      }
+    }
+  }
+  for (var i=0; i<xrefs.length; i++) {
+    const xref = xrefs[i];
+    tippyHover(xref, undefined, function(instance) {
+      instance.disable();
+      let url = xref.getAttribute('href');
+      let hash = undefined; 
+      if (url.startsWith('#')) {
+        hash = url;
+      } else {
+        try { hash = new URL(url).hash; } catch {}
+      }
+      if (hash) {
+        const id = hash.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note !== null) {
+          try {
+            const html = processXRef(id, note.cloneNode(true));
+            instance.setContent(html);
+          } finally {
+            instance.enable();
+            instance.show();
+          }
+        } else {
+          // See if we can fetch this
+          fetch(url.split('#')[0])
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.getElementById(id);
+            if (note !== null) {
+              const html = processXRef(id, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      } else {
+        // See if we can fetch a full url (with no hash to target)
+        // This is a special case and we should probably do some content thinning / targeting
+        fetch(url)
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const htmlDoc = parser.parseFromString(html, "text/html");
+          const note = htmlDoc.querySelector('main.content');
+          if (note !== null) {
+            // This should only happen for chapter cross references
+            // (since there is no id in the URL)
+            // remove the first header
+            if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+              note.children[0].remove();
+            }
+            const html = processXRef(null, note);
+            instance.setContent(html);
+          } 
+        }).finally(() => {
+          instance.enable();
+          instance.show();
+        });
+      }
+    }, function(instance) {
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            div.style.left = 0;
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+        // Handle positioning of the toggle
+    window.addEventListener(
+      "resize",
+      throttle(() => {
+        elRect = undefined;
+        if (selectedAnnoteEl) {
+          selectCodeLines(selectedAnnoteEl);
+        }
+      }, 10)
+    );
+    function throttle(fn, ms) {
+    let throttle = false;
+    let timer;
+      return (...args) => {
+        if(!throttle) { // first call gets through
+            fn.apply(this, args);
+            throttle = true;
+        } else { // all the others get throttled
+            if(timer) clearTimeout(timer); // cancel #2
+            timer = setTimeout(() => {
+              fn.apply(this, args);
+              timer = throttle = false;
+            }, ms);
+        }
+      };
+    }
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

@@ -1,0 +1,18 @@
+project:
+  type: website
+
+website:
+  title: "Documentation Difmap Python"
+  sidebar:
+    style: "docked"
+    search: true
+    contents:
+      - index.qmd
+      - 01_contexte_et_existant.qmd
+      - 02_nouvelle_architecture.qmd
+      - 03_implementation_technique.qmd
+format:
+  html:
+    theme: cosmo
+    css: styles.css
+    toc: true

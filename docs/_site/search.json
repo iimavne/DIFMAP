@@ -1,0 +1,249 @@
+[
+  {
+    "objectID": "01_contexte_et_existant.html",
+    "href": "01_contexte_et_existant.html",
+    "title": "Chapitre 1 : Contexte historique et anlyse de l’existant",
+    "section": "",
+    "text": "Difmap est un logiciel historique expert en radioastronomie. Écrit principalement en langage C avec un point d’entrée en Fortran, il a des performances algorithmiques pour le traitement des données d’interférométrie à très longue base (VLBI). Ses fonctionnalités incluent l’ajustement de modèles géométriques sur des visibilités, l’auto-calibration, et la déconvolution d’images via l’algorithme CLEAN.\nCependant, Difmap a été conçu selon les paradigmes de son époque : il s’agit d’une application interactive, pensée pour être pilotée par un utilisateur tapant des commandes texte dans un terminal, et non comme une bibliothèque logicielle (API) modulable. Dans le contexte actuel cette architecture “fermée” impose une refonte de son interfaçage.",
+    "crumbs": [
+      "Chapitre 1 : Contexte historique et anlyse de l'existant"
+    ]
+  },
+  {
+    "objectID": "01_contexte_et_existant.html#introduction-historique-et-contexte-du-projet",
+    "href": "01_contexte_et_existant.html#introduction-historique-et-contexte-du-projet",
+    "title": "Chapitre 1 : Contexte historique et anlyse de l’existant",
+    "section": "",
+    "text": "Difmap est un logiciel historique expert en radioastronomie. Écrit principalement en langage C avec un point d’entrée en Fortran, il a des performances algorithmiques pour le traitement des données d’interférométrie à très longue base (VLBI). Ses fonctionnalités incluent l’ajustement de modèles géométriques sur des visibilités, l’auto-calibration, et la déconvolution d’images via l’algorithme CLEAN.\nCependant, Difmap a été conçu selon les paradigmes de son époque : il s’agit d’une application interactive, pensée pour être pilotée par un utilisateur tapant des commandes texte dans un terminal, et non comme une bibliothèque logicielle (API) modulable. Dans le contexte actuel cette architecture “fermée” impose une refonte de son interfaçage.",
+    "crumbs": [
+      "Chapitre 1 : Contexte historique et anlyse de l'existant"
+    ]
+  },
+  {
+    "objectID": "01_contexte_et_existant.html#cartographie-de-lexistant-dossiers-et-fichiers-clés",
+    "href": "01_contexte_et_existant.html#cartographie-de-lexistant-dossiers-et-fichiers-clés",
+    "title": "Chapitre 1 : Contexte historique et anlyse de l’existant",
+    "section": "1.2. Cartographie de l’existant : Dossiers et Fichiers clés",
+    "text": "1.2. Cartographie de l’existant : Dossiers et Fichiers clés\nPour comprendre comment extraire la puissance mathématique de Difmap sans altérer sa justesse scientifique, une analyse du code source a été réalisée. Le code d’origine est structuré en plusieurs sous-systèmes aux responsabilités différentes :\n\nLes dossiers fonctionnels :\n\ndifmap_src/ : Le cœur algorithmique du projet. Il contient la logique métier de l’imagerie VLBI (Transformée de Fourier, algorithme CLEAN, modélisation).\nslalib_src/ : La bibliothèque astronomique de bas niveau (Standard Low-Level Astronomy Library). Elle fournit les outils mathématiques pour les éphémérides planétaires, la géométrie spatiale et les transformations de coordonnées.\nfits_src/ : Le module responsable de la standardisation des données. Il gère la lecture et l’écriture des fichiers au format binaire FITS .\nsphere_src/ : Le langage de macro interne (l’interpréteur SPHERE). C’est un langage de script Turing-complet qui parse les commandes de l’utilisateur pour appeler le C.\n\n\n\nLes fichiers bloquants :\nDans cette architecture, l’automatisation paralyse face à deux fichiers majeurs :\n\nf77main.f : Le point d’entrée principal (Main) écrit en Fortran 77, qui rend l’initialisation depuis un environnement Python complexe.\ndifmap.c : Un fichier massif de plus de 7700 lignes de code. Il agit comme un chef d’orchestre rigide qui lie manuellement les fonctions mathématiques (ex: newfft.c) à l’interface texte, agissant comme un “pare-feu” entre le code métier et l’extérieur.",
+    "crumbs": [
+      "Chapitre 1 : Contexte historique et anlyse de l'existant"
+    ]
+  },
+  {
+    "objectID": "01_contexte_et_existant.html#les-objets-métier-manipulés-par-le-c",
+    "href": "01_contexte_et_existant.html#les-objets-métier-manipulés-par-le-c",
+    "title": "Chapitre 1 : Contexte historique et anlyse de l’existant",
+    "section": "1.3. Les objets “Métier” manipulés par le C",
+    "text": "1.3. Les objets “Métier” manipulés par le C\nToute la logique du programme repose sur la manipulation de grandes structures de données (des structs en C) qui résident en mémoire vive (RAM). Pour notre wrapper Python, trois objets sont importants :\n\nL’objet Observation (défini dans obs.h) : C’est la structure qui stocke toutes les métadonnées du télescope (coordonnées des antennes terrestres), les informations de la galaxie source, ainsi que les tableaux de visibilités complexes (amplitudes, phases et poids statistiques des fréquences UV).\nL’objet Mapcln (défini dans mapcln.h) : Il représente l’état de l’image en cours de traitement. Il contient les dimensions de la grille spatiale (nx, ny) et surtout un pointeur float *map qui pointe directement vers le tableau 2D contenant les vrais pixels de la carte générée.\nLes objets Model et Modcmp (définis dans model.h) : Ils permettent de stocker la liste des composantes analytiques (sources ponctuelles, gaussiennes, disques) créées par l’astronome pour modéliser mathématiquement l’émission de la source.",
+    "crumbs": [
+      "Chapitre 1 : Contexte historique et anlyse de l'existant"
+    ]
+  },
+  {
+    "objectID": "01_contexte_et_existant.html#les-trois-points-de-blocage-technologiques",
+    "href": "01_contexte_et_existant.html#les-trois-points-de-blocage-technologiques",
+    "title": "Chapitre 1 : Contexte historique et anlyse de l’existant",
+    "section": "1.4. Les trois points de blocage technologiques",
+    "text": "1.4. Les trois points de blocage technologiques\nLa combinaison de cette architecture et de ces structures C a mis en évidence trois verrous technologiques majeurs empêchant une utilisation native en Python :\n\n\n\n\n\n\nBlocage 1 : Le mur de l’interpréteur (SPHERE)\n\n\n\nÀ l’origine, le seul moyen d’interagir avec les objets vus précédemment était de passer par SPHERE. Les anciennes tentatives d’automatisation forçaient Python à écrire des scripts texte puis à les injecter dans le terminal de Difmap. Python n’avait aucun accès direct aux fonctions C.\n\n\n\n\n\n\n\n\nBlocage 2 : Le goulot d’étranglement des Entrées/Sorties (I/O)\n\n\n\nEn conséquence du blocage 1, Python ne pouvait pas récupérer les images générées en mémoire. Il devait ordonner à Difmap d’écrire l’image finale sur le disque dur physique au format FITS, puis utiliser astropy pour relire ce même fichier depuis le disque. Ce processus détruit les performances lors du traitement de milliers d’images.\n\n\n\n\n\n\n\n\nBlocage 3 : Le Pattern Singleton (Variables globales statiques)\n\n\n\nDans le code source natif, les objets métiers ne sont pas passés par contexte, mais instanciés en tant que variables globales uniques et statiques (ex: static Observation *ob et static Mapcln *mc). Le programme entier partage ces mêmes adresses mémoire. Le code C est donc fondamentalement non-rentrant (non Thread-Safe). Charger deux observations simultanément dans le même processus écraserait la mémoire, créant des instabilités critiques.",
+    "crumbs": [
+      "Chapitre 1 : Contexte historique et anlyse de l'existant"
+    ]
+  },
+  {
+    "objectID": "01_contexte_et_existant.html#conclusion",
+    "href": "01_contexte_et_existant.html#conclusion",
+    "title": "Chapitre 1 : Contexte historique et anlyse de l’existant",
+    "section": "Conclusion",
+    "text": "Conclusion\nPour moderniser Difmap, il ne suffisait pas de faire un simple script d’automatisation. Il fallait concevoir une architecture logicielle capable de contourner SPHERE, d’accéder directement aux pointeurs globaux du C en RAM, et de les rapatrier en Python sans copier la mémoire, le tout en sécurisant l’état global de l’application.",
+    "crumbs": [
+      "Chapitre 1 : Contexte historique et anlyse de l'existant"
+    ]
+  },
+  {
+    "objectID": "about.html",
+    "href": "about.html",
+    "title": "About",
+    "section": "",
+    "text": "About this site"
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "docs",
+    "section": "",
+    "text": "This is a Quarto website.\nTo learn more about Quarto websites visit https://quarto.org/docs/websites.",
+    "crumbs": [
+      "docs"
+    ]
+  },
+  {
+    "objectID": "02_nouvelle_architecture.html",
+    "href": "02_nouvelle_architecture.html",
+    "title": "Chapitre 2 : La Nouvelle Architecture",
+    "section": "",
+    "text": "Face aux limitations de l’architecture historique (I/O intensifs, dépendance à SPHERE, état global non-rentrant), deux solutions s’offraient à nous : réécrire intégralement les 100 000 lignes de code mathématique en Python, ou créer une architecture “hybride”.\nLa réécriture totale a été rapidement écartée. Elle aurait nécessité des années de développement et, surtout, aurait invalidé des décennies de validation scientifique des algorithmes de Difmap (comme sa Transformée de Fourier optimisée ou son itération CLEAN).\nLe choix s’est donc porté sur un Wrapper natif. L’objectif est de conserver le moteur C/Fortran d’origine pour les calculs intensifs et l’allocation mémoire, tout en construisant une interface Python moderne par-dessus.",
+    "crumbs": [
+      "Chapitre 2 : La Nouvelle Architecture"
+    ]
+  },
+  {
+    "objectID": "02_nouvelle_architecture.html#le-choix-de-larchitecture-hybride",
+    "href": "02_nouvelle_architecture.html#le-choix-de-larchitecture-hybride",
+    "title": "Chapitre 2 : La Nouvelle Architecture",
+    "section": "",
+    "text": "Face aux limitations de l’architecture historique (I/O intensifs, dépendance à SPHERE, état global non-rentrant), deux solutions s’offraient à nous : réécrire intégralement les 100 000 lignes de code mathématique en Python, ou créer une architecture “hybride”.\nLa réécriture totale a été rapidement écartée. Elle aurait nécessité des années de développement et, surtout, aurait invalidé des décennies de validation scientifique des algorithmes de Difmap (comme sa Transformée de Fourier optimisée ou son itération CLEAN).\nLe choix s’est donc porté sur un Wrapper natif. L’objectif est de conserver le moteur C/Fortran d’origine pour les calculs intensifs et l’allocation mémoire, tout en construisant une interface Python moderne par-dessus.",
+    "crumbs": [
+      "Chapitre 2 : La Nouvelle Architecture"
+    ]
+  },
+  {
+    "objectID": "02_nouvelle_architecture.html#le-modèle-en-3-couches-architecture-3-tier",
+    "href": "02_nouvelle_architecture.html#le-modèle-en-3-couches-architecture-3-tier",
+    "title": "Chapitre 2 : La Nouvelle Architecture",
+    "section": "2.2. Le modèle en 3 couches (Architecture 3-Tier)",
+    "text": "2.2. Le modèle en 3 couches (Architecture 3-Tier)\nPour garantir une séparation stricte des responsabilités et ne pas corrompre le code mathématique d’origine, la nouvelle solution repose sur une architecture logicielle en trois couches distinctes :\n\n\n\n\n\ngraph TD\n    subgraph Couche3 [Couche 3 : API Python]\n        A[Script Utilisateur] --&gt;|Appel Methode| B(DifmapSession)\n        B --&gt;|Astrometrie WCS| C(Module Imaging)\n    end\n\n    subgraph Couche2 [Couche 2 : Pont Cython]\n        D{difmap_native.pyx}\n    end\n\n    subgraph Couche1 [Couche 1 : Moteur C et Fortran]\n        E[Variables Globales C]\n        F[Algorithmes]\n        G[Memoire RAM]\n    end\n\n    B --&gt;|Appels API C| D\n    D -.-&gt;|Zero-Copy| C\n    D --&gt;|Pointeurs directs| E\n    E --&gt; F\n    E --&gt; G\n    \n    style A fill:#4CAF50,stroke:#388E3C,color:#fff\n    style B fill:#2196F3,stroke:#1976D2,color:#fff\n    style D fill:#FF9800,stroke:#F57C00,color:#fff\n    style E fill:#F44336,stroke:#D32F2F,color:#fff\n\n\n\n\n\n\n\nCouche 1 : Le Moteur Natif (Bas Niveau)\nComposée des dossiers difmap_src/ et slalib_src/, cette couche est le “muscle” du logiciel. Elle ne gère plus aucune interface utilisateur. Elle se contente d’allouer la mémoire RAM pour les images et d’exécuter les mathématiques. Nous avons ajouté de légers getters et setters en C pour exposer ses variables globales en toute sécurité.\n\n\nCouche 2 : Le Binding Cython (Niveau Intermédiaire)\nC’est le cœur de l’innovation de ce projet (le dossier binding/). Écrit en Cython, le fichier difmap_native.pyx agit comme un traducteur bidirectionnel. Il convertit les objets Python en pointeurs C compréhensibles par Difmap, et surtout, il récupère les immenses tableaux de pixels générés par le C pour les transformer en objets NumPy instantanément via la technique du Zéro-Copie.\n\n\nCouche 3 : L’API Orientée Objet (Haut Niveau)\nC’est la partie visible de l’iceberg (le dossier difmap_wrapper/). Elle offre des classes Python élégantes (DifmapSession) qui masquent totalement la complexité des pointeurs C à l’utilisateur final.",
+    "crumbs": [
+      "Chapitre 2 : La Nouvelle Architecture"
+    ]
+  },
+  {
+    "objectID": "02_nouvelle_architecture.html#le-nouveau-flux-dexécution-le-contournement-de-sphere",
+    "href": "02_nouvelle_architecture.html#le-nouveau-flux-dexécution-le-contournement-de-sphere",
+    "title": "Chapitre 2 : La Nouvelle Architecture",
+    "section": "2.3. Le nouveau flux d’exécution : Le contournement de SPHERE",
+    "text": "2.3. Le nouveau flux d’exécution : Le contournement de SPHERE\nL’un des apports majeurs de cette architecture est la mise hors-circuit de l’interpréteur de commandes historique, SPHERE.\nDans l’ancienne architecture, l’utilisateur tapait une commande texte (clean 100) qui était parsée par difmap.c avant d’invoquer la fonction mathématique C correspondante. Désormais, la Couche 2 (Cython) attaque directement les fonctions mathématiques C. Le terminal SPHERE n’est jamais initialisé lors de l’utilisation en tant que bibliothèque Python, supprimant ainsi tout le goulot d’étranglement lié au parsing de texte et aux I/O sur le disque dur.",
+    "crumbs": [
+      "Chapitre 2 : La Nouvelle Architecture"
+    ]
+  },
+  {
+    "objectID": "02_nouvelle_architecture.html#la-gestion-moderne-de-la-compilation-build-system",
+    "href": "02_nouvelle_architecture.html#la-gestion-moderne-de-la-compilation-build-system",
+    "title": "Chapitre 2 : La Nouvelle Architecture",
+    "section": "2.4. La gestion moderne de la compilation (Build System)",
+    "text": "2.4. La gestion moderne de la compilation (Build System)\nIntégrer du code C/Fortran des années 90 dans l’écosystème Python de 2026 exige un système de compilation robuste. Les anciens fichiers Makefile, souvent capricieux selon les systèmes d’exploitation, ont été remplacés par une chaîne de compilation standardisée (PEP 517) :\n\npyproject.toml : Définit les métadonnées du projet Python et force l’utilisation d’un environnement de build isolé.\nMeson & Ninja : Remplacent les outils historiques pour compiler le code C. Meson est capable de détecter dynamiquement les compilateurs système (GCC, GFortran) et de lier les dépendances complexes (PGPLOT, GSL, X11) de manière transparente.\n\n\n\n\n\n\n\nLe résultat pour l’utilisateur\n\n\n\nGrâce à ce nouveau système de Build, toute cette complexité d’ingénierie se résume à une seule commande standard pour l’astronome : pip install .. Le système compile silencieusement le C, transpile le Cython, et installe le package Python en quelques secondes.",
+    "crumbs": [
+      "Chapitre 2 : La Nouvelle Architecture"
+    ]
+  },
+  {
+    "objectID": "03_implementation_technique.html",
+    "href": "03_implementation_technique.html",
+    "title": "Chapitre 3 : Implémentation Technique",
+    "section": "",
+    "text": "Cette section détaille le travaille effectuée sur le code source pour le transformer en moteur pilotable par Python.",
+    "crumbs": [
+      "Chapitre 3 : Implémentation Technique"
+    ]
+  },
+  {
+    "objectID": "03_implementation_technique.html#le-moteur-natif-difmap_src-et-la-création-de-lapi-c",
+    "href": "03_implementation_technique.html#le-moteur-natif-difmap_src-et-la-création-de-lapi-c",
+    "title": "Chapitre 3 : Implémentation Technique",
+    "section": "3.1. Le moteur natif : difmap_src/ et la création de l’API C",
+    "text": "3.1. Le moteur natif : difmap_src/ et la création de l’API C\nLa règle d’or lors de la manipulation du dossier difmap_src/ a été le principe d’intervention minimale. Pour garantir que les résultats scientifiques (astrométrie, flux, bruit) restent strictement identiques à la version historique, les modules algorithmiques purs (comme newfft.c, mapclean.c ou modfit.c) n’ont subi aucune modification.\nLe travail d’ingénierie sur cette couche basse a consisté uniquement à “ouvrir des portes” pour permettre à Python d’accéder aux variables globales, auparavant enfermées derrière l’interpréteur SPHERE.\n\nA. Le pont C : difmap_python_interface.h\nDans le code d’origine, les fonctions utiles étaient éparpillées dans des dizaines de fichiers d’en-tête (headers) différents, souvent couplés avec l’interface terminal.\nNous avons créé un point d’entrée unique (un fichier header dédié) qui regroupe exclusivement les signatures des fonctions que Cython a le droit d’appeler. Cela crée une séparation propre entre le code “Legacy” et notre Wrapper.\n\n\nB. L’ajout des Accesseurs (Getters / Setters)\nLe défi principal (identifié au Chapitre 1) était le mot-clé static utilisé dans le code source C. Par exemple, dans obs.c, le pointeur vers l’observation est déclaré ainsi : static Observation *ob = NULL;\nLe mot-clé static en C interdit à n’importe quel autre fichier de lire cette variable. Pour contourner cette protection sans détruire l’architecture d’origine, nous avons ajouté des fonctions accesseurs (Getters) directement dans les fichiers sources historiques :\n// Exemple d'ajout dans difmap_src/obs.c\n// Cette fonction expose le pointeur caché vers l'extérieur\nObservation* get_current_observation(void) {\n    return ob;\n}\nDe la même manière, pour récupérer la carte générée (Dirty Map ou Clean Map) sans passer par l’écriture d’un fichier FITS, nous avons instrumenté mapclean.c pour qu’il retourne directement l’adresse mémoire du tableau de pixels :\n// Exemple d'ajout dans difmap_src/mapclean.c\nfloat* get_map_pixels(int* nx, int* ny) {\n    if (mc == NULL) return NULL;\n    *nx = mc-&gt;nx;\n    *ny = mc-&gt;ny;\n    return mc-&gt;map; // Retourne le pointeur vers la RAM allouée\n}\n\n\nC. Le court-circuitage de SPHERE\nEnfin, pour éviter que le logiciel ne cherche à démarrer son interface texte interactive (libtecla et sphere) lors de l’appel depuis Python, nous avons isolé la routine d’initialisation mathématique de difmap.c dans une nouvelle fonction init_difmap_headless(). Cela permet d’allouer la mémoire requise par le moteur sans jamais bloquer le processus Python dans une attente de saisie terminal. ```",
+    "crumbs": [
+      "Chapitre 3 : Implémentation Technique"
+    ]
+  },
+  {
+    "objectID": "03_implementation_technique.html#le-moteur-natif-difmap.c-comme-façade-dapi",
+    "href": "03_implementation_technique.html#le-moteur-natif-difmap.c-comme-façade-dapi",
+    "title": "Chapitre 3 : Implémentation Technique",
+    "section": "3.1. Le moteur natif : difmap.c comme Façade d’API",
+    "text": "3.1. Le moteur natif : difmap.c comme Façade d’API\n\nA. Le défi : Dompter le “Singleton Global”\nLe plus grand défi technique de Difmap est son architecture dite “non-rentrante”. Dans le code d’origine, l’état complet d’une session (l’image, les antennes, les données) est stocké dans des variables globales marquées static. Cela signifie qu’elles ne sont visibles que depuis le fichier difmap.c.\nHistoriquement, l’utilisateur interagissait avec ces variables via l’interpréteur de commandes SPHERE. Pour automatiser cela en Python, nous avons dû créer un point d’accès direct.\nPourquoi avoir choisi difmap.c ? Plutôt que de modifier 150 fichiers sources et de risquer de casser la logique mathématique, nous avons utilisé difmap.c comme une Façade (Design Pattern). C’est le fichier “maître” qui possède les accès à tous les objets critiques (vlbob pour l’observation, vlbmap pour l’image).\n\n\nB. Analyse détaillée et exemples de code\nNous avons injecté dans difmap.c une interface programmatique (API) découpée en sections logiques. Voici le rôle précis de chacune :\n\n1. Sécurisation de l’état (Safe Getters)\nLe Problème : En C, lire une variable globale non initialisée (NULL) fait crasher Python instantanément (Segmentation Fault).  La Solution : Chaque “Getter” vérifie l’existence de l’objet avant de retourner sa valeur. \n/* Récupère la largeur de l'image en pixels */\nint get_native_map_nx() { \n    // Si vlbmap n'existe pas encore, on renvoie -1 au lieu de crasher\n    return (vlbmap != NULL) ? vlbmap-&gt;nx : -1; \n}\n\n/* Récupère le nom de la galaxie source */\nchar* get_native_source_name() { \n    return (vlbob != NULL) ? vlbob-&gt;source.name : \"Aucune\"; \n}\n\n\n2. Gestion stricte du cycle de vie RAM (Reset & Allocation)\nLe Problème : Difmap n’a pas été conçu pour charger des fichiers en boucle. Sans nettoyage, la RAM sature vite.  La Solution : On force la libération de la mémoire avant chaque nouvelle observation. \nint native_observe(char *name) {\n    /* ÉTAPE 1 : Nettoyage de la RAM précédente (Crucial !) */\n    obs_end(); \n    \n    /* ÉTAPE 2 : Allocation de la nouvelle structure d'observation */\n    vlbob = new_Observation(name, 0.0, 0, 1, NULL, NO_POL, fix_visibility_weights);\n    \n    if(vlbob == NULL) return -1; // Échec de chargement\n    vlbspec = new_Specattr(vlbob);\n    return 0;\n}\n\n\n3. Automatisation et Synchronisation (“The Sync Hack”)\nLe Problème : Difmap possède deux systèmes d’images : le système moderne (vlbmap) et le vieux système Fortran (mb_map). Si on ne synchronise pas les deux, les calculs FFT ne s’affichent pas.  La Solution : On force les adresses mémoire à correspondre. \nint native_mapsize(int nx, float cellsize) {\n    float xinc = xytorad(cellsize); // Conversion mas -&gt; radians\n    \n    /* Allocation de la grille de pixels */\n    vlbmap = new_MapBeam(vlbmap, nx, xinc, nx, xinc);\n    \n    /* LE SYNC HACK : On force les pointeurs Fortran vers la RAM allouée par le C */\n    VOIDPTR(&mb_beam) = vlbmap-&gt;beam;\n    VOIDPTR(&mb_map)  = vlbmap-&gt;map;\n    \n    // Mise à jour des dimensions pour tout le moteur\n    mb_map.adim[0] = nx; mb_map.adim[1] = nx;\n    mb_map.num_el  = (size_t) (nx * nx);\n    \n    return 0;\n}\n\n\n4. Exportation des pointeurs (Le principe du Zéro-Copie)\nPrincipe du Zéro copie : Le zéro-copie consiste à faire « pointer » un tableau Python directement sur l’adresse mémoire (RAM) occupée par le moteur C, permettant un transfert de données instantané sans aucune duplication d’octets. Le Problème : Copier une image de \\(2048 \\times 2048\\) pixels de C vers Python prend du temps et de la RAM.  La Solution : On donne à Python l’adresse mémoire directe. \nfloat* get_native_map_data() {\n    /* On renvoie l'adresse brute du tableau de pixels */\n    if(vlbmap == NULL || vlbmap-&gt;map == NULL) return NULL;\n    \n    return vlbmap-&gt;map; // Cython créera un tableau NumPy sur cette adresse\n}\n\n\n5. Précision de la Physique (Radians vers mas)\nLe Problème : Travailler avec des nombres comme \\(0.000000048\\) (radians) est illisible pour un humain.  La Solution : On intègre la constante de conversion astronomique. \n/* Facteur : 1 Radian = 206,264,806.247 milliarcsecondes */\n#define RTOMAS 206264806.247\n\ndouble get_native_pixsize() { \n    // Conversion instantanée au moment de la lecture\n    return (vlbmap) ? vlbmap-&gt;xinc * RTOMAS : 0.0; \n}\n\n\n\n\nC. Table de correspondance des points d’entrée\nCe tableau résume la liaison entre tes fonctions C et les méthodes que l’utilisateur verra en Python :\n\n\n\n\n\n\n\n\nFonction C (difmap.c)\nRôle Technique\nÉquivalent Python\n\n\n\n\nnative_observe()\nReset RAM + Chargement\nsession.load_obs()\n\n\nnative_mapsize()\nAllocation & Sync Pointers\nsession.setup_image()\n\n\nnative_invert()\nExécution FFT Inverse\nsession.invert()\n\n\nnative_select()\nFiltrage Stokes (ex: “RR”)\nsession.select()\n\n\nget_native_map_data()\nExport adresse RAM (Zéro-Copie)\nimage.data\n\n\nget_native_pixsize()\nConversion Physique Rad \\(\\rightarrow\\) mas\nimage.pixel_size\n\n\n\n\n\n\n\n\n\nRésultat de cette implémentation\n\n\n\nCette approche par Façade a permis de rendre Difmap “passif”. Le logiciel ne décide plus de ce qu’il fait ; il attend les ordres de la couche Python, tout en garantissant qu’aucune manipulation de mémoire ne vienne corrompre l’intégrité des calculs scientifiques.",
+    "crumbs": [
+      "Chapitre 3 : Implémentation Technique"
+    ]
+  },
+  {
+    "objectID": "03_implementation_technique.html#le-moteur-natif-difmap.c-comme-façade-dapi-1",
+    "href": "03_implementation_technique.html#le-moteur-natif-difmap.c-comme-façade-dapi-1",
+    "title": "Chapitre 3 : Implémentation Technique",
+    "section": "3.1. Le moteur natif : difmap.c comme Façade d’API",
+    "text": "3.1. Le moteur natif : difmap.c comme Façade d’API\n\nA. Pourquoi avoir choisi difmap.c ?\nLe fichier difmap.c est historiquement le “cerveau” du logiciel. C’est ici que sont déclarées les variables globales statiques qui maintiennent l’état de Difmap. Plutôt que de disperser des modifications dans 150 fichiers, nous avons utilisé difmap.c comme une Façade (Design Pattern).\nToutes nos extensions commencent par l’inclusion de notre fichier de contrat :\n/* Inclusion de l'interface personnalisée pour le Binding Python */\n#include \"difmap_api.h\"\n\n\n\nB. Analyse détaillée et exemples de code\n\n1. Sécurisation de l’état (Safe Getters)\nLe Problème : En C, lire une variable globale non initialisée (NULL) fait crasher Python instantanément (Segmentation Fault). La Solution : Chaque “Getter” vérifie l’existence de l’objet avant de retourner sa valeur.\n/* Récupère la largeur de l'image en pixels */\nint get_native_map_nx() { \n    // Si vlbmap n'existe pas encore, on renvoie -1 au lieu de crasher\n    return (vlbmap != NULL) ? vlbmap-&gt;nx : -1; \n}\n\n/* Récupère le nom de la galaxie source */\nchar* get_native_source_name() { \n    return (vlbob != NULL) ? vlbob-&gt;source.name : \"Aucune\"; \n}\n\n\n2. Gestion stricte du cycle de vie RAM (Reset & Allocation)\nLe Problème : Difmap n’a pas été conçu pour charger des fichiers en boucle. Sans nettoyage, la RAM sature vite. La Solution : On force la libération de la mémoire avant chaque nouvelle observation.\nint native_observe(char *name) {\n    /* ÉTAPE 1 : Nettoyage de la RAM précédente (Crucial !) */\n    obs_end(); \n    \n    /* ÉTAPE 2 : Allocation de la nouvelle structure d'observation */\n    vlbob = new_Observation(name, 0.0, 0, 1, NULL, NO_POL, fix_visibility_weights);\n    \n    if(vlbob == NULL) return -1; // Échec de chargement\n    vlbspec = new_Specattr(vlbob);\n    return 0;\n}\n\n\n3. Automatisation et Synchronisation (“The Sync Hack”)\nLe Problème : Difmap possède deux systèmes d’images : le système moderne (vlbmap) et le vieux système Fortran (mb_map). Si on ne synchronise pas les deux, les calculs FFT ne s’affichent pas. La Solution : On force les adresses mémoire à correspondre.\nint native_mapsize(int nx, float cellsize) {\n    float xinc = xytorad(cellsize); // Conversion mas -&gt; radians\n    \n    /* Allocation de la grille de pixels */\n    vlbmap = new_MapBeam(vlbmap, nx, xinc, nx, xinc);\n    \n    /* LE SYNC HACK : On force les pointeurs Fortran vers la RAM allouée par le C */\n    VOIDPTR(&mb_beam) = vlbmap-&gt;beam;\n    VOIDPTR(&mb_map)  = vlbmap-&gt;map;\n    \n    // Mise à jour des dimensions pour tout le moteur\n    mb_map.adim[0] = nx; mb_map.adim[1] = nx;\n    mb_map.num_el  = (size_t) (nx * nx);\n    \n    return 0;\n}\n\n\n4. Exportation des pointeurs (La magie du Zéro-Copie)\nLe Problème : Copier une image de \\(2048 \\times 2048\\) pixels de C vers Python prend du temps et de la RAM. La Solution : On donne à Python l’adresse mémoire directe.\nfloat* get_native_map_data() {\n    /* On renvoie l'adresse brute du tableau de pixels */\n    if(vlbmap == NULL || vlbmap-&gt;map == NULL) return NULL;\n    \n    return vlbmap-&gt;map; // Cython créera un tableau NumPy sur cette adresse\n}\n\n\n5. Précision de la Physique (Radians vers mas)\nLe Problème : Travailler avec des nombres comme \\(0.000000048\\) (radians) est illisible pour un humain. La Solution : On intègre la constante de conversion astronomique.\n/* Facteur : 1 Radian = 206,264,806.247 milliarcsecondes */\n#define RTOMAS 206264806.247\n\ndouble get_native_pixsize() { \n    // Conversion instantanée au moment de la lecture\n    return (vlbmap) ? vlbmap-&gt;xinc * RTOMAS : 0.0; \n}\n\n\n\n\nC. Table de correspondance des points d’entrée\nCe tableau résume la liaison entre tes fonctions C et les méthodes que l’utilisateur verra en Python :\n\n\n\n\n\n\n\n\nFonction C (difmap.c)\nRôle Technique\nÉquivalent Python\n\n\n\n\nnative_observe()\nReset RAM + Chargement\nsession.load_obs()\n\n\nnative_mapsize()\nAllocation & Sync Pointers\nsession.setup_image()\n\n\nnative_invert()\nExécution FFT Inverse\nsession.invert()\n\n\nnative_select()\nFiltrage Stokes (ex: “RR”)\nsession.select()\n\n\nget_native_map_data()\nExport adresse RAM (Zéro-Copie)\nimage.data\n\n\nget_native_pixsize()\nConversion Physique Rad \\(\\rightarrow\\) mas\nimage.pixel_size\n\n\n\n\n\n\n\n\n\nRésultat de cette implémentation\n\n\n\nCette approche par Façade a permis de rendre Difmap “passif”. Le logiciel ne décide plus de ce qu’il fait ; il attend les ordres de la couche Python, tout en garantissant qu’aucune manipulation de mémoire ne vienne corrompre l’intégrité des calculs scientifiques.\n\n\n\nEst-ce que cette version “Extra-Complète” avec les extraits de code réels te convient pour le Chapitre 3.1 ? Si oui, tu peux l’ajouter à ta doc, et nous sommes prêts pour le Chapitre 3.2 : Le Binding Cython, où nous allons montrer comment Python “attrape” ces pointeurs !",
+    "crumbs": [
+      "Chapitre 3 : Implémentation Technique"
+    ]
+  },
+  {
+    "objectID": "03_implementation_technique.html#lorigine-de-cdifmap-le-fichier-de-définition-.pxd",
+    "href": "03_implementation_technique.html#lorigine-de-cdifmap-le-fichier-de-définition-.pxd",
+    "title": "Chapitre 3 : Implémentation Technique",
+    "section": "3.2.1. L’origine de cdifmap : Le fichier de définition (.pxd)",
+    "text": "3.2.1. L’origine de cdifmap : Le fichier de définition (.pxd)\nPour qu’un nouveau développeur comprenne la logique du projet, il doit d’abord identifier l’objet cdifmap. En Cython, on ne peut pas appeler une fonction C sans l’avoir préalablement déclarée. C’est le rôle de cdifmap.pxd.\nCe fichier est l’équivalent d’un Header C (.h), mais écrit en syntaxe Cython. Il définit la frontière technologique :\n# binding/cdifmap.pxd\n\ncdef extern from \"difmap_api.h\":\n    # On définit ici les signatures exactes de l'API C\n    int native_observe(const char* name)\n    int native_select(const char* polarization)\n    int native_invert()\n    float* get_native_map_data()\n    int get_native_map_nx()\n    int get_native_map_ny()\n    double get_native_bmaj()\n    # ...\n\n[!IMPORTANT] Pourquoi cimport ? Dans le fichier .pyx, vous verrez cimport cdifmap. Contrairement à un import classique qui charge un module Python, le cimport permet de lier statiquement les fonctions C au moment de la compilation. C’est ce qui garantit que l’appel de fonction n’a aucun surcoût (zéro latence).",
+    "crumbs": [
+      "Chapitre 3 : Implémentation Technique"
+    ]
+  },
+  {
+    "objectID": "03_implementation_technique.html#gestion-des-chaînes-de-caractères-sécurisation-du-transfert",
+    "href": "03_implementation_technique.html#gestion-des-chaînes-de-caractères-sécurisation-du-transfert",
+    "title": "Chapitre 3 : Implémentation Technique",
+    "section": "3.2.2. Gestion des chaînes de caractères : Sécurisation du transfert",
+    "text": "3.2.2. Gestion des chaînes de caractères : Sécurisation du transfert\nPython manipule des objets str (Unicode), tandis que le moteur Difmap attend des pointeurs char* (octets). Une erreur de conversion ici provoquerait un plantage immédiat (Segmentation Fault). L’implémentation sécurise ce transfert via un encodage explicite :\ndef observe(filepath: str) -&gt; int:\n    \"\"\"Charge un fichier UV FITS dans la mémoire de Difmap.\"\"\"\n    # 1. Encodage : Transformation de l'objet Python en buffer d'octets UTF-8\n    cdef bytes filepath_bytes = filepath.encode('utf-8')\n    \n    # 2. Sécurisation : Passage du pointeur vers ces octets au moteur C\n    # Le type 'cdef bytes' assure la persistance de la mémoire durant l'appel\n    return cdifmap.native_observe(filepath_bytes)\nL’utilisation du type cdef bytes est une sécurité critique : elle garantit que le tampon mémoire reste alloué tant que la fonction C s’exécute, prévenant les erreurs de type dangling pointer.",
+    "crumbs": [
+      "Chapitre 3 : Implémentation Technique"
+    ]
+  },
+  {
+    "objectID": "03_implementation_technique.html#le-secret-du-zéro-copie-memoryviews-et-numpy",
+    "href": "03_implementation_technique.html#le-secret-du-zéro-copie-memoryviews-et-numpy",
+    "title": "Chapitre 3 : Implémentation Technique",
+    "section": "3.2.3. Le secret du “Zéro-Copie” : Memoryviews et NumPy",
+    "text": "3.2.3. Le secret du “Zéro-Copie” : Memoryviews et NumPy\nLe cœur de la performance du projet réside dans l’extraction des images (Dirty Map et Beam). Pour une image de \\(2048 \\times 2048\\), copier les données prendrait un temps précieux. Nous utilisons la technique des Typed Memoryviews.\ndef get_map():\n    \"\"\"Récupère la matrice de l'image sans aucune copie mémoire.\"\"\"\n    # Récupération de l'adresse RAM brute et des dimensions\n    cdef float* map_ptr = cdifmap.get_native_map_data()\n    cdef int nx = cdifmap.get_native_map_nx()\n    cdef int ny = cdifmap.get_native_map_ny()\n    \n    if map_ptr == NULL or nx &lt;= 0:\n        raise RuntimeError(\"Aucune image en mémoire. L'opération a-t-elle échoué ?\")\n    \n    # ÉTAPE CRUCIALE : Transtypage (Cast) du pointeur en Memoryview 2D\n    # La syntaxe &lt;float[:ny, :nx]&gt; projette une grille sur la RAM du C\n    cdef float[:ny, :nx] view = &lt;float[:ny, :nx]&gt; map_ptr\n    \n    # Conversion en tableau NumPy (sans copie) et correction astronomique\n    return np.fliplr(np.asarray(view))\n\nZéro-Copie : np.asarray(view) crée un en-tête NumPy qui pointe vers la mémoire du C. Les données ne sont jamais déplacées.\nCorrection RA (fliplr) : En radioastronomie, l’Ascension Droite croît vers la gauche. Comme le C stocke les lignes de gauche à droite, l’usage de np.fliplr est indispensable pour que l’image soit scientifiquement exacte (orientation ciel réel).",
+    "crumbs": [
+      "Chapitre 3 : Implémentation Technique"
+    ]
+  },
+  {
+    "objectID": "03_implementation_technique.html#encapsulation-et-ergonomie-dictionnaires",
+    "href": "03_implementation_technique.html#encapsulation-et-ergonomie-dictionnaires",
+    "title": "Chapitre 3 : Implémentation Technique",
+    "section": "3.2.4. Encapsulation et Ergonomie (Dictionnaires)",
+    "text": "3.2.4. Encapsulation et Ergonomie (Dictionnaires)\nLe moteur C renvoie des valeurs atomiques. Pour l’utilisateur Python, nous regroupons ces informations dans des structures de données de haut niveau (dictionnaires), rendant l’API beaucoup plus intuitive.\ndef get_beam_info() -&gt; dict:\n    \"\"\"Extrait les paramètres de la PSF (Faisceau).\"\"\"\n    # On agrège les métadonnées physiques converties par le C (mas)\n    return {\n        \"BMAJ\": cdifmap.get_native_bmaj(), \n        \"BMIN\": cdifmap.get_native_bmin(),\n        \"BPA\": cdifmap.get_native_bpa(),\n        \"PIXSIZE\": cdifmap.get_native_pixsize()\n    }\nCela permet à l’astronome d’accéder aux propriétés physiques avec une syntaxe simple : session.get_beam_info()['BMAJ'].",
+    "crumbs": [
+      "Chapitre 3 : Implémentation Technique"
+    ]
+  },
+  {
+    "objectID": "03_implementation_technique.html#synthèse-technique-du-binding",
+    "href": "03_implementation_technique.html#synthèse-technique-du-binding",
+    "title": "Chapitre 3 : Implémentation Technique",
+    "section": "3.2.5. Synthèse technique du Binding",
+    "text": "3.2.5. Synthèse technique du Binding\nLe tableau suivant récapitule les mécanismes mis en œuvre pour garantir l’intégrité du système :\n\n\n\n\n\n\n\n\nComposant\nMécanisme technique\nRôle / Bénéfice\n\n\n\n\ncimport cdifmap\nLiaison statique\nSupprime la latence d’appel (\\(O(1)\\)).\n\n\nfilepath.encode()\nConversion Unicode \\(\\rightarrow\\) C-String\nAssure la stabilité des I/O (pas de crash).\n\n\n&lt;float[:ny, :nx]&gt;\nTranstypage de pointeur\nDéfinit la géométrie de l’image en RAM.\n\n\nnp.asarray(view)\nZéro-Copie\nPerformance maximale (aucune duplication).\n\n\nnp.fliplr()\nSymétrie horizontale\nConformité avec les cartes du ciel réelles.\n\n\nget_native_no_error()\nSurveillance du registre d’erreurs\nPermet la levée d’exceptions Python propres.",
+    "crumbs": [
+      "Chapitre 3 : Implémentation Technique"
+    ]
+  },
+  {
+    "objectID": "03_implementation_technique.html#déclaration-des-interfaces-cdifmap.pxd",
+    "href": "03_implementation_technique.html#déclaration-des-interfaces-cdifmap.pxd",
+    "title": "Chapitre 3 : Implémentation Technique",
+    "section": "3.2.1. Déclaration des interfaces : cdifmap.pxd",
+    "text": "3.2.1. Déclaration des interfaces : cdifmap.pxd\nPour qu’un environnement Python puisse interagir avec des fonctions compilées en C, Cython nécessite un fichier de définition d’interface : cdifmap.pxd. Ce fichier fait office de contrat technologique.\nContrairement à un import Python classique, l’instruction cimport réalise une liaison statique lors de la compilation. Cela permet d’appeler les fonctions du moteur Difmap avec un surcoût nul (\\(O(1)\\)), car l’appel est résolu par le compilateur et non par l’interpréteur à l’exécution.\n# binding/cdifmap.pxd\n\ncdef extern from \"difmap_api.h\":\n    # Déclaration des signatures exactes de l'API C\n    int native_observe(const char* name)\n    int native_select(const char* polarization)\n    int native_invert()\n    float* get_native_map_data()\n    int get_native_map_nx()\n    int get_native_map_ny()\n    double get_native_bmaj()\n    double get_native_bmin()\n    double get_native_bpa()\n    double get_native_pixsize()\n\n\n\n\n\n\nImportant\n\n\n\n\nNote de maintenance : Toute nouvelle fonction ajoutée dans la façade C (difmap.c) doit être impérativement déclarée dans ce fichier .pxd pour être reconnue par le compilateur Cython sous l’alias cdifmap.",
+    "crumbs": [
+      "Chapitre 3 : Implémentation Technique"
+    ]
+  },
+  {
+    "objectID": "03_implementation_technique.html#optimisation-zéro-copie-memoryviews-et-numpy",
+    "href": "03_implementation_technique.html#optimisation-zéro-copie-memoryviews-et-numpy",
+    "title": "Chapitre 3 : Implémentation Technique",
+    "section": "3.2.3. Optimisation “Zéro-Copie” : Memoryviews et NumPy",
+    "text": "3.2.3. Optimisation “Zéro-Copie” : Memoryviews et NumPy\nL’extraction des images (Dirty Map et Beam) constitue le point le plus sensible en termes de performance. Pour une résolution de 2048x2048 pixels (soit plus de 4 millions de flottants), la duplication des données est proscrite.\nL’implémentation utilise la technique des Typed Memoryviews pour projeter une structure Python directement sur la RAM du moteur C :\ndef get_map():\n    \"\"\"Récupère la matrice de l'image sans aucune copie mémoire.\"\"\"\n    # Récupération de l'adresse RAM brute et des dimensions\n    cdef float* map_ptr = cdifmap.get_native_map_data()\n    cdef int nx = cdifmap.get_native_map_nx()\n    cdef int ny = cdifmap.get_native_map_ny()\n    \n    if map_ptr == NULL or nx &lt;= 0:\n        raise RuntimeError(\"Flux interrompu : aucune image en mémoire.\")\n    \n    # ÉTAPE CRUCIALE : Transtypage (Cast) du pointeur en Memoryview 2D\n    # La syntaxe &lt;float[:ny, :nx]&gt; définit la géométrie sur la RAM existante\n    cdef float[:ny, :nx] view = &lt;float[:ny, :nx]&gt; map_ptr\n    \n    # Conversion en tableau NumPy (vue directe) et correction astronomique\n    return np.fliplr(np.asarray(view))\n\nVitesse : Le transfert est instantané car NumPy ne fait que lire l’adresse mémoire fournie. \nCorrection RA (fliplr) : En radioastronomie, l’Ascension Droite croît vers la gauche. Comme le C stocke les pixels linéairement (gauche à droite), l’usage de np.fliplr réaligne les données sur la norme visuelle astronomique réelle.",
+    "crumbs": [
+      "Chapitre 3 : Implémentation Technique"
+    ]
+  },
+  {
+    "objectID": "03_implementation_technique.html#encapsulation-des-métadonnées-ergonomie",
+    "href": "03_implementation_technique.html#encapsulation-des-métadonnées-ergonomie",
+    "title": "Chapitre 3 : Implémentation Technique",
+    "section": "3.2.4. Encapsulation des Métadonnées (Ergonomie)",
+    "text": "3.2.4. Encapsulation des Métadonnées (Ergonomie)\nPour isoler l’utilisateur de la complexité des types C, le binding agrège les informations atomiques dans des structures Python standards (dictionnaires).\ndef get_beam_info() -&gt; dict:\n    \"\"\"Extrait les paramètres de la PSF (Faisceau).\"\"\"\n    # Agrégation des métadonnées physiques préalablement converties par le C (mas)\n    return {\n        \"BMAJ\": cdifmap.get_native_bmaj(), \n        \"BMIN\": cdifmap.get_native_bmin(),\n        \"BPA\": cdifmap.get_native_bpa(),\n        \"PIXSIZE\": cdifmap.get_native_pixsize()\n    }\nCette encapsulation permet une manipulation intuitive : l’astronome accède aux propriétés physiques via des clés explicites, sans se soucier de la gestion des pointeurs sous-jacents.",
+    "crumbs": [
+      "Chapitre 3 : Implémentation Technique"
+    ]
+  }
+]

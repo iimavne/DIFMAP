@@ -1,0 +1,80 @@
+---
+title: "Chapitre 1 : Contexte historique et anlyse de l'existant"
+format: html
+---
+
+## 1.1. Introduction historique et contexte du projet
+
+**Difmap** est un logiciel historique expert en radioastronomie. Écrit principalement en langage C avec un point d'entrée en Fortran,
+ il a des performances algorithmiques  pour le traitement des données d'interférométrie à très longue base (VLBI). 
+ Ses fonctionnalités incluent l'ajustement de modèles géométriques sur des visibilités, l'auto-calibration, 
+ et la déconvolution d'images via l'algorithme CLEAN.
+
+Cependant, Difmap a été conçu selon les paradigmes de son époque : il s'agit d'une application interactive, 
+pensée pour être pilotée par un utilisateur tapant des commandes texte dans un terminal, et non comme une bibliothèque logicielle (API) modulable.
+Dans le contexte actuel cette architecture "fermée" impose une refonte de son interfaçage.
+
+## 1.2. Cartographie de l'existant : Dossiers et Fichiers clés
+
+Pour comprendre comment extraire la puissance mathématique de Difmap sans altérer sa justesse scientifique, une analyse du code source a été réalisée.
+Le code d'origine est structuré en plusieurs sous-systèmes aux responsabilités différentes :
+
+### Les dossiers fonctionnels :
+
+* **difmap_src/** : Le cœur algorithmique du projet. Il contient la logique métier de l'imagerie VLBI 
+(Transformée de Fourier, algorithme CLEAN, modélisation).
+* **slalib_src/** : La bibliothèque astronomique de bas niveau (*Standard Low-Level Astronomy Library*). 
+Elle fournit les outils mathématiques pour les éphémérides planétaires, la géométrie spatiale et les transformations de coordonnées.
+* **fits_src/** : Le module responsable de la standardisation des données. Il gère la lecture et l'écriture des fichiers au format binaire FITS .
+* **sphere_src/** : Le langage de macro interne (l'interpréteur SPHERE). C'est un langage de script Turing-complet qui parse les commandes de 
+l'utilisateur pour appeler le C.
+
+### Les fichiers bloquants :
+
+Dans cette architecture, l'automatisation paralyse face à deux fichiers majeurs :
+
+1.  **f77main.f** : Le point d'entrée principal (*Main*) écrit en Fortran 77, qui rend l'initialisation depuis un environnement Python complexe.
+2.  **difmap.c** : Un fichier massif de plus de 7700 lignes de code. Il agit comme un chef d'orchestre rigide qui lie manuellement les fonctions mathématiques (ex: `newfft.c`) à l'interface texte, agissant comme un "pare-feu" entre le code métier et l'extérieur.
+
+## 1.3. Les objets "Métier" manipulés par le C
+
+Toute la logique du programme repose sur la manipulation de grandes structures de données (des *structs* en C) qui résident en mémoire vive (RAM). 
+Pour notre wrapper Python, trois objets sont importants :
+
+* **L'objet Observation** (défini dans `obs.h`) : C'est la structure qui stocke toutes les métadonnées du télescope (coordonnées des antennes terrestres),
+ les informations de la galaxie source, ainsi que les tableaux de visibilités complexes (amplitudes, phases et poids statistiques des fréquences UV).
+* **L'objet Mapcln** (défini dans `mapcln.h`) : Il représente l'état de l'image en cours de traitement. Il contient les dimensions de la grille spatiale 
+(`nx`, `ny`) et surtout un pointeur `float *map` qui pointe directement vers le tableau 2D contenant les vrais pixels de la carte générée.
+* **Les objets Model et Modcmp** (définis dans `model.h`) : Ils permettent de stocker la liste des composantes analytiques 
+(sources ponctuelles, gaussiennes, disques) créées par l'astronome pour modéliser mathématiquement l'émission de la source.
+
+## 1.4. Les trois points de blocage technologiques
+
+La combinaison de cette architecture et de ces structures C a mis en évidence trois verrous technologiques majeurs empêchant une utilisation native en 
+Python :
+
+::: {.callout-important}
+### Blocage 1 : Le mur de l'interpréteur (SPHERE)
+À l'origine, le seul moyen d'interagir avec les objets vus précédemment était de passer par SPHERE. Les anciennes tentatives d'automatisation 
+forçaient Python à écrire des scripts texte puis à les injecter dans le terminal de Difmap.  Python n'avait aucun accès direct aux fonctions C.
+:::
+
+::: {.callout-important}
+### Blocage 2 : Le goulot d'étranglement des Entrées/Sorties (I/O)
+En conséquence du blocage 1, Python ne pouvait pas récupérer les images générées en mémoire. Il devait ordonner à Difmap d'écrire l'image finale sur le
+disque dur physique au format FITS, puis utiliser `astropy` pour relire ce même fichier depuis le disque. Ce processus détruit les performances lors du 
+traitement de milliers d'images.
+:::
+
+::: {.callout-important}
+### Blocage 3 : Le Pattern Singleton (Variables globales statiques)
+Dans le code source natif, les objets métiers ne sont pas passés par contexte, mais instanciés en tant que variables globales uniques et statiques
+(ex: `static Observation *ob` et `static Mapcln *mc`). Le programme entier partage ces mêmes adresses mémoire. Le code C est donc fondamentalement 
+non-rentrant (*non Thread-Safe*). Charger deux observations simultanément dans le même processus écraserait la mémoire, créant des instabilités critiques.
+:::
+
+## Conclusion
+
+Pour moderniser Difmap, il ne suffisait pas de faire un simple script d'automatisation. Il fallait concevoir une architecture logicielle capable de 
+contourner SPHERE, d'accéder directement aux pointeurs globaux du C en RAM, et de les rapatrier en Python sans copier la mémoire, le tout en sécurisant
+l'état global de l'application.
