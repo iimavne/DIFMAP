@@ -1,0 +1,97 @@
+# session.DifmapSession { #difmap_wrapper.session.DifmapSession }
+
+```python
+session.DifmapSession()
+```
+
+Façade principale pour piloter l'environnement Difmap en toute sécurité.
+
+Cette classe gère le cycle de vie des données (chargement, nettoyage) 
+et fait le pont avec le moteur C sous-jacent. Elle est conçue pour être 
+utilisée comme un Context Manager (`with DifmapSession() as session:`) 
+afin de garantir l'absence de fuites mémoire (RAM).
+
+Examples:
+    Voici le workflow standard recommandé pour analyser une observation :
+
+    ```python
+    from difmap_wrapper import DifmapSession
+    
+    # Le 'with' garantit que la RAM est vidée à la fin
+    with DifmapSession() as session:
+        session.load_observation("ma_galaxie.fits")
+        img = session.create_image(size=512, cellsize=0.1)
+        
+        print(f"Image générée : {img['data'].shape}")
+    ```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [cleanup](#difmap_wrapper.session.DifmapSession.cleanup) | Force la fermeture de l'observation et libère la RAM du moteur C. |
+| [create_image](#difmap_wrapper.session.DifmapSession.create_image) | Orchestre la création d'une carte brute (Dirty Map) à partir des visibilités. |
+| [load_observation](#difmap_wrapper.session.DifmapSession.load_observation) | Charge les données visibilités (fichiers UV FITS) dans la mémoire du moteur C. |
+
+### cleanup { #difmap_wrapper.session.DifmapSession.cleanup }
+
+```python
+session.DifmapSession.cleanup()
+```
+
+Force la fermeture de l'observation et libère la RAM du moteur C.
+
+Cette méthode réinitialise l'automate d'état. Elle est appelée 
+automatiquement si vous utilisez le Context Manager, mais peut 
+aussi être appelée manuellement si besoin.
+
+### create_image { #difmap_wrapper.session.DifmapSession.create_image }
+
+```python
+session.DifmapSession.create_image(size=512, cellsize=1.0)
+```
+
+Orchestre la création d'une carte brute (Dirty Map) à partir des visibilités.
+
+Cette fonction délègue le calcul mathématique lourd au module spécialisé 
+`DifmapImager`. Elle nécessite qu'une observation ait été préalablement chargée.
+
+Args:
+    size (int): La taille de la grille d'image en pixels (ex: 512 pour 512x512). 
+        Il est recommandé d'utiliser des puissances de 2 pour optimiser la FFT.
+    cellsize (float): La résolution d'un pixel en millisecondes d'arc (mas).
+
+Returns:
+    dict: Le dictionnaire contenant les données de l'image générée (data, extent, etc.).
+
+Raises:
+    DifmapStateError: Si la méthode est appelée avant `load_observation()`.
+
+Examples:
+    ```python
+    # Création d'une grille HD
+    img = session.create_image(size=2048, cellsize=0.05)
+    ```
+
+### load_observation { #difmap_wrapper.session.DifmapSession.load_observation }
+
+```python
+session.DifmapSession.load_observation(filepath)
+```
+
+Charge les données visibilités (fichiers UV FITS) dans la mémoire du moteur C.
+
+Si une observation était déjà chargée dans cette session, elle est 
+automatiquement nettoyée avant le nouveau chargement pour éviter 
+les conflits en RAM.
+
+Args:
+    filepath (str): Le chemin absolu ou relatif vers le fichier .fits à analyser.
+
+Raises:
+    DifmapError: Si le fichier est introuvable, corrompu, ou rejeté par le moteur C.
+
+Examples:
+    ```python
+    session.load_observation("./data/survey_2024.fits")
+    ```

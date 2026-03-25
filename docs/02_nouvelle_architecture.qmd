@@ -4,43 +4,78 @@ title: "Chapitre 2 : La Nouvelle Architecture"
 
 ## 2.1. Le choix de l'architecture hybride
 
-Face aux limitations de l'architecture historique (I/O intensifs, dépendance à SPHERE, état global non-rentrant), deux solutions s'offraient à nous : réécrire intégralement les 100 000 lignes de code mathématique en Python, ou créer une architecture "hybride".
+Face aux limitations de l'architecture historique (I/O intensifs, dépendance à SPHERE, état global non-rentrant), deux solutions s'offraient
+ à nous : réécrire intégralement les 100 000 lignes de code mathématique en Python, ou créer une architecture "hybride".
 
-La réécriture totale a été rapidement écartée. Elle aurait nécessité des années de développement et, surtout, aurait invalidé des décennies de validation scientifique des algorithmes de Difmap (comme sa Transformée de Fourier optimisée ou son itération CLEAN). 
+La réécriture totale a été rapidement écartée. Elle aurait nécessité des années de développement et, surtout, aurait invalidé des décennies de 
+validation scientifique des algorithmes de Difmap (comme sa Transformée de Fourier optimisée ou son itération CLEAN). 
 
-Le choix s'est donc porté sur un **Wrapper natif**. L'objectif est de conserver le moteur C/Fortran d'origine pour les calculs intensifs et l'allocation mémoire, tout en construisant une interface Python moderne par-dessus.
+Le choix s'est donc porté sur un **Wrapper natif**. L'objectif est de conserver le moteur C/Fortran d'origine pour les calculs intensifs et l'allocation
+mémoire, tout en construisant une interface Python moderne par-dessus.
 
+::: {.callout-tip title="Lexique Métier : Les termes clés"}
+### Lexique des termes clés
+
+Pour faciliter la lecture, voici les définitions des termes techniques et astronomiques utilisés dans ce chapitre :
+
+**Termes de Génie Logiciel :**
+
+* **Binding (Liaison) :** Code intermédiaire (ici en Cython) qui sert de "pont" entre deux langages. Il permet à Python d'appeler directement des 
+fonctions écrites en C.
+* **Zéro-Copie (Zero-Copy) :** Technique d'optimisation où Python accède directement à la plage de mémoire RAM allouée par le C.
+* **I/O (Input/Output) :** Opérations de lecture et d'écriture sur le disque dur.
+* **Wrapper (Enveloppe) :** Une surcouche logicielle qui entoure un programme existant pour lui donner une nouvelle interface, plus simple ou plus
+moderne, sans modifier son cœur.
+
+**Termes de Radioastronomie :**
+
+*  **WCS (World Coordinate System) :** Standard de la Fédération Astronomique Internationale permettant de convertir les coordonnées "pixels" $(x, y)$
+ d'une image en coordonnées réelles sur la voûte céleste (Ascension Droite et Déclinaison)
+
+:::
 ## 2.2. Le modèle en 3 couches (Architecture 3-Tier)
 
+### 2.2.1 L'architecture 
 Pour garantir une séparation stricte des responsabilités et ne pas corrompre le code mathématique d'origine, la nouvelle solution repose sur une architecture logicielle en trois couches distinctes :
 
 ```{mermaid}
 graph TD
-    subgraph Couche3 [Couche 3 : API Python]
-        A[Script Utilisateur] -->|Appel Methode| B(DifmapSession)
-        B -->|Astrometrie WCS| C(Module Imaging)
+    %% Définition du contenu des Couches
+    subgraph Couche3 ["<span style='color:#1e40af'><b> Couche 3 : API Python (High-Level)</b></span>"]
+        A[" Script Utilisateur"] -->|Appel Méthode| B(" DifmapSession")
+        B -->|Astrométrie WCS| C(" Module Imaging")
     end
 
-    subgraph Couche2 [Couche 2 : Pont Cython]
-        D{difmap_native.pyx}
+    subgraph Couche2 ["<span style='color:#92400e'><b>Couche 2 : Pont Cython (Binding)</b></span>"]
+        D{" difmap_native.pyx"}
     end
 
-    subgraph Couche1 [Couche 1 : Moteur C et Fortran]
-        E[Variables Globales C]
-        F[Algorithmes]
-        G[Memoire RAM]
+    subgraph Couche1 ["<span style='color:#991b1b'><b> Couche 1 : Moteur (Low-Level)</b></span>"]
+        E[" Variables Globales C"]
+        F[" Algorithmes"]
+        G[" Mémoire RAM"]
     end
 
+    %% Liaisons entre couches
     B -->|Appels API C| D
-    D -.->|Zero-Copy| C
+    D -.->|Zéro-Copie| C
     D -->|Pointeurs directs| E
-    E --> F
-    E --> G
-    
-    style A fill:#4CAF50,stroke:#388E3C,color:#fff
-    style B fill:#2196F3,stroke:#1976D2,color:#fff
-    style D fill:#FF9800,stroke:#F57C00,color:#fff
-    style E fill:#F44336,stroke:#D32F2F,color:#fff
+    E --- F
+    E --- G
+
+    %% --- STYLES DES GRANDS RECTANGLES (SUBGRAPHS) ---
+    style Couche3 fill:#ffffff,stroke:#1e40af,stroke-width:2px
+    style Couche2 fill:#ffffff,stroke:#92400e,stroke-width:2px
+    style Couche1 fill:#ffffff,stroke:#991b1b,stroke-width:2px
+
+    %% --- STYLES DES BLOCS INTERNES ---
+    style A fill:#f0fdf4,stroke:#16a34a,color:#16a34a,stroke-width:2px
+    style B fill:#eff6ff,stroke:#1e40af,color:#1e40af,stroke-width:2px
+    style C fill:#eff6ff,stroke:#1e40af,color:#1e40af,stroke-width:2px
+    style D fill:#fffbeb,stroke:#92400e,color:#92400e,stroke-width:2px
+    style E fill:#fef2f2,stroke:#991b1b,color:#991b1b,stroke-width:2px
+    style F fill:#fef2f2,stroke:#991b1b,color:#991b1b,stroke-width:1px
+    style G fill:#fef2f2,stroke:#991b1b,color:#991b1b,stroke-width:1px
 ```
 
 ### Couche 1 : Le Moteur Natif (Bas Niveau)
@@ -51,6 +86,7 @@ C'est le cœur de l'innovation de ce projet (le dossier `binding/`). Écrit en C
 
 ### Couche 3 : L'API Orientée Objet (Haut Niveau)
 C'est la partie visible de l'iceberg (le dossier `difmap_wrapper/`). Elle offre des classes Python élégantes (`DifmapSession`) qui masquent totalement la complexité des pointeurs C à l'utilisateur final.
+
 
 ## 2.3. Le nouveau flux d'exécution : Le contournement de SPHERE
 

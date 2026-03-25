@@ -1,0 +1,45 @@
+### 1. **`cdifmap`** : L'interface privée (Le contrat C)
+Le nom `cdifmap` n'existe nulle part pour l'utilisateur final de la bibliothèque.   
+C'est un **alias interne** que nous créons dans Cython pour désigner les fonctions "brutes" du moteur C.
+
+  **Où est-ce défini ?** Dans le fichier `binding/cdifmap.pxd`.
+```python
+# binding/cdifmap.pxd
+cdef extern from "difmap_api.h":
+    # On déclare ici ce que le C sait faire
+    int native_observe(const char* name)
+    int native_invert()
+```
+
+  **Pourquoi ce nom ?** Quand nous codons le pont en Cython (`.pyx`), nous utilisons cet alias pour dire : *"Ici, j'appelle une fonction qui vient du monde C"*.
+```python
+# Dans difmap_native.pyx
+cimport cdifmap # On importe l'alias
+
+def observe(path):
+    # On appelle la fonction C via l'alias
+    return cdifmap.native_observe(path) 
+```
+
+---
+
+### 2. **`difmap_native`** : Le module public (Le produit compilé)
+  Le nom `difmap_native` est le nom du module que vous allez réellement importer dans vos scripts Python (`import difmap_native`).
+
+**Où est-ce défini ?** C'est défini dans votre fichier de configuration de compilation **`meson.build`**.  C'est ici que l'on donne l'ordre au compilateur de transformer votre code Cython en une bibliothèque binaire utilisable par Python.
+
+**Extrait du `meson.build` :**
+```python
+# C'est ici que le nom est gravé dans le marbre
+py.extension_module(
+    'difmap_native',           # 1. Nom du module final
+    'difmap_native.pyx',       # 2. Fichier source Cython
+)
+```
+
+### 3. Pourquoi différencier les deux ?
+  Pour un ingénieur, cette distinction est une question d'**encapsulation**:
+*   **`cdifmap`** est la "tuyauterie" interne : elle manipule des pointeurs, des types `char*` et de la mémoire brute.
+*   **`difmap_native`** est la "façade" : elle reçoit des objets Python (comme des chaînes de caractères ou des listes) et les transforme pour la tuyauterie.
+
+

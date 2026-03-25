@@ -70,6 +70,35 @@ ul.task-list li input[type="checkbox"] {
 <script src="site_libs/quarto-diagram/mermaid-init.js"></script>
 <link href="site_libs/quarto-diagram/mermaid.css" rel="stylesheet">
 
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
 
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -83,7 +112,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./02_nouvelle_architecture.html">Chapitre 2 : La Nouvelle Architecture</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./02_nouvelle_architecture.html">2. Nouvelle Architecture</a></li></ol></nav>
         <a class="flex-grow-1" role="button" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="" onclick="window.quartoOpenSearch();">
@@ -111,27 +140,101 @@ ul.task-list li input[type="checkbox"] {
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="./index.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">docs</span></a>
+ <span class="menu-text">Accueil</span></a>
   </div>
 </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="./01_contexte_et_existant.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Chapitre 1 : Contexte historique et anlyse de l’existant</span></a>
+ <span class="menu-text">1. Contexte et Existant</span></a>
   </div>
 </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="./02_nouvelle_architecture.html" class="sidebar-item-text sidebar-link active">
- <span class="menu-text">Chapitre 2 : La Nouvelle Architecture</span></a>
+ <span class="menu-text">2. Nouvelle Architecture</span></a>
   </div>
 </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="./03_implementation_technique.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">03_implementation_technique.html</span></a>
+ <span class="menu-text">3. Implémentation Technique</span></a>
   </div>
 </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" aria-expanded="true">
+ <span class="menu-text">4. Référence API</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Vue d’ensemble</span></a>
+  </div>
+</li>
+          <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="false">
+ <span class="menu-text">Session &amp; Environnement</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth2 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/session.DifmapSession.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">session.DifmapSession</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+          <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-expanded="false">
+ <span class="menu-text">Génération d’Images</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth2 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/imaging.DifmapImager.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">imaging.DifmapImager</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+          <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="false">
+ <span class="menu-text">Gestion des Erreurs</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth2 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/exceptions.DifmapError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">exceptions.DifmapError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/exceptions.DifmapStateError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">exceptions.DifmapStateError</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+      </ul>
+  </li>
     </ul>
     </div>
 </nav>
@@ -145,6 +248,7 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#le-choix-de-larchitecture-hybride" id="toc-le-choix-de-larchitecture-hybride" class="nav-link active" data-scroll-target="#le-choix-de-larchitecture-hybride">2.1. Le choix de l’architecture hybride</a></li>
   <li><a href="#le-modèle-en-3-couches-architecture-3-tier" id="toc-le-modèle-en-3-couches-architecture-3-tier" class="nav-link" data-scroll-target="#le-modèle-en-3-couches-architecture-3-tier">2.2. Le modèle en 3 couches (Architecture 3-Tier)</a>
   <ul class="collapse">
+  <li><a href="#larchitecture" id="toc-larchitecture" class="nav-link" data-scroll-target="#larchitecture">2.2.1 L’architecture</a></li>
   <li><a href="#couche-1-le-moteur-natif-bas-niveau" id="toc-couche-1-le-moteur-natif-bas-niveau" class="nav-link" data-scroll-target="#couche-1-le-moteur-natif-bas-niveau">Couche 1 : Le Moteur Natif (Bas Niveau)</a></li>
   <li><a href="#couche-2-le-binding-cython-niveau-intermédiaire" id="toc-couche-2-le-binding-cython-niveau-intermédiaire" class="nav-link" data-scroll-target="#couche-2-le-binding-cython-niveau-intermédiaire">Couche 2 : Le Binding Cython (Niveau Intermédiaire)</a></li>
   <li><a href="#couche-3-lapi-orientée-objet-haut-niveau" id="toc-couche-3-lapi-orientée-objet-haut-niveau" class="nav-link" data-scroll-target="#couche-3-lapi-orientée-objet-haut-niveau">Couche 3 : L’API Orientée Objet (Haut Niveau)</a></li>
@@ -181,9 +285,36 @@ ul.task-list li input[type="checkbox"] {
 <p>Face aux limitations de l’architecture historique (I/O intensifs, dépendance à SPHERE, état global non-rentrant), deux solutions s’offraient à nous : réécrire intégralement les 100 000 lignes de code mathématique en Python, ou créer une architecture “hybride”.</p>
 <p>La réécriture totale a été rapidement écartée. Elle aurait nécessité des années de développement et, surtout, aurait invalidé des décennies de validation scientifique des algorithmes de Difmap (comme sa Transformée de Fourier optimisée ou son itération CLEAN).</p>
 <p>Le choix s’est donc porté sur un <strong>Wrapper natif</strong>. L’objectif est de conserver le moteur C/Fortran d’origine pour les calculs intensifs et l’allocation mémoire, tout en construisant une interface Python moderne par-dessus.</p>
+<div class="callout callout-style-default callout-tip callout-titled" title="Lexique Métier : Les termes clés">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Lexique Métier : Les termes clés
+</div>
+</div>
+<section id="lexique-des-termes-clés" class="level3 callout-body-container callout-body">
+<h3 class="anchored" data-anchor-id="lexique-des-termes-clés">Lexique des termes clés</h3>
+<p>Pour faciliter la lecture, voici les définitions des termes techniques et astronomiques utilisés dans ce chapitre :</p>
+<p><strong>Termes de Génie Logiciel :</strong></p>
+<ul>
+<li><strong>Binding (Liaison) :</strong> Code intermédiaire (ici en Cython) qui sert de “pont” entre deux langages. Il permet à Python d’appeler directement des fonctions écrites en C.</li>
+<li><strong>Zéro-Copie (Zero-Copy) :</strong> Technique d’optimisation où Python accède directement à la plage de mémoire RAM allouée par le C.</li>
+<li><strong>I/O (Input/Output) :</strong> Opérations de lecture et d’écriture sur le disque dur.</li>
+<li><strong>Wrapper (Enveloppe) :</strong> Une surcouche logicielle qui entoure un programme existant pour lui donner une nouvelle interface, plus simple ou plus moderne, sans modifier son cœur.</li>
+</ul>
+<p><strong>Termes de Radioastronomie :</strong></p>
+<ul>
+<li><strong>WCS (World Coordinate System) :</strong> Standard de la Fédération Astronomique Internationale permettant de convertir les coordonnées “pixels” <span class="math inline">\((x, y)\)</span> d’une image en coordonnées réelles sur la voûte céleste (Ascension Droite et Déclinaison)</li>
+</ul>
+</section>
+</div>
 </section>
 <section id="le-modèle-en-3-couches-architecture-3-tier" class="level2">
 <h2 class="anchored" data-anchor-id="le-modèle-en-3-couches-architecture-3-tier">2.2. Le modèle en 3 couches (Architecture 3-Tier)</h2>
+<section id="larchitecture" class="level3">
+<h3 class="anchored" data-anchor-id="larchitecture">2.2.1 L’architecture</h3>
 <p>Pour garantir une séparation stricte des responsabilités et ne pas corrompre le code mathématique d’origine, la nouvelle solution repose sur une architecture logicielle en trois couches distinctes :</p>
 <div class="cell" data-layout-align="default">
 <div class="cell-output-display">
@@ -191,37 +322,49 @@ ul.task-list li input[type="checkbox"] {
 <p></p><figure class="figure"><p></p>
 <div>
 <pre class="mermaid mermaid-js">graph TD
-    subgraph Couche3 [Couche 3 : API Python]
-        A[Script Utilisateur] --&gt;|Appel Methode| B(DifmapSession)
-        B --&gt;|Astrometrie WCS| C(Module Imaging)
+    %% Définition du contenu des Couches
+    subgraph Couche3 ["&lt;span style='color:#1e40af'&gt;&lt;b&gt; Couche 3 : API Python (High-Level)&lt;/b&gt;&lt;/span&gt;"]
+        A[" Script Utilisateur"] --&gt;|Appel Méthode| B(" DifmapSession")
+        B --&gt;|Astrométrie WCS| C(" Module Imaging")
     end
 
-    subgraph Couche2 [Couche 2 : Pont Cython]
-        D{difmap_native.pyx}
+    subgraph Couche2 ["&lt;span style='color:#92400e'&gt;&lt;b&gt;Couche 2 : Pont Cython (Binding)&lt;/b&gt;&lt;/span&gt;"]
+        D{" difmap_native.pyx"}
     end
 
-    subgraph Couche1 [Couche 1 : Moteur C et Fortran]
-        E[Variables Globales C]
-        F[Algorithmes]
-        G[Memoire RAM]
+    subgraph Couche1 ["&lt;span style='color:#991b1b'&gt;&lt;b&gt; Couche 1 : Moteur (Low-Level)&lt;/b&gt;&lt;/span&gt;"]
+        E[" Variables Globales C"]
+        F[" Algorithmes"]
+        G[" Mémoire RAM"]
     end
 
+    %% Liaisons entre couches
     B --&gt;|Appels API C| D
-    D -.-&gt;|Zero-Copy| C
+    D -.-&gt;|Zéro-Copie| C
     D --&gt;|Pointeurs directs| E
-    E --&gt; F
-    E --&gt; G
-    
-    style A fill:#4CAF50,stroke:#388E3C,color:#fff
-    style B fill:#2196F3,stroke:#1976D2,color:#fff
-    style D fill:#FF9800,stroke:#F57C00,color:#fff
-    style E fill:#F44336,stroke:#D32F2F,color:#fff
+    E --- F
+    E --- G
+
+    %% --- STYLES DES GRANDS RECTANGLES (SUBGRAPHS) ---
+    style Couche3 fill:#ffffff,stroke:#1e40af,stroke-width:2px
+    style Couche2 fill:#ffffff,stroke:#92400e,stroke-width:2px
+    style Couche1 fill:#ffffff,stroke:#991b1b,stroke-width:2px
+
+    %% --- STYLES DES BLOCS INTERNES ---
+    style A fill:#f0fdf4,stroke:#16a34a,color:#16a34a,stroke-width:2px
+    style B fill:#eff6ff,stroke:#1e40af,color:#1e40af,stroke-width:2px
+    style C fill:#eff6ff,stroke:#1e40af,color:#1e40af,stroke-width:2px
+    style D fill:#fffbeb,stroke:#92400e,color:#92400e,stroke-width:2px
+    style E fill:#fef2f2,stroke:#991b1b,color:#991b1b,stroke-width:2px
+    style F fill:#fef2f2,stroke:#991b1b,color:#991b1b,stroke-width:1px
+    style G fill:#fef2f2,stroke:#991b1b,color:#991b1b,stroke-width:1px
 </pre>
 </div>
 <p></p></figure><p></p>
 </div>
 </div>
 </div>
+</section>
 <section id="couche-1-le-moteur-natif-bas-niveau" class="level3">
 <h3 class="anchored" data-anchor-id="couche-1-le-moteur-natif-bas-niveau">Couche 1 : Le Moteur Natif (Bas Niveau)</h3>
 <p>Composée des dossiers <code>difmap_src/</code> et <code>slalib_src/</code>, cette couche est le “muscle” du logiciel. Elle ne gère plus aucune interface utilisateur. Elle se contente d’allouer la mémoire RAM pour les images et d’exécuter les mathématiques. Nous avons ajouté de légers <em>getters</em> et <em>setters</em> en C pour exposer ses variables globales en toute sécurité.</p>
