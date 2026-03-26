@@ -1,7 +1,54 @@
 ---
-title: "docs"
+title: "Difmap Python API"
+page-layout: full
+toc: false
 ---
 
-This is a Quarto website.
+Bienvenue sur la documentation du wrapper Python pour **Difmap**, le standard historique de l'imagerie en radioastronomie.
 
-To learn more about Quarto websites visit <https://quarto.org/docs/websites>.
+Ce projet modernise l'utilisation de Difmap en remplaçant l'interface interactive textuelle par une **API Python robuste, automatisable et sécurisée**,
+directement interfacée avec le moteur C d'origine.
+
+---
+
+::: {.columns}
+
+::: {.column width="31%"}
+### 1. Le Projet Difmap
+**Origines et limitations**
+
+Découvrez ce qu'est le programme Difmap original , pourquoi l'ancienne méthode de pilotage posait problème, et la genèse de ce nouveau projet de 
+surcouche.
+
+[Lire le contexte ➔](01_contexte_et_existant.qmd)
+:::
+
+::: {.column width="3.5%"}
+:::
+
+::: {.column width="31%"}
+### 2. Architecture
+**Sous le capot du wrapper**
+
+Comprenez comment Python communique directement avec le C via Cython. Explorez la gestion stricte de la RAM et l'automate d'état qui empêche les crashs natifs.
+
+[Voir l'architecture ➔](02_nouvelle_architecture.qmd)
+:::
+
+::: {.column width="3.5%"}
+:::
+
+::: {.column width="31%"}
+### 3. Référence API
+**Documentation des classes**
+
+L'ensemble des modules Python (`DifmapSession`, `DifmapImager`, etc.) documentés en détail avec leurs paramètres, types de retours et des exemples de code.
+
+[Consulter l'API ➔](reference/index.qmd)
+:::
+
+:::
+
+---
+
+*Développé pour l'automatisation des pipelines de traitement interférométrique.*

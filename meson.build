@@ -152,22 +152,52 @@ difmap_sources = [
   'difmap_src/specplot.c', 'difmap_src/markerlist.c', 'difmap_src/mc.c', libfits_h
 ]
 
-# 1. On définit comment transformer le .pyx en .c
+# ==============================================================================
+# 1. INSTALLATION DU WRAPPER PYTHON (Couche de haut niveau)
+# ==============================================================================
+# Copie les fichiers purement Python du module orienté objet vers le 
+# répertoire d'installation (site-packages). Cela permet à l'utilisateur 
+# de faire `import difmap_wrapper` proprement.
+py3.install_sources(
+    'difmap_wrapper/__init__.py',
+    'difmap_wrapper/session.py',
+    'difmap_wrapper/imaging.py',
+    'difmap_wrapper/exceptions.py',
+    subdir: 'difmap_wrapper'
+)
+
+# ==============================================================================
+# 2. PIPELINE DE TRANSPILATION CYTHON -> C
+# ==============================================================================
+# Définition d'un générateur Meson personnalisé pour invoquer le compilateur Cython.
+# Il dicte comment transformer n'importe quel fichier source '.pyx' en fichier '.c'.
 cython_gen = generator(cython,
   output : '@BASENAME@.c',
-  arguments : ['@INPUT@', '--output-file', '@OUTPUT@', '--fast-fail'])
-
+  # Ajout du flag '-3' pour forcer le mode Python 3 et supprimer le warning
+  arguments : ['-3', '@INPUT@', '--output-file', '@OUTPUT@', '--fast-fail'])
+  
+# Application du générateur sur notre fichier de binding principal.
+# Produit le fichier intermédiaire C qui contiendra l'API CPython.
 binding_c = cython_gen.process('binding/difmap_native.pyx')
 
+# ==============================================================================
+# 3. COMPILATION DE L'EXTENSION NATIVE PYTHON (.so)
+# ==============================================================================
+# Assemble le code C généré par Cython avec les sources historiques de Difmap
+# pour créer la bibliothèque partagée importable depuis Python (difmap_native.so).
 py3.extension_module('difmap_native',
-  [binding_c] + difmap_sources,
+  [binding_c] + difmap_sources,               # Fichier C généré + Sources du moteur Difmap
   include_directories : [inc, inc_build],
-  c_args : ['-I' + numpy_inc_dir], # <--- LA CORRECTION EST ICI (Méthode infaillible)
+  c_args : ['-I' + numpy_inc_dir],            # Inclusion des headers NumPy pour le Zero-Copy (Memoryviews)
+  
+  # Édition de liens (Linkage) avec les bibliothèques statiques internes de Difmap
   link_with : [
     libsphere, liblogio, libpager, libfits, 
     librecio, libslalib, libscrfil
   ],
   link_whole : [libtecla],
+  
+  # Édition de liens avec les dépendances système externes (X11, PGPLOT) et l'API Python
   dependencies : [
     m_dep, gsl_dep, pgplot_dep, cpgplot_dep, 
     x11_dep, curses_dep, tinfo_dep, py3_dep
@@ -175,7 +205,12 @@ py3.extension_module('difmap_native',
   install : true
 )
 
-# On garde l'exécutable classique à côté pour tes tests manuels
+# ==============================================================================
+# 4. COMPILATION DE L'EXÉCUTABLE STANDALONE (Héritage)
+# ==============================================================================
+# Maintient la compilation du programme autonome original (CLI).
+# Garantit que l'outil classique reste disponible pour les tests de régression, 
+# la validation scientifique croisée ou l'usage historique, sans impacter le module Python.
 executable('difmap',
   difmap_sources,
   include_directories : [inc, inc_build],

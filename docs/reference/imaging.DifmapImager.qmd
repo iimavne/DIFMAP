@@ -31,32 +31,36 @@ de la grille d'image, et la Transformée de Fourier inverse.
 décalage astrométrique du demi-pixel. L'utilisateur n'a plus à se 
 soucier de l'alignement des axes, la clé `extent` est prête à l'emploi.
 
-Args:
-    size (int): Dimension de la grille (ex: 512 pour une image 512x512). 
-        Privilégiez les puissances de 2 pour optimiser la FFT.
-    cellsize (float): Résolution spatiale d'un pixel en millisecondes d'arc (mas).
-    pol (str, optional): La polarisation à imager ("I", "Q", "U", "V"). 
-        Par défaut défini sur "I" (intensité totale).
+#### Parameters {.doc-section .doc-section-parameters}
 
-Returns:
-    dict: Le "Package Complet" de l'image contenant :
-        - **data** (*numpy.ndarray*): La matrice 2D des flux (Jy/beam).
-        - **header** (*dict*): Les métadonnées du header FITS (NX, NY, etc.).
-        - **beam** (*dict*): Les paramètres de la PSF (bmaj, bmin, bpa).
-        - **extent** (*list*): Coordonnées absolues `[x_min, x_max, y_min, y_max]` corrigées.
+| Name     | Type   | Description                                                                                                      | Default    |
+|----------|--------|------------------------------------------------------------------------------------------------------------------|------------|
+| size     | int    | Dimension de la grille (ex: 512 pour une image 512x512).  Privilégiez les puissances de 2 pour optimiser la FFT. | _required_ |
+| cellsize | float  | Résolution spatiale d'un pixel en millisecondes d'arc (mas).                                                     | _required_ |
+| pol      | str    | La polarisation à imager ("I", "Q", "U", "V").  Par défaut défini sur "I" (intensité totale).                    | `"I"`      |
 
-Raises:
-    DifmapError: Si l'allocation de la grille échoue (mapsize) ou si la FFT plante.
+#### Returns {.doc-section .doc-section-returns}
 
-Examples:
-    Affichage direct d'une image avec Matplotlib grâce à l'extent corrigé :
+| Name   | Type   | Description                                                                                                                                                                                                                                                                                                                              |
+|--------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | dict   | Le "Package Complet" de l'image contenant : - **data** (*numpy.ndarray*): La matrice 2D des flux (Jy/beam). - **header** (*dict*): Les métadonnées du header FITS (NX, NY, etc.). - **beam** (*dict*): Les paramètres de la PSF (bmaj, bmin, bpa). - **extent** (*list*): Coordonnées absolues `[x_min, x_max, y_min, y_max]` corrigées. |
 
-    ```python
-    # L'image a déjà été calculée et récupérée
-    img = session.create_image(size=512, cellsize=0.1, pol="I")
-    
-    import matplotlib.pyplot as plt
-    plt.imshow(img["data"], extent=img["extent"], cmap="magma")
-    plt.colorbar(label="Jy/beam")
-    plt.show()
-    ```
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type        | Description                                                        |
+|--------|-------------|--------------------------------------------------------------------|
+|        | DifmapError | Si l'allocation de la grille échoue (mapsize) ou si la FFT plante. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+Affichage direct d'une image avec Matplotlib grâce à l'extent corrigé :
+
+```python
+# L'image a déjà été calculée et récupérée
+img = session.create_image(size=512, cellsize=0.1, pol="I")
+
+import matplotlib.pyplot as plt
+plt.imshow(img["data"], extent=img["extent"], cmap="magma")
+plt.colorbar(label="Jy/beam")
+plt.show()
+```

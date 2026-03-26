@@ -2,15 +2,26 @@ project:
   type: website
 
 website:
-  title: "Documentation Difmap Python"
+  title: "Difmap Python"
   
+  navbar:
+    background: primary
+    search: true
+    right:
+      - icon: github
+        href: https://github.com/ton-repo/difmap_wrapper
+        aria-label: GitHub
+      - theme-toggle 
+
   sidebar:
-    style: "docked"
+    style: "floating"
     search: true
     contents:
       # --- TES CHAPITRES MANUELS ---
       - text: "Accueil"
-        file: index.qmd
+        file:  index.qmd
+      - text: "Installation"
+        file: 00_installation.qmd
       - text: "1. Contexte et Existant"
         file: 01_contexte_et_existant.qmd
       - text: "2. Nouvelle Architecture"
@@ -37,6 +48,9 @@ website:
             contents:
               - reference/exceptions.DifmapError.qmd
               - reference/exceptions.DifmapStateError.qmd
+      
+      - text: "5. Quick start"
+        file: 05_quick_start.qmd
 
 format:
   html:
@@ -46,7 +60,6 @@ format:
     code-copy: true
 
 # --- CONFIGURATION QUARTODOC ---
-# Cette partie dit à Quarto : "Va lire mon code et crée les pages pour le chapitre 4"
 quartodoc:
   package: difmap_wrapper
   dir: reference
@@ -54,7 +67,7 @@ quartodoc:
     - title: "DifmapSession - Gestion de l'Environnement"
       desc: "Gestion de l'environnement et de la mémoire RAM."
       contents:
-        - session.DifmapSession  # Juste le chemin Python, sans fioritures
+        - session.DifmapSession
 
     - title: "DifmapImager - Imagerie"
       desc: "Traitement des visibilités et création de cartes FITS."

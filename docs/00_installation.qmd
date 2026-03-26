@@ -1,0 +1,89 @@
+# Installation et Configuration
+
+Ce guide détaille les étapes nécessaires pour compiler le moteur natif et installer l'interface Python de Difmap.
+Le projet utilise **Meson** comme système de construction pour garantir des performances optimales et une compilation robuste des composants C 
+et Fortran.
+
+## 1\. Prérequis système (Linux)
+
+Avant de commencer, vous devez installer les compilateurs et les bibliothèques de développement dont dépend le moteur C de Difmap.
+
+**Copiez et exécutez ce bloc dans votre terminal :**
+
+```bash
+# Mise à jour et installation des dépendances système
+sudo apt-get update && sudo apt-get install -y \
+  gcc gfortran pkg-config libgsl-dev pgplot5 libx11-dev \
+  libncurses-dev libtecla-dev meson ninja-build
+```
+
+::: {.callout-note}
+Cette commande installe notamment `libx11-dev` pour la gestion graphique et `libtecla-dev` pour la gestion de la ligne de commande native.
+::: 
+
+### Dépendances Python
+
+Bien que `pip` gère ces dépendances lors de l'installation du paquet, vous pouvez les installer manuellement au préalable pour préparer votre environnement de développement :
+
+```bash
+# Installation manuelle des bibliothèques Python requises
+pip install "numpy>=2.0.0" "cython>=3.0.0" astropy
+```
+
+* **NumPy** ($\ge$ 2.0.0) : Indispensable pour la manipulation des matrices d'images et le partage de mémoire avec le moteur C.
+* **Cython** ($\ge$ 3.0.0) : Nécessaire pour transformer le code de liaison (`.pyx`) en code C.
+* **Astropy** : Utilisé pour la gestion des formats de fichiers astronomiques et des systèmes de coordonnées.
+
+```bash
+# 2. Dépendances Python
+pip install "numpy>=2.0.0" "cython>=3.0.0" astropy
+```
+
+## 2\. Installation pour les utilisateurs
+
+Cette méthode est recommandée pour ceux qui souhaitent uniquement utiliser Difmap dans leurs scripts Python.
+
+```bash
+# 1. Récupération du projet
+git clone https://github.com/iimavne/DIFMAP.git
+cd difmap_smartedit
+
+# 2. Installation automatique (compilation incluse)
+pip install .
+```
+
+*Le backend `meson-python` se chargera de compiler les extensions natives `difmap_native` pendant l'installation.*
+
+
+## 3\. Installation pour les développeurs
+
+Si vous prévoyez de modifier le code C ou les fichiers Cython (`.pyx`), utilisez ces commandes :
+
+### Mode éditable
+
+Pour que vos modifications dans le code Python soient prises en compte sans réinstaller le paquet :
+
+```bash
+pip install -e .
+```
+
+### Compilation manuelle du moteur C
+
+Si vous avez besoin de compiler l'exécutable interactif classique `difmap` ou de déboguer le moteur, utilisez le script fourni :
+
+```bash
+# Lance la configuration Meson et la compilation Ninja
+bash setup.sh
+```
+
+L'exécutable se trouvera alors dans le dossier `builddir/`.
+
+
+## 4\. Test rapide de validation
+
+Vérifiez que tout est bien configuré en lançant cette commande dans votre terminal :
+
+```bash
+python3 -c "from difmap_wrapper import DifmapSession; s = DifmapSession(); print('Difmap est prêt !')"
+```
+

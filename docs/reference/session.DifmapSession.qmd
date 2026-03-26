@@ -11,19 +11,20 @@ et fait le pont avec le moteur C sous-jacent. Elle est conçue pour être
 utilisée comme un Context Manager (`with DifmapSession() as session:`) 
 afin de garantir l'absence de fuites mémoire (RAM).
 
-Examples:
-    Voici le workflow standard recommandé pour analyser une observation :
+## Examples {.doc-section .doc-section-examples}
 
-    ```python
-    from difmap_wrapper import DifmapSession
+Voici le workflow standard recommandé pour analyser une observation :
+
+```python
+from difmap_wrapper import DifmapSession
+
+# Le 'with' garantit que la RAM est vidée à la fin
+with DifmapSession() as session:
+    session.load_observation("ma_galaxie.fits")
+    img = session.create_image(size=512, cellsize=0.1)
     
-    # Le 'with' garantit que la RAM est vidée à la fin
-    with DifmapSession() as session:
-        session.load_observation("ma_galaxie.fits")
-        img = session.create_image(size=512, cellsize=0.1)
-        
-        print(f"Image générée : {img['data'].shape}")
-    ```
+    print(f"Image générée : {img['data'].shape}")
+```
 
 ## Methods
 
@@ -45,6 +46,20 @@ Cette méthode réinitialise l'automate d'état. Elle est appelée
 automatiquement si vous utilisez le Context Manager, mais peut 
 aussi être appelée manuellement si besoin.
 
+#### Examples {.doc-section .doc-section-examples}
+
+Nettoyage manuel si vous n'utilisez pas de bloc 'with' :
+
+```python
+session = DifmapSession()
+session.load_observation("data.fits")
+
+# ... traitements ...
+
+# Libération explicite de la mémoire à la fin du script
+session.cleanup()
+```
+
 ### create_image { #difmap_wrapper.session.DifmapSession.create_image }
 
 ```python
@@ -56,22 +71,31 @@ Orchestre la création d'une carte brute (Dirty Map) à partir des visibilités.
 Cette fonction délègue le calcul mathématique lourd au module spécialisé 
 `DifmapImager`. Elle nécessite qu'une observation ait été préalablement chargée.
 
-Args:
-    size (int): La taille de la grille d'image en pixels (ex: 512 pour 512x512). 
-        Il est recommandé d'utiliser des puissances de 2 pour optimiser la FFT.
-    cellsize (float): La résolution d'un pixel en millisecondes d'arc (mas).
+#### Parameters {.doc-section .doc-section-parameters}
 
-Returns:
-    dict: Le dictionnaire contenant les données de l'image générée (data, extent, etc.).
+| Name     | Type   | Description                                                                                                                               | Default   |
+|----------|--------|-------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| size     | int    | La taille de la grille d'image en pixels (ex: 512 pour 512x512).  Il est recommandé d'utiliser des puissances de 2 pour optimiser la FFT. | `512`     |
+| cellsize | float  | La résolution d'un pixel en millisecondes d'arc (mas).                                                                                    | `1.0`     |
 
-Raises:
-    DifmapStateError: Si la méthode est appelée avant `load_observation()`.
+#### Returns {.doc-section .doc-section-returns}
 
-Examples:
-    ```python
-    # Création d'une grille HD
-    img = session.create_image(size=2048, cellsize=0.05)
-    ```
+| Name   | Type   | Description                                                                    |
+|--------|--------|--------------------------------------------------------------------------------|
+|        | dict   | Le dictionnaire contenant les données de l'image générée (data, extent, etc.). |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type             | Description                                           |
+|--------|------------------|-------------------------------------------------------|
+|        | DifmapStateError | Si la méthode est appelée avant `load_observation()`. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+# Création d'une grille HD
+img = session.create_image(size=2048, cellsize=0.05)
+```
 
 ### load_observation { #difmap_wrapper.session.DifmapSession.load_observation }
 
@@ -85,13 +109,20 @@ Si une observation était déjà chargée dans cette session, elle est
 automatiquement nettoyée avant le nouveau chargement pour éviter 
 les conflits en RAM.
 
-Args:
-    filepath (str): Le chemin absolu ou relatif vers le fichier .fits à analyser.
+#### Parameters {.doc-section .doc-section-parameters}
 
-Raises:
-    DifmapError: Si le fichier est introuvable, corrompu, ou rejeté par le moteur C.
+| Name     | Type   | Description                                                   | Default    |
+|----------|--------|---------------------------------------------------------------|------------|
+| filepath | str    | Le chemin absolu ou relatif vers le fichier .fits à analyser. | _required_ |
 
-Examples:
-    ```python
-    session.load_observation("./data/survey_2024.fits")
-    ```
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type        | Description                                                         |
+|--------|-------------|---------------------------------------------------------------------|
+|        | DifmapError | Si le fichier est introuvable, corrompu, ou rejeté par le moteur C. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+session.load_observation("./data/0003-066_X.SPLIT.1")
+```
