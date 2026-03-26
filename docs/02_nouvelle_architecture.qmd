@@ -1,0 +1,108 @@
+---
+title: "Chapitre 2 : La Nouvelle Architecture"
+---
+
+## 2.1. Le choix de l'architecture hybride
+
+Face aux limitations de l'architecture historique (I/O intensifs, dépendance à SPHERE, état global non-rentrant), deux solutions s'offraient
+ à nous : réécrire intégralement les 100 000 lignes de code mathématique en Python, ou créer une architecture "hybride".
+
+La réécriture totale a été rapidement écartée. Elle aurait nécessité des années de développement et, surtout, aurait invalidé des décennies de 
+validation scientifique des algorithmes de Difmap (comme sa Transformée de Fourier optimisée ou son itération CLEAN). 
+
+Le choix s'est donc porté sur un **Wrapper natif**. L'objectif est de conserver le moteur C/Fortran d'origine pour les calculs intensifs et l'allocation
+mémoire, tout en construisant une interface Python moderne par-dessus.
+
+::: {.callout-tip title="Lexique Métier : Les termes clés"}
+### Lexique des termes clés
+
+Pour faciliter la lecture, voici les définitions des termes techniques et astronomiques utilisés dans ce chapitre :
+
+**Termes de Génie Logiciel :**
+
+* **Binding (Liaison) :** Code intermédiaire (ici en Cython) qui sert de "pont" entre deux langages. Il permet à Python d'appeler directement des 
+fonctions écrites en C.
+* **Zéro-Copie (Zero-Copy) :** Technique d'optimisation où Python accède directement à la plage de mémoire RAM allouée par le C.
+* **I/O (Input/Output) :** Opérations de lecture et d'écriture sur le disque dur.
+* **Wrapper (Enveloppe) :** Une surcouche logicielle qui entoure un programme existant pour lui donner une nouvelle interface, plus simple ou plus
+moderne, sans modifier son cœur.
+
+**Termes de Radioastronomie :**
+
+*  **WCS (World Coordinate System) :** Standard de la Fédération Astronomique Internationale permettant de convertir les coordonnées "pixels" $(x, y)$
+ d'une image en coordonnées réelles sur la voûte céleste (Ascension Droite et Déclinaison)
+
+:::
+## 2.2. Le modèle en 3 couches (Architecture 3-Tier)
+
+### 2.2.1 L'architecture 
+Pour garantir une séparation stricte des responsabilités et ne pas corrompre le code mathématique d'origine, la nouvelle solution repose sur une architecture logicielle en trois couches distinctes :
+
+```{mermaid}
+graph TD
+    %% Définition du contenu des Couches
+    subgraph Couche3 ["<span style='color:#1e40af'><b> Couche 3 : API Python (High-Level)</b></span>"]
+        A[" Script Utilisateur"] -->|Appel Méthode| B(" DifmapSession")
+        B -->|Astrométrie WCS| C(" Module Imaging")
+    end
+
+    subgraph Couche2 ["<span style='color:#92400e'><b>Couche 2 : Pont Cython (Binding)</b></span>"]
+        D{" difmap_native.pyx"}
+    end
+
+    subgraph Couche1 ["<span style='color:#991b1b'><b> Couche 1 : Moteur (Low-Level)</b></span>"]
+        E[" Variables Globales C"]
+        F[" Algorithmes"]
+        G[" Mémoire RAM"]
+    end
+
+    %% Liaisons entre couches
+    B -->|Appels API C| D
+    D -.->|Zéro-Copie| C
+    D -->|Pointeurs directs| E
+    E --- F
+    E --- G
+
+    %% --- STYLES DES GRANDS RECTANGLES (SUBGRAPHS) ---
+    style Couche3 fill:#ffffff,stroke:#1e40af,stroke-width:2px
+    style Couche2 fill:#ffffff,stroke:#92400e,stroke-width:2px
+    style Couche1 fill:#ffffff,stroke:#991b1b,stroke-width:2px
+
+    %% --- STYLES DES BLOCS INTERNES ---
+    style A fill:#f0fdf4,stroke:#16a34a,color:#16a34a,stroke-width:2px
+    style B fill:#eff6ff,stroke:#1e40af,color:#1e40af,stroke-width:2px
+    style C fill:#eff6ff,stroke:#1e40af,color:#1e40af,stroke-width:2px
+    style D fill:#fffbeb,stroke:#92400e,color:#92400e,stroke-width:2px
+    style E fill:#fef2f2,stroke:#991b1b,color:#991b1b,stroke-width:2px
+    style F fill:#fef2f2,stroke:#991b1b,color:#991b1b,stroke-width:1px
+    style G fill:#fef2f2,stroke:#991b1b,color:#991b1b,stroke-width:1px
+```
+
+### Couche 1 : Le Moteur Natif (Bas Niveau)
+Composée des dossiers `difmap_src/` et `slalib_src/`, cette couche est le "muscle" du logiciel. Elle ne gère plus aucune interface utilisateur. Elle se contente d'allouer la mémoire RAM pour les images et d'exécuter les mathématiques. Nous avons ajouté de légers *getters* et *setters* en C pour exposer ses variables globales en toute sécurité.
+
+### Couche 2 : Le Binding Cython (Niveau Intermédiaire)
+C'est le cœur de l'innovation de ce projet (le dossier `binding/`). Écrit en Cython, le fichier `difmap_native.pyx` agit comme un traducteur bidirectionnel. Il convertit les objets Python en pointeurs C compréhensibles par Difmap, et surtout, il récupère les immenses tableaux de pixels générés par le C pour les transformer en objets `NumPy` instantanément via la technique du **Zéro-Copie**.
+
+### Couche 3 : L'API Orientée Objet (Haut Niveau)
+C'est la partie visible de l'iceberg (le dossier `difmap_wrapper/`). Elle offre des classes Python élégantes (`DifmapSession`) qui masquent totalement la complexité des pointeurs C à l'utilisateur final.
+
+
+## 2.3. Le nouveau flux d'exécution : Le contournement de SPHERE
+
+L'un des apports majeurs de cette architecture est la mise hors-circuit de l'interpréteur de commandes historique, SPHERE.
+
+Dans l'ancienne architecture, l'utilisateur tapait une commande texte (`clean 100`) qui était parsée par `difmap.c` avant d'invoquer la fonction mathématique C correspondante. 
+Désormais, **la Couche 2 (Cython) attaque directement les fonctions mathématiques C**. Le terminal SPHERE n'est jamais initialisé lors de l'utilisation en tant que bibliothèque Python, supprimant ainsi tout le goulot d'étranglement lié au parsing de texte et aux I/O sur le disque dur.
+
+## 2.4. La gestion moderne de la compilation (Build System)
+
+Intégrer du code C/Fortran des années 90 dans l'écosystème Python de 2026 exige un système de compilation robuste. Les anciens fichiers `Makefile`, souvent capricieux selon les systèmes d'exploitation, ont été remplacés par une chaîne de compilation standardisée (PEP 517) :
+
+1. **`pyproject.toml` :** Définit les métadonnées du projet Python et force l'utilisation d'un environnement de build isolé.
+2. **Meson & Ninja :** Remplacent les outils historiques pour compiler le code C. Meson est capable de détecter dynamiquement les compilateurs système (GCC, GFortran) et de lier les dépendances complexes (PGPLOT, GSL, X11) de manière transparente.
+
+::: {.callout-tip}
+### Le résultat pour l'utilisateur
+Grâce à ce nouveau système de Build, toute cette complexité d'ingénierie se résume à une seule commande standard pour l'astronome : `pip install .`. Le système compile silencieusement le C, transpile le Cython, et installe le package Python en quelques secondes.
+:::

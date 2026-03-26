@@ -5,7 +5,7 @@ difmap
 gfortran_version
 
 # ==========================================
-# Fichiers de compilation (C/Fortran)
+# Fichiers de compilation (C/Fortran/Cython)
 # ==========================================
 *.o
 *.a
@@ -13,10 +13,14 @@ gfortran_version
 *.dylib
 
 # ==========================================
-# Systèmes de build (Nouveau et Ancien)
+# Systèmes de build (Meson, Ninja, Make)
 # ==========================================
 builddir/
 build/
+.mesonpy-*/
+.ninja_deps
+.ninja_log
+compile_commands.json
 Makefile
 */makefile
 make.configure
@@ -34,20 +38,26 @@ doc/help.tex
 doc/help.dvi
 
 # ==========================================
-# Logs, Markdown et Fichiers temporaires
+# Logs et Fichiers temporaires
 # ==========================================
 *.log
 difmap.log*
 difmap.log_*
+*.png
+*.jpg
+*.jpeg
 *.md
-# !README.md  # Décommente cette ligne si tu veux quand même garder le README.md principal
 core
 scrfil_src/scrfile*
+
+# On ignore les brouillons Markdown, MAIS on garde les docs officielles
+*.md
+!README.md
+!CHANGELOG.md
 
 # ==========================================
 # Fichiers de données et sorties VLBI/Difmap
 # ==========================================
-# Évite de commiter les gros fichiers de données et les résultats de script
 *.fits
 *.uvf
 *.uv
@@ -60,15 +70,23 @@ scrfil_src/scrfile*
 *.ps
 *.color.ps
 
+# EXCEPTION VITALE : On autorise explicitement les données de test 
+# pour que Pytest fonctionne partout !
+tests/test_data/
+tests/test_data/*
+
 # ==========================================
-# Environnement Python (Pour ton wrapper)
+# Environnement Python & Tests
 # ==========================================
 __pycache__/
-*.pyc
+*.py[cod]
 .venv/
 venv/
 env/
 *.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
 
 # ==========================================
 # Fichiers systèmes et éditeurs

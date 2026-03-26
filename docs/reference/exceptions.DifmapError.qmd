@@ -1,0 +1,12 @@
+# exceptions.DifmapError { #difmap_wrapper.exceptions.DifmapError }
+
+```python
+exceptions.DifmapError()
+```
+
+Exception de base pour toutes les erreurs liées au moteur C de Difmap.
+
+Cette exception est levée lorsque le code natif (C/Cython) rencontre 
+un problème interne qu'il ne peut pas résoudre (ex: échec d'allocation 
+mémoire, erreur mathématique dans la FFT, fichier FITS introuvable). 
+C'est la classe parente de toutes les exceptions spécifiques du paquet.

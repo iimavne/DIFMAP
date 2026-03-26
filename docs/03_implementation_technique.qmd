@@ -1,0 +1,635 @@
+---
+title: "Chapitre 3 : Implémentation Technique"
+---
+
+Cette section détaille le travaille effectuée sur le code pour le transformer en moteur pilotable par Python.
+
+::: {.callout-tip title="Lexique Métier : Les termes clés"}
+# Lexique clé
+
+Pour comprendre ce qui suit, il faut comprendre les objets mathématiques manipulés par DIFMAP :
+
+* **Les Visibilités (Plan UV) :** Ce sont les données brutes. Contrairement à un appareil photo, un réseau de radiotélescopes ne capture pas une 
+image directe du ciel, mais des ondes (amplitudes et phases).
+* **La Dirty Map (Carte Brute) :** C'est l'image obtenue en appliquant une Transformée de Fourier Inverse sur les visibilités. Elle est dite "sale" (dirty)
+ car elle est polluée par des artefacts (des "taches" et des "rayons") dus au fait que les télescopes ne couvrent pas toute la surface de la Terre.
+* **Le Dirty Beam ou PSF (Le Faisceau) :** C'est la Fonction d'Étalement du Point (Point Spread Function). En termes ingénieur, c'est la **réponse impulsionnelle*
+* du réseau de télescopes. C'est la forme exacte que prendrait une étoile théorique (un point parfait) si on la photographiait avec ce réseau.
+* **L'algorithme CLEAN (Déconvolution) :** Le but ultime de Difmap est d'utiliser la connaissance mathématique du *Beam* pour nettoyer la *Dirty Map* 
+et obtenir l'image finale de la galaxie.
+:::
+::: {.callout-tip title="Point technique : Nomenclature et encapsulation des modules"}
+
+# Nomenclature et encapsulation des modules
+
+### A. **`cdifmap`** : L'interface privée
+Le nom `cdifmap` n'existe nulle part pour l'utilisateur final de la bibliothèque.   
+C'est un **alias interne** que nous créons dans Cython pour désigner les fonctions "brutes" du moteur C.
+
+  **Où est-ce défini ?** Dans le fichier `binding/cdifmap.pxd`.
+```python
+# binding/cdifmap.pxd
+cdef extern from "difmap_api.h":
+    # On déclare ici ce que le C sait faire
+    int native_observe(const char* name)
+    int native_invert()
+```
+
+  **Pourquoi ce nom ?** Quand nous codons le pont en Cython (`.pyx`), nous utilisons cet alias pour dire : *"Ici, j'appelle une fonction qui vient du monde C"*.
+```python
+# Dans difmap_native.pyx
+cimport cdifmap # On importe l'alias
+
+def observe(path):
+    # On appelle la fonction C via l'alias
+    return cdifmap.native_observe(path) 
+```
+
+---
+
+### B. **`difmap_native`** : Le module public 
+  Le nom `difmap_native` est le nom du module que vous allez réellement importer dans vos scripts Python (`import difmap_native`).
+
+**Où est-ce défini ?** C'est défini dans votre fichier de configuration de compilation **`meson.build`**.  C'est ici que l'on donne l'ordre au compilateur de transformer votre code Cython en une bibliothèque binaire utilisable par Python.
+
+**Extrait du `meson.build` :**
+```python
+# C'est ici que le nom est gravé dans le marbre
+py.extension_module(
+    'difmap_native',           # 1. Nom du module final
+    'difmap_native.pyx',       # 2. Fichier source Cython
+)
+```
+
+### C. Pourquoi différencier les deux ?
+  Pour un ingénieur, cette distinction est une question d'**encapsulation**:
+*   **`cdifmap`** est la "tuyauterie" interne : elle manipule des pointeurs, des types `char*` et de la mémoire brute.
+*   **`difmap_native`** est la "façade" : elle reçoit des objets Python (comme des chaînes de caractères ou des listes) et les transforme pour la tuyauterie.
+
+:::
+
+# 3.1. Couche Native : Implémentation de la Façade C (difmap.c)
+## 3.1.1. Encapsulation de l'état global du moteur
+
+Le plus grand défi technique de Difmap est son architecture dite "non-rentrante". Dans le code d'origine, l'état complet d'une session
+(l'image, les antennes, les données) est stocké dans des variables globales marquées `static`. Cela signifie qu'elles ne sont visibles que depuis 
+le fichier difmap.c.
+
+Historiquement, l'utilisateur interagissait avec ces variables via l'interpréteur de commandes SPHERE. Pour automatiser cela en Python,
+nous avons dû créer un point d'accès direct.
+
+**Pourquoi avoir choisi `difmap.c` ?**
+Plutôt que de modifier 150 fichiers sources et de risquer de casser la logique mathématique, nous avons utilisé `difmap.c` comme une **Façade** 
+(Design Pattern). C'est le fichier "maître" qui possède les accès à tous les objets critiques (`vlbob` pour l'observation, `vlbmap` pour l'image). 
+
+## 3.1.2. Architecture de l'API C étendue
+
+Nous avons injecté dans `difmap.c` une interface programmatique (API) découpée en sections logiques. Voici le rôle précis de chacune :
+
+### A. Sécurisation des accès mémoire (Safe Getters)
+
+**Le Problème :** En C, lire une variable globale non initialisée (`NULL`) fait crasher Python instantanément (*Segmentation Fault*). <br>
+**La Solution :** Chaque "Getter" vérifie l'existence de l'objet avant de retourner sa valeur. <br>
+
+```c
+/* Récupère la largeur de l'image en pixels */
+int get_native_map_nx() { 
+    // Si vlbmap n'existe pas encore, on renvoie -1 au lieu de crasher
+    return (vlbmap != NULL) ? vlbmap->nx : -1; 
+}
+
+/* Récupère le nom de la galaxie source */
+char* get_native_source_name() { 
+    return (vlbob != NULL) ? vlbob->source.name : "Aucune"; 
+}
+```
+
+### B. Gestion du cycle de vie et prévention des fuites mémoire
+
+**Le Problème :** Difmap n'a pas été conçu pour charger des fichiers en boucle. Sans nettoyage, la RAM sature vite. <br>
+**La Solution :** On force la libération de la mémoire avant chaque nouvelle observation. <br>
+
+```c
+int native_observe(char *name) {
+    /* ÉTAPE 1 : Nettoyage de la RAM précédente (Crucial !) */
+    obs_end(); 
+    
+    /* ÉTAPE 2 : Allocation de la nouvelle structure d'observation */
+    vlbob = new_Observation(name, 0.0, 0, 1, NULL, NO_POL, fix_visibility_weights);
+    
+    if(vlbob == NULL) return -1; // Échec de chargement
+    vlbspec = new_Specattr(vlbob);
+    return 0;
+}
+```
+
+### C. Synchronisation des structures de données internes
+
+**Le Problème :** Difmap possède deux systèmes d'images : le système moderne (`vlbmap`) et le vieux système Fortran (`mb_map`). 
+ Si on ne synchronise pas les deux, les calculs FFT ne s'affichent pas. <br>
+**La Solution :** On force les adresses mémoire à correspondre. <br>
+
+```c
+int native_mapsize(int nx, float cellsize) {
+    float xinc = xytorad(cellsize); // Conversion mas -> radians
+    
+    /* 1. Allocation de la grille de pixels dans le système C */
+    vlbmap = new_MapBeam(vlbmap, nx, xinc, nx, xinc);
+    
+    /* 2. SYNCHRONISATION MÉMOIRE (C <-> Fortran)
+     * On force les pointeurs des vieux algorithmes Fortran (mb_beam, mb_map)
+     * à pointer vers la nouvelle zone RAM allouée par le C. 
+     * Sans cela, les calculs mathématiques s'exécuteraient dans le vide. */
+    VOIDPTR(&mb_beam) = vlbmap->beam;
+    VOIDPTR(&mb_map)  = vlbmap->map;
+    
+    // Mise à jour des dimensions pour le moteur Fortran
+    mb_map.adim[0] = nx; 
+    mb_map.adim[1] = nx;
+    mb_map.num_el  = (size_t) (nx * nx);
+    
+    return 0;
+}
+```
+### D. Exportation mémoire et préparation au Zéro-Copie
+
+Principe du Zéro copie : Le zéro-copie consiste à faire « pointer » un tableau Python directement sur l'adresse mémoire (RAM) occupée par le moteur C,
+permettant un transfert de données instantané sans aucune duplication d'octets. <br>
+
+**Le Problème :** Copier une image de $2048 \times 2048$ pixels de C vers Python prend du temps et de la RAM. <br>
+**La Solution :** On donne à Python l'adresse mémoire directe. <br>
+
+```c
+float* get_native_map_data() {
+    /* On renvoie l'adresse brute du tableau de pixels */
+    if(vlbmap == NULL || vlbmap->map == NULL) return NULL;
+    
+    return vlbmap->map; // Cython créera un tableau NumPy sur cette adresse
+}
+```
+
+### E. Intégration native des conversions astrométriques
+
+**Le Problème :** Travailler avec des nombres comme $0.000000048$ (radians) est illisible pour un humain. <br>
+**La Solution :** On intègre la constante de conversion astronomique. <br>
+
+```c
+/* Facteur : 1 Radian = 206,264,806.247 milliarcsecondes */
+#define RTOMAS 206264806.247
+
+double get_native_pixsize() { 
+    // Conversion instantanée au moment de la lecture
+    return (vlbmap) ? vlbmap->xinc * RTOMAS : 0.0; 
+}
+```
+
+## 3.1.3. Synthèse des points d'entrée de l'API
+
+Ce tableau résume la liaison entre tes fonctions C et les méthodes que l'utilisateur verra en Python :
+
+| Fonction C (`difmap.c`) | Rôle Technique | Équivalent Python |
+| :--- | :--- | :--- |
+| `native_observe()` | Reset RAM + Chargement | `session.load_obs()` |
+| `native_mapsize()` | Allocation & Sync Pointers | `session.setup_image()` |
+| `native_invert()` | Exécution FFT Inverse | `session.invert()` |
+| `native_select()` | Filtrage Stokes (ex: "RR") | `session.select()` |
+| `get_native_map_data()` | Export adresse RAM (Zéro-Copie) | `image.data` |
+| `get_native_pixsize()` | Conversion Physique Rad $\rightarrow$ mas | `image.pixel_size` |
+
+::: {.callout-note}
+### Résultat de cette implémentation
+Cette approche par **Façade** a permis de rendre Difmap "passif". Le logiciel ne décide plus de ce qu'il fait ; il attend les ordres de la couche Python,
+tout en garantissant qu'aucune manipulation de mémoire ne vienne corrompre l'intégrité des calculs scientifiques.
+:::
+
+----
+
+# 3.2. Le Binding Cython : Architecture de l'interopérabilité (`binding/`)
+
+Le dossier `binding/` constitue la couche d'abstraction intermédiaire du projet. Son rôle est de transformer les appels système de bas niveau (C) 
+en objets de haut niveau (Python). Cette interface repose sur une séparation stricte entre la **déclaration des interfaces** (`.pxd`) et 
+la **logique de conversion** (`.pyx`).
+
+Note sur la nomenclature des modules :
+Il est important de distinguer l'interface cdifmap du module difmap_native. Le premier est un alias de compilation défini dans le fichier cdifmap.pxd 
+pour accéder aux fonctions natives du moteur C. Le second, difmap_native, est le nom du module binaire final défini dans le système de construction Meson.
+Cette séparation permet d'isoler les appels système de bas niveau de la logique de conversion Python.
+
+## 3.2.1. Déclaration des interfaces : `cdifmap.pxd`
+
+Pour qu'un environnement Python puisse interagir avec des fonctions compilées en C, Cython nécessite un fichier de définition d'interface :
+ `cdifmap.pxd`. 
+
+Contrairement à un `import` Python classique, l'instruction **`cimport`** réalise une liaison statique lors de la compilation. 
+Cela permet d'appeler les fonctions du moteur Difmap avec un surcoût nul ($O(1)$), car l'appel est résolu par le compilateur et non par 
+l'interpréteur à l'exécution.
+
+```python
+# binding/cdifmap.pxd
+
+cdef extern from "difmap_api.h":
+    # Déclaration des signatures exactes de l'API C
+    int native_observe(const char* name)
+    int native_select(const char* polarization)
+    int native_invert()
+    float* get_native_map_data()
+    int get_native_map_nx()
+    int get_native_map_ny()
+    double get_native_bmaj()
+    double get_native_bmin()
+    double get_native_bpa()
+    double get_native_pixsize()
+```
+
+::: {.callout-important}
+**Note de maintenance :** Toute nouvelle fonction ajoutée dans la façade C (`difmap.c`) doit être impérativement déclarée dans ce fichier `.pxd` 
+pour être reconnue par le compilateur Cython sous l'alias `cdifmap`.
+:::
+
+## 3.2.2. Gestion des chaînes de caractères : Sécurisation du transfert
+
+Python manipule des objets `str` (Unicode), tandis que le moteur Difmap attend des pointeurs `char*` (octets). 
+Une erreur de conversion ici provoquerait un plantage immédiat (*Segmentation Fault*). L'implémentation sécurise ce transfert via un encodage explicite :
+
+```python
+def observe(filepath: str) -> int:
+    """Charge un fichier UV FITS dans la mémoire de Difmap."""
+    # 1. Encodage : Transformation de l'objet Python en buffer d'octets UTF-8
+    cdef bytes filepath_bytes = filepath.encode('utf-8')
+    
+    # 2. Sécurisation : Passage du pointeur vers ces octets au moteur C
+    # Le type 'cdef bytes' assure la persistance de la mémoire durant l'appel
+    return cdifmap.native_observe(filepath_bytes)
+```
+
+L'utilisation du type `cdef bytes` est une sécurité critique : elle garantit que le tampon mémoire reste alloué tant que la fonction C s'exécute,
+prévenant les erreurs de type *dangling pointer* (pointeur fantôme).
+
+## 3.2.3. Optimisation "Zéro-Copie" : Memoryviews et NumPy
+
+L'extraction des images (Dirty Map et Beam) constitue le point le plus sensible en termes de performance. Pour une résolution de 
+**2048x2048 pixels** (soit plus de 4 millions de flottants), la duplication des données n'est pas recommandée.
+
+L'implémentation utilise la technique des **Typed Memoryviews** pour projeter une structure Python directement sur la RAM du moteur C :
+
+::: {.callout-note title="Lexique Informatique : Que sont les Typed Memoryviews ?"}
+Pour comprendre comment fonctionne le Zéro-Copie, il faut décomposer ce terme propre à l'architecture Cython :
+
+* **Memoryview (Vue mémoire) :** Imaginez une fenêtre ou un calque transparent. Au lieu de créer une nouvelle boîte pour y copier les millions de pixels calculés
+ par le C, Python pose simplement ce "calque" par-dessus la mémoire vive matérielle (RAM) existante. Il ne fait qu'observer les données là où elles sont.
+* **Typed (Typé / Structuré) :** La mémoire brute du C n'est qu'une longue file ininterrompue de 0 et de 1. Le fait que la vue soit "typée" signifie que le 
+calque possède un quadrillage. Il indique à Python comment lire cette ligne d'octets bruts (ex: *"Lis ceci comme un tableau en 2 dimensions, de 2048 lignes 
+et 2048 colonnes, composé de nombres décimaux"*).
+:::
+
+```python
+def get_map():
+    """Récupère la matrice de l'image sans aucune copie mémoire."""
+    # Récupération de l'adresse RAM brute et des dimensions
+    cdef float* map_ptr = cdifmap.get_native_map_data()
+    cdef int nx = cdifmap.get_native_map_nx()
+    cdef int ny = cdifmap.get_native_map_ny()
+    
+    if map_ptr == NULL or nx <= 0:
+        raise RuntimeError("Flux interrompu : aucune image en mémoire.")
+    
+    # ÉTAPE CRUCIALE : Transtypage (Cast) du pointeur en Memoryview 2D
+    # La syntaxe <float[:ny, :nx]> définit la géométrie sur la RAM existante
+    cdef float[:ny, :nx] view = <float[:ny, :nx]> map_ptr
+    
+    # Conversion en tableau NumPy (vue directe) et correction astronomique
+    return np.fliplr(np.asarray(view))
+```
+
+* **Vitesse (`np.asarray(view)`):** Le transfert est instantané car NumPy ne fait que lire l'adresse mémoire fournie. <br>
+* **Réalignement spatial(`fliplr`) :** En radioastronomie, l'Ascension Droite croît vers la gauche. La fonction np.fliplr inverse la lecture de la matrice C 
+(stockée de gauche à droite) pour que l'image finale soit parfaitement superposable au ciel réel.
+
+
+## 3.2.4. Encapsulation des Métadonnées (Ergonomie)
+
+Pour isoler l'utilisateur de la complexité des types C, le binding agrège les informations atomiques dans des structures Python standards (dictionnaires).
+
+```python
+def get_beam_info() -> dict:
+    """Extrait les paramètres de la PSF (Faisceau)."""
+    # Agrégation des métadonnées physiques préalablement converties par le C (mas)
+    return {
+        "BMAJ": cdifmap.get_native_bmaj(), 
+        "BMIN": cdifmap.get_native_bmin(),
+        "BPA": cdifmap.get_native_bpa(),
+        "PIXSIZE": cdifmap.get_native_pixsize()
+    }
+```
+
+Cette encapsulation permet une manipulation intuitive : l'astronome accède aux propriétés physiques via des clés explicites, sans se soucier de la 
+gestion des pointeurs sous-jacents.
+
+
+## 3.2.5. Synthèse technique du Binding
+
+Le tableau suivant récapitule les mécanismes mis en œuvre pour garantir l'intégrité du système :
+
+| Composant | Mécanisme technique | Rôle / Bénéfice |
+| :--- | :--- | :--- |
+| **`cimport cdifmap`** | Liaison statique | Supprime la latence d'appel ($O(1)$). |
+| **`filepath.encode()`** | Conversion Unicode $\rightarrow$ C-String | Assure la stabilité des I/O (pas de crash). |
+| **`<float[:ny, :nx]>`** | Transtypage de pointeur | Définit la géométrie de l'image en RAM. |
+| **`np.asarray(view)`** | **Zéro-Copie** | Performance maximale (aucune duplication). |
+| **`np.fliplr()`** | Symétrie horizontale | Conformité avec les cartes du ciel réelles. |
+| **`get_native_no_error()`** | Surveillance du registre d'erreurs | Permet la levée d'exceptions Python propres. |
+
+---
+
+# 3.3. L'API Python Orientée Objet (`difmap_wrapper/`)
+
+Le dossier `difmap_wrapper/` représente la couche supérieure (High-Level) de l'architecture. Son rôle est d'encapsuler les appels procéduraux du binding C
+ython dans une structure **Orientée Objet (OOP)**. Cette couche transforme un moteur de calcul rudimentaire en une bibliothèque Python moderne, 
+respectant les standards de développement actuels (PEP 8, typage, gestion des exceptions).
+
+```{mermaid}
+graph TD
+    subgraph Python_Layer ["<span style='color:#FFFFFF'>Couche Applicative (difmap_wrapper)</span>"]
+        A[Utilisateur / Script] -->|Commande| B(DifmapSession : Façade)
+        B -->|Délègue| C(DifmapImager : Ouvrier)
+        B -.->|Surveille| D{Exceptions : Bouclier}
+    end
+
+    subgraph Binding_Layer [" <span style='color:#FFFFFF'> Couche Liaison (binding)"]
+        C -->|Appelle| E[difmap_native]
+    end
+
+    subgraph Engine_Layer [" <span style='color:#FFFFFF'> Couche Moteur (difmap_src)"]
+        E -->|Exécute| F[Moteur C : Difmap]
+    end
+
+    classDef python fill:#e0f2fe,stroke:#0369a1,stroke-width:2px,color:#0369a1;
+    classDef binding fill:#fef3c7,stroke:#b45309,stroke-width:2px,color:#b45309;
+    classDef engine fill:#fee2e2,stroke:#b91c1c,stroke-width:2px,color:#b91c1c;
+    classDef shield fill:#ffffff,stroke:#64748b,stroke-dasharray: 5 5,color:#64748b;
+    
+    class B,C python;
+    class E binding;
+    class F engine;
+    class D shield;
+
+```
+## 3.3.1. Architecture modulaire : Le découpage en trois piliers fonctionnels
+
+Une erreur classique lors de la création de wrappers (surcouches) est de concevoir une *"God Class"* : un fichier unique et monolithique de plusieurs 
+milliers de lignes concentrant toutes les fonctionnalités. Étant donné la complexité de Difmap (I/O, Transformées de Fourier, modélisation), nous avons 
+strictement appliqué le principe de **Séparation des Responsabilités (Separation of Concerns)**.
+
+### A. L'interface de pilotage : DifmapSession (Design Pattern Façade)
+La classe `DifmapSession` agit comme une **Façade** pour l'utilisateur final. Elle ne fait aucun calcul mathématique. Son unique responsabilité est de
+ maintenir l'état global du logiciel et d'offrir une interface de commande simple.
+
+```python
+# Extrait de difmap_wrapper/session.py
+class DifmapSession:
+    """Façade principale pour piloter l'environnement Difmap."""
+    
+    def __init__(self):
+        # Maintien strict de l'état interne
+        self.uv_loaded = False
+        self.current_image = None
+        
+    def load_observation(self, filepath: str):
+        """Charge les données visibilités."""
+        if difmap_native.observe(filepath) != 0:
+            raise DifmapError(f"Impossible de lire le fichier {filepath}")
+        # Mise à jour de la machine d'état
+        self.uv_loaded = True
+```
+* **L'ingénierie derrière le code :** En stockant des booléens comme `self.uv_loaded`, cette classe sait à tout moment ce qui se trouve dans la RAM du
+ moteur C. C'est elle qui valide ou refuse les ordres de l'utilisateur avant de les transmettre aux couches inférieures.
+
+### B. L'unité de calcul spécialisée : DifmapImager (Moteur Stateless)
+La classe `DifmapImager` est "l'ouvrier" du système. Contrairement à la session, elle est totalement *Stateless* (sans état) : elle ne retient aucune 
+information entre deux appels. Son rôle est strictement limité aux mathématiques (allocation de grille, exécution de la FFT).
+
+```python
+# Extrait de difmap_wrapper/imaging.py
+class DifmapImager:
+    
+    @staticmethod
+    def make_dirty_map(size, cellsize, pol="I"):
+        """Délègue les calculs lourds au moteur C via Cython."""
+        difmap_native.select(pol)
+        
+        if difmap_native.mapsize(size, cellsize) != 0:
+            raise DifmapError("Erreur lors de l'allocation de la grille (mapsize).")
+            
+        if difmap_native.invert() != 0:
+            raise DifmapError("Échec de la transformée de Fourier (invert).")
+            
+        # ... (Logique de récupération géométrique et données)
+```
+* **L'ingénierie derrière le code :** L'utilisation systématique du décorateur `@staticmethod` prouve que cette classe est une pure "boîte à outils". 
+Elle reçoit des ordres de `DifmapSession`, effectue la chirurgie mathématique, et renvoie le résultat sans jamais interférer avec l'état global du 
+programme.
+
+### C. Le bouclier logiciel : Hiérarchie des exceptions personnalisées
+Difmap d'origine ne gère pas les exceptions ; il se contente d'échouer silencieusement ou de provoquer des *Segmentation Faults*. 
+Pour protéger l'utilisateur Python, nous avons mis en place une hiérarchie d'erreurs personnalisées.
+
+```python
+# Extrait de difmap_wrapper/exceptions.py
+class DifmapError(Exception):
+    """Classe de base pour toutes les erreurs Difmap."""
+    pass
+
+class DifmapStateError(DifmapError):
+    """Levée quand une action est tentée dans le mauvais ordre."""
+    pass
+```
+Cette hiérarchie remplace les crashs bruts par des messages explicites. `DifmapError` signale une défaillance du moteur C, tandis que `DifmapStateError`
+ est une erreur de logique utilisateur. 
+
+::: {.callout-note}
+### Bilan architectural
+Ce découpage en 3 pôles garantit un code  maintenable. Si l'on souhaite ajouter un module pour ajuster des modèles mathématiques, il suffira de créer 
+une nouvelle classe statique sans jamais avoir à modifier la logique de la session (`DifmapSession`) ou la gestion des images (`DifmapImager`).
+:::
+
+
+## 3.3.2. Gestion déterministe des ressources et cycle de vie (Context Manager)
+
+### A. Diagnostic matériel : Risques de saturation de la mémoire vive
+Pour un astrophysicien lançant des traitements, la consommation de la RAM est un enjeu critique. Le moteur C de Difmap a été conçu pour un usage humain : 
+l'astronome chargeait un fichier, l'analysait, puis fermait le logiciel. Le moteur C agit donc comme un **bureau de travail unique** : les données
+s'y accumulent. 
+
+Si un script Python automatise la lecture de 10 000 fichiers sans "nettoyer le bureau", la RAM du nœud de calcul va saturer en quelques minutes 
+(*OOM Kill*). Si une erreur survient, le script s'arrête, mais les données C restent bloquées indéfiniment dans la mémoire.
+
+### B. Mécanisme de sécurité : Implémentation du protocole with
+Pour garantir une libération stricte et inconditionnelle de la mémoire, la classe `DifmapSession` implémente le protocole Python de **Context Manager**
+(`__enter__` et `__exit__`).
+
+```python
+# Extrait difmap_wrapper/session.py
+class DifmapSession:
+    # ... [Initialisation] ...
+    
+    def __enter__(self):
+        """Ouvre la session au début du bloc 'with'."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Garantit le nettoyage de la mémoire vive (RAM) à la sortie du bloc,
+        MÊME si une exception ou un crash s'est produit à l'intérieur.
+        """
+        self.uv_loaded = False
+        # Appel natif pour libérer la mémoire C (ex: obs_end)
+        # difmap_native.cleanup() 
+```
+
+### C. Validation opérationnelle : Stabilité des traitements massifs sur cluster
+L'utilisateur est encouragé à encapsuler ses analyses dans un bloc `with`. Cette syntaxe agit comme un contrat d'assurance matériel :
+
+```python
+import glob
+from difmap_wrapper import DifmapSession
+
+fichiers_galaxies = glob.glob("donnees_uv/*.fits")
+
+for fichier in fichiers_galaxies:
+    with DifmapSession() as session:
+        session.load_observation(fichier)
+        img = session.create_image(size=1024, cellsize=0.1)
+        # Sauvegarde...
+        
+    # <-- À la sortie de l'indentation 'with', le nettoyage de la RAM C est forcé.
+```
+
+::: {.callout-note}
+### Bilan de Sécurité Matérielle
+Le code peut analyser des téraoctets de données  sans jamais causer de fuites de mémoire.
+:::
+
+## 3.3.3. Automate d'état et sécurisation de l'exécution native
+
+### A. Analyse des défaillances : Séquençage et risques de violation d'accès mémoire
+Le moteur C de Difmap est séquentiel. Si un utilisateur demande de générer une image alors qu'aucun fichier d'observation UV n'a été chargé en RAM, 
+le C tentera de lire un pointeur vide (`NULL`). Le résultat sera une **Segmentation Fault** qui détruit instantanément l'interpréteur Python.
+
+### B. La Solution : Contrôle d'état dans `DifmapSession`
+Pour garantir la stabilité, la classe `DifmapSession` agit comme une **Machine d'État** (*State Machine*). Elle bloque les requêtes illogiques avant même
+qu'elles n'atteignent le moteur Cython.
+
+```python
+# Extrait de difmap_wrapper/session.py
+def create_image(self, size=512, cellsize=1.0):
+    """Délègue la création de l'image au module spécialisé."""
+    # Barrière de sécurité : on vérifie l'état interne
+    if not self.uv_loaded:
+        raise DifmapStateError(
+            "Vous devez charger une observation (load_observation) avant de créer une image."
+        )
+    
+    self.current_image = DifmapImager.make_dirty_map(size, cellsize)
+    return self.current_image
+```
+* **Le Bénéfice :** Au lieu d'un crash système illisible, l'utilisateur reçoit une exception Python claire. Cette approche rend la bibliothèque robuste
+pour un usage interactif (ex: Jupyter Notebook).
+
+## 3.3.4. Conformité astrométrique et structure des données de sortie
+
+### A. Contrainte scientifique : Conflit de référentiel du "Demi-Pixel"
+Pour que les mesures scientifiques soient exactes, la coordonnée spatiale (0, 0) doit tomber exactement au bon endroit sur la grille de pixels. Or, 
+il existe un décalage entre l'ancien code et les outils modernes (Matplotlib).
+
+Les algorithmes FFT de Difmap exigent des images paires (ex: 256x256).
+1. **Logique Matplotlib :** Le centre d'une image paire se trouve exactement au milieu géométrique (entre deux pixels).
+2. **Logique Difmap :** Le moteur C place la phase mathématique exactement **sur** un pixel entier (à l'indice N/2).
+
+Si nous renvoyons les données brutes, Matplotlib va superposer son système avec un décalage de **0.5 pixel**. L'astronome lira une position fausse, 
+ruinant la précision astrométrique.
+
+Les algorithmes FFT de Difmap exigent des images paires (ex: 256x256). Prenons un exemple simplifié avec une image de **4 pixels** de large 
+(indices `0, 1, 2, 3`) :
+
+```text
+Indices des cases :     0         1         2         3
+                   +---------+---------+---------+---------+
+Grille de pixels   |         |         |  (0,0)  |         |
+                   +---------+---------+---------+---------+
+                                  ^         ^
+                                  |         |
+                       Centre Matplotlib      Centre Difmap
+                            (Index 1.5)        (Index 2.0)
+                                  |         |
+                                  +----v----+
+                                  Décalage de 
+                                 0.5 pixel !
+```
+
+### B. Correction spatiale : Calcul automatisé du paramètre de projection extent
+Plutôt que de modifier la matrice, `DifmapImager` calcule un `extent` (coordonnées des bords de l'image) en appliquant ce glissement d'un "demi-cran" :
+
+```python
+# 1. Calcul de la valeur physique du demi-pixel
+demi_pixel = 0.5 * cellsize
+
+# 2. Le calcul du "Décalage de 0.5"
+extent_corrige = [
+     (nx / 2.0) * cellsize + demi_pixel,   # Bord gauche (RA +)
+    -(nx / 2.0) * cellsize + demi_pixel,   # Bord droit (RA -)
+    -(ny / 2.0) * cellsize - demi_pixel,   # Bord bas (Dec -)
+     (ny / 2.0) * cellsize - demi_pixel    # Bord haut (Dec +)
+]
+```
+
+### C. Standardisation des sorties : Agrégation des résultats en dictionnaire structuré
+Une image nue est scientifiquement inexploitable. La méthode `DifmapImager.make_dirty_map` agit comme un agrégateur pour fournir un **Package Complet**
+en un seul appel, incluant la correction astrométrique.
+
+```python
+# Extrait de difmap_wrapper/imaging.py
+class DifmapImager:
+    @staticmethod
+    def make_dirty_map(size, cellsize, pol="I"):
+        # ... [Exécution FFT et calcul du demi-pixel] ...
+        
+        # 3. On renvoie le "Package Complet"
+        return {
+            "data": difmap_native.get_map(),       # La matrice Zéro-Copie (NumPy)
+            "header": difmap_native.get_header(),  # Métadonnées (Unité, Résolution)
+            "beam": difmap_native.get_beam(),      # La Dirty Beam
+            "extent": extent_corrige               # Coordonnées corrigées
+        }
+```
+
+### D. Validation ergonomique : Intégration directe dans l'écosystème de Data Science
+L'astronome peut désormais générer et afficher une carte du ciel scientifiquement exacte en un minimum de lignes :
+
+```python
+from difmap_wrapper import DifmapSession
+import matplotlib.pyplot as plt
+
+with DifmapSession() as session:
+    session.load_observation("cygnus_A.fits")
+    img = session.create_image(size=512, cellsize=0.1)
+
+# Affichage immédiat, l'astrométrie est garantie exacte
+plt.imshow(img["data"], extent=img["extent"], cmap="inferno")
+plt.title("Carte de Cygnus A")
+plt.show()
+```
+# Bilan du Chapitre 3
+
+L'implémentation technique de ce projet a consisté à construire un pont entre deux mondes. D'un côté, le **Moteur C (`difmap_src`)** fournit la fiabilité 
+scientifique d'un code validé depuis des décennies. Au centre, le **Binding (`binding`)** garantit des performances maximales via un accès direct à la 
+RAM (Zéro-Copie). Enfin, le **Wrapper (`difmap_wrapper`)** offre le confort, la sécurité d'état et la rigueur astrométrique exigés par les développeurs 
+et les chercheurs modernes.
+
+Comprendre le trajet d'une commande :
+Pour bien visualiser le fonctionnement, imaginez une cascade à trois niveaux :
+
+    1. Le Python (difmap_wrapper) donne un ordre simple (ex: "fais une image").
+    2. Le Binding (difmap_native) traduit cet ordre en langage machine.
+    3. Le Moteur C (difmap_src) exécute le calcul mathématique réel.
+
+En résumé : le Python parle au Binding, qui lui-même fait travailler le moteur Difmap.

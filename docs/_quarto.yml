@@ -1,0 +1,68 @@
+project:
+  type: website
+
+website:
+  title: "Documentation Difmap Python"
+  
+  sidebar:
+    style: "docked"
+    search: true
+    contents:
+      # --- TES CHAPITRES MANUELS ---
+      - text: "Accueil"
+        file: index.qmd
+      - text: "1. Contexte et Existant"
+        file: 01_contexte_et_existant.qmd
+      - text: "2. Nouvelle Architecture"
+        file: 02_nouvelle_architecture.qmd
+      - text: "3. Implémentation Technique"
+        file: 03_implementation_technique.qmd
+      
+      # --- TA DOC AUTOMATIQUE (Intégrée au même menu) ---
+      - section: "4. Référence API"
+        contents:
+          - text: "Vue d'ensemble"
+            file: reference/index.qmd
+          
+          # On ajoute directement les fichiers générés par quartodoc !
+          - section: "Session & Environnement"
+            contents:
+              - reference/session.DifmapSession.qmd
+              
+          - section: "Génération d'Images"
+            contents:
+              - reference/imaging.DifmapImager.qmd
+              
+          - section: "Gestion des Erreurs"
+            contents:
+              - reference/exceptions.DifmapError.qmd
+              - reference/exceptions.DifmapStateError.qmd
+
+format:
+  html:
+    theme: cosmo
+    css: styles.css
+    toc: true
+    code-copy: true
+
+# --- CONFIGURATION QUARTODOC ---
+# Cette partie dit à Quarto : "Va lire mon code et crée les pages pour le chapitre 4"
+quartodoc:
+  package: difmap_wrapper
+  dir: reference
+  sections:
+    - title: "DifmapSession - Gestion de l'Environnement"
+      desc: "Gestion de l'environnement et de la mémoire RAM."
+      contents:
+        - session.DifmapSession  # Juste le chemin Python, sans fioritures
+
+    - title: "DifmapImager - Imagerie"
+      desc: "Traitement des visibilités et création de cartes FITS."
+      contents:
+        - imaging.DifmapImager
+
+    - title: "Exceptions"
+      desc: "Sécurisation du moteur C."
+      contents:
+        - exceptions.DifmapError
+        - exceptions.DifmapStateError
