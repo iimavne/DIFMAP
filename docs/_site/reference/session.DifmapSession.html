@@ -264,6 +264,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </li>
       </ul>
   </li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../05_quick_start.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">5. Quick start</span></a>
+  </div>
+</li>
     </ul>
     </div>
 </nav>
@@ -353,17 +359,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="difmap_wrapper.session.DifmapSession.create_image" class="level3">
 <h3 class="anchored" data-anchor-id="difmap_wrapper.session.DifmapSession.create_image">create_image</h3>
-<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>session.DifmapSession.create_image(size<span class="op">=</span><span class="dv">512</span>, cellsize<span class="op">=</span><span class="fl">1.0</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>session.DifmapSession.create_image(size<span class="op">=</span><span class="dv">512</span>, cellsize<span class="op">=</span><span class="fl">1.0</span>, pol<span class="op">=</span><span class="st">'I'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Orchestre la création d’une carte brute (Dirty Map) à partir des visibilités.</p>
 <p>Cette fonction délègue le calcul mathématique lourd au module spécialisé <code>DifmapImager</code>. Elle nécessite qu’une observation ait été préalablement chargée.</p>
 <section id="parameters" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h4>
 <table class="table">
 <colgroup>
-<col style="width: 5%">
-<col style="width: 4%">
-<col style="width: 82%">
-<col style="width: 6%">
+<col style="width: 2%">
+<col style="width: 1%">
+<col style="width: 93%">
+<col style="width: 2%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -386,6 +392,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>La résolution d’un pixel en millisecondes d’arc (mas).</td>
 <td><code>1.0</code></td>
 </tr>
+<tr class="odd">
+<td>pol</td>
+<td>str</td>
+<td>La polarisation à imager. Accepte les paramètres de Stokes ou les corrélations brutes : <br> - “I” : Intensité totale (luminosité globale, valeur par défaut). <br> - “Q”, “U” : Polarisation linéaire (cartographie des champs magnétiques). <br> - “V” : Polarisation circulaire. <br> - “RR”, “LL” : Corrélations directes des antennes (circulaire droite/gauche). - “RL”, “LR” : Polarisations croisées.</td>
+<td><code>"I"</code></td>
+</tr>
 </tbody>
 </table>
 </section>
@@ -393,9 +405,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns">Returns</h4>
 <table class="table">
 <colgroup>
-<col style="width: 8%">
-<col style="width: 8%">
-<col style="width: 83%">
+<col style="width: 6%">
+<col style="width: 6%">
+<col style="width: 86%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -408,7 +420,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td>dict</td>
-<td>Le dictionnaire contenant les données de l’image générée (data, extent, etc.).</td>
+<td>Le dictionnaire (ou l’objet DifmapImage) contenant les données de l’image générée (data, extent, etc.).</td>
 </tr>
 </tbody>
 </table>
@@ -439,8 +451,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="examples-2" class="level4 doc-section doc-section-examples">
 <h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-2">Examples</h4>
-<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Création d'une grille HD</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>img <span class="op">=</span> session.create_image(size<span class="op">=</span><span class="dv">2048</span>, cellsize<span class="op">=</span><span class="fl">0.05</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Création d'une grille HD en intensité totale (Stokes I par défaut)</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>img_i <span class="op">=</span> session.create_image(size<span class="op">=</span><span class="dv">2048</span>, cellsize<span class="op">=</span><span class="fl">0.05</span>)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Création d'une image spécifique pour la polarisation circulaire droite (RR)</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>img_rr <span class="op">=</span> session.create_image(size<span class="op">=</span><span class="dv">512</span>, cellsize<span class="op">=</span><span class="fl">0.1</span>, pol<span class="op">=</span><span class="st">"RR"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
 </section>
 <section id="difmap_wrapper.session.DifmapSession.load_observation" class="level3">

@@ -15,6 +15,7 @@ via des Transformées de Fourier rapides (FFT).
 | Name | Description |
 | --- | --- |
 | [make_dirty_map](#difmap_wrapper.imaging.DifmapImager.make_dirty_map) | Calcule la Dirty Map (image brute) à partir des visibilités en RAM. |
+| [plot_image](#difmap_wrapper.imaging.DifmapImager.plot_image) | Génère et affiche une visualisation scientifique de l'image reconstruite. |
 
 ### make_dirty_map { #difmap_wrapper.imaging.DifmapImager.make_dirty_map }
 
@@ -63,4 +64,67 @@ import matplotlib.pyplot as plt
 plt.imshow(img["data"], extent=img["extent"], cmap="magma")
 plt.colorbar(label="Jy/beam")
 plt.show()
+```
+
+### plot_image { #difmap_wrapper.imaging.DifmapImager.plot_image }
+
+```python
+imaging.DifmapImager.plot_image(
+    img_dict,
+    cmap='magma',
+    figsize=(8, 6),
+    title='Imagerie Difmap',
+    **kwargs,
+)
+```
+
+Génère et affiche une visualisation scientifique de l'image reconstruite.
+
+Cette méthode statique extrait les données matricielles et les limites 
+spatiales du dictionnaire généré par le moteur Difmap pour produire une 
+figure Matplotlib formatée pour la radioastronomie (axes en décalage 
+angulaire, échelle de flux).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type   | Description                                                                                                                                                                                  | Default             |
+|----------|--------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------|
+| img_dict | dict   | Le dictionnaire de l'image produit par l'API Difmap. Il doit  impérativement contenir les clés 'data' (la matrice bidimensionnelle  des flux) et 'extent' (les limites spatiales corrigées). | _required_          |
+| cmap     | str    | La palette de couleurs Matplotlib à utiliser pour le rendu.  Par défaut défini sur 'magma'.                                                                                                  | `'magma'`           |
+| figsize  | tuple  | Les dimensions de la figure générée (largeur, hauteur) en pouces.  Par défaut défini sur (8, 6).                                                                                             | `(8, 6)`            |
+| title    | str    | Le titre principal affiché au-dessus de la figure.  Par défaut défini sur "Imagerie Difmap".                                                                                                 | `'Imagerie Difmap'` |
+| **kwargs | dict   | Arguments supplémentaires transmis directement à la fonction  `matplotlib.pyplot.imshow` (par exemple `vmin`, `vmax`, `interpolation`).                                                      | `{}`                |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type   | Description                                                                                                                   |
+|--------|--------|-------------------------------------------------------------------------------------------------------------------------------|
+|        | None   | Cette fonction ne retourne aucune valeur. Elle déclenche l'affichage  interactif de la figure via `matplotlib.pyplot.show()`. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type     | Description                                                                        |
+|--------|----------|------------------------------------------------------------------------------------|
+|        | KeyError | Si le dictionnaire fourni ne contient pas les clés requises  ('data' ou 'extent'). |
+
+#### Examples {.doc-section .doc-section-examples}
+
+Génération et affichage rapide d'une image avec des paramètres personnalisés :
+
+```python
+>>> from difmap_wrapper import DifmapSession
+>>> from difmap_wrapper.imaging import DifmapImager
+>>> 
+>>> with DifmapSession() as session:
+...     session.load_observation("data_uv.fits")
+...     img_package = session.create_image(size=512, cellsize=0.1)
+...     
+...     # Affichage avec une palette différente et des limites de flux
+...     DifmapImager.plot_image(
+...         img_package, 
+...         title="Observation Radio", 
+...         cmap="viridis", 
+...         vmin=-0.01, 
+...         vmax=0.5
+...     )
 ```

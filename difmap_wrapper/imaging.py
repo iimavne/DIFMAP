@@ -1,5 +1,6 @@
 # difmap_wrapper/imaging.py
 import difmap_native
+import matplotlib.pyplot as plt
 # Ajout de DifmapError dans l'import car tu l'utilises en bas !
 from .exceptions import DifmapStateError, DifmapError 
 
@@ -32,13 +33,17 @@ class DifmapImager:
         cellsize : float
             Résolution spatiale d'un pixel en millisecondes d'arc (mas).
         pol : str, default="I"
-            La polarisation à imager ("I", "Q", "U", "V"). 
-            Par défaut défini sur "I" (intensité totale).
+            La polarisation à imager. Accepte les paramètres de Stokes ou les corrélations brutes : <br>
+            - "I" : Intensité totale (luminosité globale, valeur par défaut). <br>
+            - "Q", "U" : Polarisation linéaire (cartographie des champs magnétiques). <br>
+            - "V" : Polarisation circulaire. <BR>
+            - "RR", "LL" : Corrélations directes des antennes (circulaire droite/gauche). <br>
+            - "RL", "LR" : Polarisations croisées. <br>
 
         Returns
         -------
         dict
-            Le "Package Complet" de l'image contenant :
+            Le "Package Complet" de l'image contenant : 
             - **data** (*numpy.ndarray*): La matrice 2D des flux (Jy/beam).
             - **header** (*dict*): Les métadonnées du header FITS (NX, NY, etc.).
             - **beam** (*dict*): Les paramètres de la PSF (bmaj, bmin, bpa).
@@ -91,3 +96,78 @@ class DifmapImager:
             "beam": difmap_native.get_beam(),
             "extent": extent_corrige
         }
+        
+    @staticmethod
+    def plot_image(img_dict: dict, cmap: str = 'magma', figsize: tuple = (8, 6), title: str = "Imagerie Difmap", **kwargs) -> None:
+        """
+        Génère et affiche une visualisation scientifique de l'image reconstruite.
+
+        Cette méthode statique extrait les données matricielles et les limites 
+        spatiales du dictionnaire généré par le moteur Difmap pour produire une 
+        figure Matplotlib formatée pour la radioastronomie (axes en décalage 
+        angulaire, échelle de flux).
+
+        Parameters
+        ----------
+        img_dict : dict
+            Le dictionnaire de l'image produit par l'API Difmap. Il doit 
+            impérativement contenir les clés 'data' (la matrice bidimensionnelle 
+            des flux) et 'extent' (les limites spatiales corrigées). <br>
+        cmap : str, optional
+            La palette de couleurs Matplotlib à utiliser pour le rendu. 
+            Par défaut défini sur 'magma'. <br>
+        figsize : tuple, optional
+            Les dimensions de la figure générée (largeur, hauteur) en pouces. 
+            Par défaut défini sur (8, 6). <br>
+        title : str, optional
+            Le titre principal affiché au-dessus de la figure. 
+            Par défaut défini sur "Imagerie Difmap". <br>
+        **kwargs : dict, optional
+            Arguments supplémentaires transmis directement à la fonction 
+            `matplotlib.pyplot.imshow` (par exemple `vmin`, `vmax`, `interpolation`).
+
+        Returns
+        -------
+        None
+            Cette fonction ne retourne aucune valeur. Elle déclenche l'affichage 
+            interactif de la figure via `matplotlib.pyplot.show()`.
+
+        Raises
+        ------
+        KeyError
+            Si le dictionnaire fourni ne contient pas les clés requises 
+            ('data' ou 'extent').
+
+        Examples
+        --------
+        Génération et affichage rapide d'une image avec des paramètres personnalisés :
+
+        >>> from difmap_wrapper import DifmapSession
+        >>> from difmap_wrapper.imaging import DifmapImager
+        >>> 
+        >>> with DifmapSession() as session:
+        ...     session.load_observation("data_uv.fits")
+        ...     img_package = session.create_image(size=512, cellsize=0.1)
+        ...     
+        ...     # Affichage avec une palette différente et des limites de flux
+        ...     DifmapImager.plot_image(
+        ...         img_package, 
+        ...         title="Observation Radio", 
+        ...         cmap="viridis", 
+        ...         vmin=-0.01, 
+        ...         vmax=0.5
+        ...     )
+        """
+        plt.figure(figsize=figsize)
+        
+        # Injection des données et des arguments flexibles (**kwargs)
+        plt.imshow(img_dict['data'], extent=img_dict['extent'], origin='lower', cmap=cmap, **kwargs)
+        
+        # Configuration des éléments d'habillage scientifique
+        plt.colorbar(label='Densité de flux (Jy/beam)')
+        plt.title(title)
+        plt.xlabel("Décalage RA (mas)")
+        plt.ylabel("Décalage Dec (mas)")
+        
+        # Affichage de la fenêtre
+        plt.show()
