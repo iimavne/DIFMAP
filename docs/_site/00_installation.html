@@ -57,22 +57,22 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 
 
-<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
-<script src="../site_libs/quarto-nav/headroom.min.js"></script>
-<script src="../site_libs/clipboard/clipboard.min.js"></script>
-<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
-<script src="../site_libs/quarto-search/fuse.min.js"></script>
-<script src="../site_libs/quarto-search/quarto-search.js"></script>
-<meta name="quarto:offset" content="../">
-<script src="../site_libs/quarto-html/quarto.js"></script>
-<script src="../site_libs/quarto-html/popper.min.js"></script>
-<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
-<script src="../site_libs/quarto-html/anchor.min.js"></script>
-<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
-<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
-<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -101,8 +101,37 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   }
 }</script>
 
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
 
-<link rel="stylesheet" href="../styles.css">
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+<link rel="stylesheet" href="styles.css">
 </head>
 
 <body class="nav-sidebar floating nav-fixed">
@@ -112,7 +141,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
-    <a class="navbar-brand" href="../index.html">
+    <a class="navbar-brand" href="./index.html">
     <span class="navbar-title">Difmap Python</span>
     </a>
   </div>
@@ -140,7 +169,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.qmd">4. Référence API</a></li><li class="breadcrumb-item"><a href="../reference/exceptions.DifmapError.html">Gestion des Erreurs</a></li><li class="breadcrumb-item"><a href="../reference/exceptions.DifmapError.html">exceptions.DifmapError</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./00_installation.html">Installation</a></li></ol></nav>
         <a class="flex-grow-1" role="button" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="" onclick="window.quartoOpenSearch();">
@@ -162,25 +191,31 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <ul class="list-unstyled mt-1">
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../index.html" class="sidebar-item-text sidebar-link">
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Accueil</span></a>
   </div>
 </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../01_contexte_et_existant.html" class="sidebar-item-text sidebar-link">
+  <a href="./00_installation.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Installation</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./01_contexte_et_existant.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">1. Contexte et Existant</span></a>
   </div>
 </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../02_nouvelle_architecture.html" class="sidebar-item-text sidebar-link">
+  <a href="./02_nouvelle_architecture.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">2. Nouvelle Architecture</span></a>
   </div>
 </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../03_implementation_technique.html" class="sidebar-item-text sidebar-link">
+  <a href="./03_implementation_technique.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">3. Implémentation Technique</span></a>
   </div>
 </li>
@@ -195,7 +230,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/index.qmd" class="sidebar-item-text sidebar-link">
+  <a href="./reference/index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Vue d’ensemble</span></a>
   </div>
 </li>
@@ -210,7 +245,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth2 ">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/session.DifmapSession.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/session.DifmapSession.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">session.DifmapSession</span></a>
   </div>
 </li>
@@ -227,7 +262,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth2 ">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/imaging.DifmapImager.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/imaging.DifmapImager.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">imaging.DifmapImager</span></a>
   </div>
 </li>
@@ -235,22 +270,22 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </li>
           <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="true">
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="false">
  <span class="menu-text">Gestion des Erreurs</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="true" aria-label="Toggle section">
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="false" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
-      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth2 show">  
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth2 ">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/exceptions.DifmapError.html" class="sidebar-item-text sidebar-link active">
+  <a href="./reference/exceptions.DifmapError.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">exceptions.DifmapError</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/exceptions.DifmapStateError.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/exceptions.DifmapStateError.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">exceptions.DifmapStateError</span></a>
   </div>
 </li>
@@ -258,6 +293,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </li>
       </ul>
   </li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./05_quick_start.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">5. Quick start</span></a>
+  </div>
+</li>
     </ul>
     </div>
 </nav>
@@ -268,7 +309,20 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#difmap_wrapper.exceptions.DifmapError" id="toc-difmap_wrapper.exceptions.DifmapError" class="nav-link active" data-scroll-target="#difmap_wrapper.exceptions.DifmapError">exceptions.DifmapError</a></li>
+  <li><a href="#installation-et-configuration" id="toc-installation-et-configuration" class="nav-link active" data-scroll-target="#installation-et-configuration">Installation et Configuration</a>
+  <ul class="collapse">
+  <li><a href="#prérequis-système-linux" id="toc-prérequis-système-linux" class="nav-link" data-scroll-target="#prérequis-système-linux">1. Prérequis système (Linux)</a>
+  <ul class="collapse">
+  <li><a href="#dépendances-python" id="toc-dépendances-python" class="nav-link" data-scroll-target="#dépendances-python">Dépendances Python</a></li>
+  </ul></li>
+  <li><a href="#installation-pour-les-utilisateurs" id="toc-installation-pour-les-utilisateurs" class="nav-link" data-scroll-target="#installation-pour-les-utilisateurs">2. Installation pour les utilisateurs</a></li>
+  <li><a href="#installation-pour-les-développeurs" id="toc-installation-pour-les-développeurs" class="nav-link" data-scroll-target="#installation-pour-les-développeurs">3. Installation pour les développeurs</a>
+  <ul class="collapse">
+  <li><a href="#mode-éditable" id="toc-mode-éditable" class="nav-link" data-scroll-target="#mode-éditable">Mode éditable</a></li>
+  <li><a href="#compilation-manuelle-du-moteur-c" id="toc-compilation-manuelle-du-moteur-c" class="nav-link" data-scroll-target="#compilation-manuelle-du-moteur-c">Compilation manuelle du moteur C</a></li>
+  </ul></li>
+  <li><a href="#test-rapide-de-validation" id="toc-test-rapide-de-validation" class="nav-link" data-scroll-target="#test-rapide-de-validation">4. Test rapide de validation</a></li>
+  </ul></li>
   </ul>
 </nav>
     </div>
@@ -278,13 +332,78 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 
 
-<section id="difmap_wrapper.exceptions.DifmapError" class="level1">
-<h1>exceptions.DifmapError</h1>
-<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>exceptions.DifmapError()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Exception de base pour toutes les erreurs liées au moteur C de Difmap.</p>
-<p>Cette exception est levée lorsque le code natif (C/Cython) rencontre un problème interne qu’il ne peut pas résoudre (ex: échec d’allocation mémoire, erreur mathématique dans la FFT, fichier FITS introuvable). C’est la classe parente de toutes les exceptions spécifiques du paquet.</p>
+<section id="installation-et-configuration" class="level1">
+<h1>Installation et Configuration</h1>
+<p>Ce guide détaille les étapes nécessaires pour compiler le moteur natif et installer l’interface Python de Difmap. Le projet utilise <strong>Meson</strong> comme système de construction pour garantir des performances optimales et une compilation robuste des composants C et Fortran.</p>
+<section id="prérequis-système-linux" class="level2">
+<h2 class="anchored" data-anchor-id="prérequis-système-linux">1. Prérequis système (Linux)</h2>
+<p>Avant de commencer, vous devez installer les compilateurs et les bibliothèques de développement dont dépend le moteur C de Difmap.</p>
+<p><strong>Copiez et exécutez ce bloc dans votre terminal :</strong></p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Mise à jour et installation des dépendances système</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apt-get update <span class="kw">&amp;&amp;</span> <span class="fu">sudo</span> apt-get install <span class="at">-y</span> <span class="dt">\</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  gcc gfortran pkg-config libgsl-dev pgplot5 libx11-dev <span class="dt">\</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  libncurses-dev libtecla-dev meson ninja-build</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Cette commande installe notamment <code>libx11-dev</code> pour la gestion graphique et <code>libtecla-dev</code> pour la gestion de la ligne de commande native.</p>
+</div>
+</div>
+<section id="dépendances-python" class="level3">
+<h3 class="anchored" data-anchor-id="dépendances-python">Dépendances Python</h3>
+<p>Bien que <code>pip</code> gère ces dépendances lors de l’installation du paquet, vous pouvez les installer manuellement au préalable pour préparer votre environnement de développement :</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Installation manuelle des bibliothèques Python requises</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">"numpy&gt;=2.0.0"</span> <span class="st">"cython&gt;=3.0.0"</span> astropy</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<ul>
+<li><strong>NumPy</strong> (<span class="math inline">\(\ge\)</span> 2.0.0) : Indispensable pour la manipulation des matrices d’images et le partage de mémoire avec le moteur C.</li>
+<li><strong>Cython</strong> (<span class="math inline">\(\ge\)</span> 3.0.0) : Nécessaire pour transformer le code de liaison (<code>.pyx</code>) en code C.</li>
+<li><strong>Astropy</strong> : Utilisé pour la gestion des formats de fichiers astronomiques et des systèmes de coordonnées.</li>
+</ul>
+<div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Dépendances Python</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">"numpy&gt;=2.0.0"</span> <span class="st">"cython&gt;=3.0.0"</span> astropy</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+</section>
+<section id="installation-pour-les-utilisateurs" class="level2">
+<h2 class="anchored" data-anchor-id="installation-pour-les-utilisateurs">2. Installation pour les utilisateurs</h2>
+<p>Cette méthode est recommandée pour ceux qui souhaitent uniquement utiliser Difmap dans leurs scripts Python.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Récupération du projet</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/iimavne/DIFMAP.git</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> difmap_smartedit</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Installation automatique (compilation incluse)</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install .</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><em>Le backend <code>meson-python</code> se chargera de compiler les extensions natives <code>difmap_native</code> pendant l’installation.</em></p>
+</section>
+<section id="installation-pour-les-développeurs" class="level2">
+<h2 class="anchored" data-anchor-id="installation-pour-les-développeurs">3. Installation pour les développeurs</h2>
+<p>Si vous prévoyez de modifier le code C ou les fichiers Cython (<code>.pyx</code>), utilisez ces commandes :</p>
+<section id="mode-éditable" class="level3">
+<h3 class="anchored" data-anchor-id="mode-éditable">Mode éditable</h3>
+<p>Pour que vos modifications dans le code Python soient prises en compte sans réinstaller le paquet :</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> .</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="compilation-manuelle-du-moteur-c" class="level3">
+<h3 class="anchored" data-anchor-id="compilation-manuelle-du-moteur-c">Compilation manuelle du moteur C</h3>
+<p>Si vous avez besoin de compiler l’exécutable interactif classique <code>difmap</code> ou de déboguer le moteur, utilisez le script fourni :</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Lance la configuration Meson et la compilation Ninja</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> setup.sh</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>L’exécutable se trouvera alors dans le dossier <code>builddir/</code>.</p>
+</section>
+</section>
+<section id="test-rapide-de-validation" class="level2">
+<h2 class="anchored" data-anchor-id="test-rapide-de-validation">4. Test rapide de validation</h2>
+<p>Vérifiez que tout est bien configuré en lançant cette commande dans votre terminal :</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> <span class="at">-c</span> <span class="st">"from difmap_wrapper import DifmapSession; s = DifmapSession(); print('Difmap est prêt !')"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
 
+</section>
 </section>
 
 </main> <!-- /main -->

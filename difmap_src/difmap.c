@@ -7781,38 +7781,70 @@ static Template(fix_weights_fn)
    ========================================================================== */
 #include "difmap_api.h"
 
-int get_native_no_error() { return no_error; }
+/* * -----------------------------------------------------------------------------
+ * SECTION 1 : GETTERS D'ÉTAT ET DE MÉTADONNÉES
+ * Ces fonctions permettent à Python (via Cython) de lire les variables globales
+ * cachées (static) de Difmap de manière 100% sécurisée.
+ * -----------------------------------------------------------------------------
+ */
 
-int get_native_map_nx() { return (vlbmap != NULL) ? vlbmap->nx : -1; }
+/* Retourne le code d'erreur global actuel du moteur C */
+int get_native_no_error() { 
+    return no_error; 
+}
 
-/* AJOUT : Il manquait la dimension Y ! */
-int get_native_map_ny() { return (vlbmap != NULL) ? vlbmap->ny : -1; }
+/* * Récupère la largeur (X) et la hauteur (Y) de l'image en pixels.
+ * SÉCURITÉ : L'opérateur ternaire (vlbmap != NULL) empêche un Segfault 
+ * si Python demande la taille avant d'avoir créé la carte.
+ */
+int get_native_map_nx() { 
+    return (vlbmap != NULL) ? vlbmap->nx : -1; 
+}
 
-char* get_native_source_name() { return (vlbob != NULL) ? vlbob->source.name : "Aucune"; }
+int get_native_map_ny() { 
+    return (vlbmap != NULL) ? vlbmap->ny : -1; 
+}
 
+/* Récupère le nom de la source astronomique observée (ex: "Cygnus A") */
+char* get_native_source_name() { 
+    return (vlbob != NULL) ? vlbob->source.name : "Aucune"; 
+}
+
+
+/* * -----------------------------------------------------------------------------
+ * SECTION 2 : INITIALISATION ET ALLOCATION MÉMOIRE
+ * Ces fonctions demandent au moteur C d'allouer de la RAM ou de charger des fichiers.
+ * -----------------------------------------------------------------------------
+ */
+
+/* * Charge un fichier d'observation UV (FITS).
+ * Ferme proprement l'observation précédente (obs_end) pour éviter les fuites mémoire.
+ */
 int native_observe(char *name) {
-    obs_end(); 
+    obs_end(); /* Nettoyage de la RAmM avant de charger un nouveau fichier */
+    
+    /* Allocation de l'objet d'observation principal (vlbob) */
     vlbob = new_Observation(name, 0.0, 0, 1, NULL, NO_POL, fix_visibility_weights);
     if(vlbob == NULL) return -1;
+    
     vlbspec = new_Specattr(vlbob);
     return 0;
 }
-float* get_native_map_data() {
-    if(vlbmap == NULL || vlbmap->map == NULL) {
-        return NULL;
-    }
-    return vlbmap->map;
-}
 
-/* Prépare la mémoire pour l'image (grille nx par nx) */
+/* * Prépare la mémoire RAM pour l'image (crée une grille nx par nx).
+ * Le moteur Difmap demande des Radians, mais l'utilisateur Python donne des mas.
+ */
 int native_mapsize(int nx, float cellsize) {
-    if (vlbob == NULL) return -1;
+    if (vlbob == NULL) return -1; /* Sécurité : aucune donnée chargée */
     
-    float xinc = xytorad(cellsize); /* Convertit en radians */
+    /* Conversion physique : Difmap calcule en radians en interne */
+    float xinc = xytorad(cellsize); 
+    
+    /* Demande au moteur C d'allouer la mémoire (malloc) pour la grille */
     vlbmap = new_MapBeam(vlbmap, nx, xinc, nx, xinc);
     if (vlbmap == NULL) return -1;
     
-    /* Met à jour les variables internes de DIFMAP */
+    /* Met à jour les variables globales internes de DIFMAP pour synchroniser l'état */
     VOIDPTR(&mb_beam) = vlbmap->beam;
     VOIDPTR(&mb_map)  = vlbmap->map;
     mb_beam.adim[0] = nx; mb_beam.adim[1] = nx;
@@ -7822,33 +7854,43 @@ int native_mapsize(int nx, float cellsize) {
     return 0;
 }
 
-/* Calcule la Transformée de Fourier (Invert) - Version Pure et Solide */
+
+/* * -----------------------------------------------------------------------------
+ * SECTION 3 : LE MOTEUR MATHÉMATIQUE (FFT)
+ * -----------------------------------------------------------------------------
+ */
+
+/* * Calcule la Transformée de Fourier (Invert).
+ * Transforme les données UV en matrice de pixels (vlbmap->map).
+ */
 int native_invert(void) {
-    if(vlbmap == NULL || vlbob == NULL) return -1;
+    if(vlbmap == NULL || vlbob == NULL) return -1; /* Sécurité absolue */
     
-    /* 1. Transformée de Fourier avec les paramètres par défaut de Difmap 
-          (Uniform Weighting, binwid=2.0) */
+    /* * Appel de l'algorithme historique de Difmap (uvinvert).
+     * Les paramètres sont gérés en C pour masquer la complexité à Python.
+     */
     if(uvinvert(vlbob, vlbmap, invpar.uvmin, invpar.uvmax, invpar.gauval,
                 invpar.gaurad, invpar.dorad, invpar.errpow, 2.0f)) {
         return -1;
     }
     
-    /* 2. Sauvegarde des dimensions du Faisceau... */
+    /* Sauvegarde des dimensions du Faisceau Synthétisé (Dirty Beam) après la FFT */
     respar.e_bmin = vlbmap->e_bmin;
     respar.e_bmaj = vlbmap->e_bmaj;
     respar.e_bpa  = vlbmap->e_bpa * rtod;
     
     return 0;
 }
-/* Sélectionner la polarisation (ex: "I", "RR", "LL") */
+
+/* Sélectionne la polarisation à imager (ex: "I" pour totale, "RR" pour circulaire droite) */
 int native_select(char *polarization) {
     if (vlbob == NULL) return -1;
     
-    /* On convertit la chaîne (ex: "RR") en code interne DIFMAP */
+    /* Conversion de la chaîne de caractères (Python) en Enumération C (Difmap) */
     Stokes stokes = Stokes_id(polarization);
     if (stokes == NO_POL) return -1;
     
-    /* On applique la sélection au moteur */
+    /* Application du filtre sur les données en mémoire */
     if (ob_select(vlbob, !multi_model_mode, NULL, stokes)) {
         return -1;
     }
@@ -7856,6 +7898,23 @@ int native_select(char *polarization) {
     return 0;
 }
 
+
+/* * -----------------------------------------------------------------------------
+ * SECTION 4 : EXPORTATION DES POINTEURS (ZÉRO-COPIE)
+ * Ces fonctions renvoient l'adresse mémoire brute pour Cython.
+ * -----------------------------------------------------------------------------
+ */
+
+/* Renvoie le pointeur de la Dirty Map (l'image de la galaxie calculée par la FFT) */
+float* get_native_map_data() {
+    /* Si la carte n'a pas encore été calculée par invert(), on bloque l'accès */
+    if(vlbmap == NULL || vlbmap->map == NULL) {
+        return NULL;
+    }
+    return vlbmap->map; /* Cython lira directement à cette adresse */
+}
+
+/* Renvoie le pointeur du Dirty Beam (la réponse impulsionnelle du télescope) */
 float* get_native_beam_data() {
     if(vlbmap == NULL || vlbmap->beam == NULL) {
         return NULL;
@@ -7863,22 +7922,33 @@ float* get_native_beam_data() {
     return vlbmap->beam;
 }
 
-/* Facteur de conversion Radians -> mas (206264806.247) */
+
+/* * -----------------------------------------------------------------------------
+ * SECTION 5 : TRADUCTION DES UNITÉS PHYSIQUES
+ * Difmap stocke les tailles en Radians. Python veut des Milliarcsecondes (mas).
+ * -----------------------------------------------------------------------------
+ */
+
+/* Facteur de conversion : 1 Radian = 206264806.247 milliarcsecondes */
 #define RTOMAS 206264806.247
 
+/* Récupère le grand axe du faisceau (Beam Major Axis) en mas */
 double get_native_bmaj() { 
     return (vlbmap) ? vlbmap->bmaj * RTOMAS : 0.0; 
 }
 
+/* Récupère le petit axe du faisceau (Beam Minor Axis) en mas */
 double get_native_bmin() { 
     return (vlbmap) ? vlbmap->bmin * RTOMAS : 0.0; 
 }
 
+/* Récupère l'angle de position du faisceau (Beam Position Angle) en degrés */
 double get_native_bpa() { 
     return (vlbmap) ? vlbmap->bpa : 0.0; 
 }
 
+/* Récupère la taille physique exacte d'un pixel en mas */
 double get_native_pixsize() { 
-    /* Dans Difmap, la taille du pixel est stockée dans 'xinc' */
+    /* Dans Difmap, la taille du pixel est stockée dans la variable 'xinc' */
     return (vlbmap) ? vlbmap->xinc * RTOMAS : 0.0; 
 }

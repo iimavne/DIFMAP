@@ -1,0 +1,68 @@
+# Premier pas avec l'API
+
+Ce guide présente le flux de travail standard pour charger des données d'observation et générer une première image scientifique. L'API est 
+conçue autour du concept de **Session**, qui centralise la communication avec le moteur C et garantit une gestion rigoureuse de la mémoire vive.
+
+## Le flux de travail standard
+
+L'utilisation recommandée repose sur le gestionnaire de contexte Python (`with`). Cette structure assure que les ressources allouées dans le
+ moteur natif sont libérées dès la fin du bloc, même en cas d'erreur dans le script.
+
+### Exemple complet : Génération d'une Dirty Map
+
+Le script suivant illustre le chargement d'un fichier FITS de visibilités (UV) et la création d'une image brute.
+
+```python
+import matplotlib.pyplot as plt
+from difmap_wrapper import DifmapSession
+
+# 1. Initialisation de la session sécurisée
+with DifmapSession() as session:
+    
+    # 2. Chargement des données UV
+    # Cette étape réinitialise l'automate d'état du moteur C
+    session.load_observation("observation.fits")
+    
+    # 3. Génération de l'image (Dirty Map)
+    # On spécifie la taille de la grille et la résolution (cellsize) en mas
+    img_package = session.create_image(size=512, cellsize=0.1)
+    
+    # 4. Extraction des données
+    data = img_package['data']      # Matrice NumPy des flux
+    extent = img_package['extent']  # Coordonnées corrigées du décalage
+    
+    # 5. Visualisation scientifique
+    plt.figure(figsize=(8, 6))
+    plt.imshow(data, extent=extent, origin='lower', cmap='magma')
+    plt.colorbar(label='Flux (Jy/beam)')
+    plt.title("Dirty Map générée via Difmap Python")
+    plt.xlabel("Décalage RA (mas)")
+    plt.ylabel("Décalage Dec (mas)")
+    plt.show()
+```
+
+## Comprendre les données retournées
+
+La méthode `create_image` ne retourne pas seulement une matrice, mais un dictionnaire complet (le "Package Image") contenant toutes les informations nécessaires à l'analyse :
+
+| Clé | Type | Description |
+|---|---|---|
+| `data` | `numpy.ndarray` | La matrice 2D contenant les valeurs de flux. |
+| `extent` | `list` | Les limites spatiales `[x_max, x_min, y_min, y_max]` incluant la correction automatique du demi-pixel. |
+| `beam` | `dict` | Les paramètres de la fonction d'étalement du point (PSF) : bmaj, bmin et bpa. |
+| `header` | `dict` | L'ensemble des métadonnées issues du moteur Difmap (NX, NY, etc.). |
+
+## Gestion des erreurs courantes
+
+L'API protège le moteur C contre les appels illogiques. Par exemple, tenter de créer une image sans avoir chargé de données lèvera une exception spécifique :
+
+```python
+from difmap_wrapper.exceptions import DifmapStateError
+
+with DifmapSession() as session:
+    try:
+        session.create_image()
+    except DifmapStateError as e:
+        print(f"Action bloquée : {e}")
+```
+

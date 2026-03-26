@@ -10,18 +10,19 @@ Le moteur Difmap fonctionne comme un automate d'état strict. Cette
 erreur est levée par la surcouche Python pour prévenir les crashs 
 violents (segfaults) du moteur C en bloquant les appels illogiques.
 
-Examples:
-    Typiquement levée si vous essayez de générer une image sans avoir 
-    chargé de données UV au préalable :
+## Examples {.doc-section .doc-section-examples}
 
-    ```python
-    from difmap_wrapper import DifmapSession
-    from difmap_wrapper.exceptions import DifmapStateError
-    
-    with DifmapSession() as session:
-        try:
-            # Oups, on a oublié session.load_observation() !
-            session.create_image()
-        except DifmapStateError as e:
-            print(f"Erreur d'état bloquée proprement : {e}")
-    ```
+Typiquement levée si vous essayez de générer une image sans avoir 
+chargé de données UV au préalable :
+
+```python
+from difmap_wrapper import DifmapSession
+from difmap_wrapper.exceptions import DifmapStateError
+
+with DifmapSession() as session:
+    try:
+        # Oups, on a oublié session.load_observation() !
+        session.create_image()
+    except DifmapStateError as e:
+        print(f"Erreur d'état bloquée proprement : {e}")
+```

@@ -25,7 +25,7 @@ meson compile -C builddir
 echo "==================================================="
 echo "Compilation terminée avec succès !"
 echo "Vous pouvez lancer l'exécutable avec la commande :"
-echo "   ./builddir/difmap"
+echo "   difmap"
 echo ""
 echo "Pour installer Difmap globalement sur le système, tapez :"
 echo "   sudo meson install -C builddir"

@@ -63,7 +63,7 @@ py.extension_module(
 
 ### C. Pourquoi différencier les deux ?
   Pour un ingénieur, cette distinction est une question d'**encapsulation**:
-*   **`cdifmap`** est la "tuyauterie" interne : elle manipule des pointeurs, des types `char*` et de la mémoire brute.
+   **`cdifmap`** est la "tuyauterie" interne : elle manipule des pointeurs, des types `char*` et de la mémoire brute.
 *   **`difmap_native`** est la "façade" : elle reçoit des objets Python (comme des chaînes de caractères ou des listes) et les transforme pour la tuyauterie.
 
 :::
@@ -541,8 +541,8 @@ pour un usage interactif (ex: Jupyter Notebook).
 Pour que les mesures scientifiques soient exactes, la coordonnée spatiale (0, 0) doit tomber exactement au bon endroit sur la grille de pixels. Or, 
 il existe un décalage entre l'ancien code et les outils modernes (Matplotlib).
 
-Les algorithmes FFT de Difmap exigent des images paires (ex: 256x256).
-1. **Logique Matplotlib :** Le centre d'une image paire se trouve exactement au milieu géométrique (entre deux pixels).
+Les algorithmes FFT de Difmap exigent des images paires (ex: 256x256).<br>
+1. **Logique Matplotlib :** Le centre d'une image paire se trouve exactement au milieu géométrique (entre deux pixels). <br>
 2. **Logique Difmap :** Le moteur C place la phase mathématique exactement **sur** un pixel entier (à l'indice N/2).
 
 Si nous renvoyons les données brutes, Matplotlib va superposer son système avec un décalage de **0.5 pixel**. L'astronome lira une position fausse, 

@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Documentation Difmap Python - Chapitre 3 : Implémentation Technique</title>
+<title>Difmap Python - Chapitre 3 : Implémentation Technique</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -74,11 +74,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
-  "location": "sidebar",
+  "location": "navbar",
   "copy-button": false,
   "collapse-after": 3,
-  "panel-placement": "start",
-  "type": "textbox",
+  "panel-placement": "end",
+  "type": "overlay",
   "limit": 50,
   "keyboard-shortcut": [
     "f",
@@ -137,10 +137,36 @@ window.Quarto = {
 <link rel="stylesheet" href="styles.css">
 </head>
 
-<body class="nav-sidebar docked">
+<body class="nav-sidebar floating nav-fixed">
 
 <div id="quarto-search-results"></div>
   <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">Difmap Python</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/ton-repo/difmap_wrapper"> <i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+  <li class="dropdown-header">
+ <span class="menu-text">theme-toggle</span></li>
+</ul>
+          </div> <!-- /navcollapse -->
+          <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
   <nav class="quarto-secondary-nav">
     <div class="container-fluid d-flex">
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
@@ -156,14 +182,9 @@ window.Quarto = {
   </nav>
 </header>
 <!-- content -->
-<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article">
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
-  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation docked overflow-auto">
-    <div class="pt-lg-2 mt-2 text-left sidebar-header">
-    <div class="sidebar-title mb-0 py-0">
-      <a href="./">Documentation Difmap Python</a> 
-    </div>
-      </div>
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
         <div class="mt-2 flex-shrink-0 align-items-center">
         <div class="sidebar-search">
         <div id="quarto-search" class="" title="Search"></div>
@@ -175,6 +196,12 @@ window.Quarto = {
   <div class="sidebar-item-container"> 
   <a href="./index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Accueil</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./00_installation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Installation</span></a>
   </div>
 </li>
         <li class="sidebar-item">
@@ -418,7 +445,7 @@ C’est un <strong>alias interne</strong> que nous créons dans Cython pour dés
 </section>
 <section id="c.-pourquoi-différencier-les-deux" class="level3">
 <h3 class="anchored" data-anchor-id="c.-pourquoi-différencier-les-deux">C. Pourquoi différencier les deux ?</h3>
-<p>Pour un ingénieur, cette distinction est une question d’<strong>encapsulation</strong>: * <strong><code>cdifmap</code></strong> est la “tuyauterie” interne : elle manipule des pointeurs, des types <code>char*</code> et de la mémoire brute. * <strong><code>difmap_native</code></strong> est la “façade” : elle reçoit des objets Python (comme des chaînes de caractères ou des listes) et les transforme pour la tuyauterie.</p>
+<p>Pour un ingénieur, cette distinction est une question d’<strong>encapsulation</strong>: <strong><code>cdifmap</code></strong> est la “tuyauterie” interne : elle manipule des pointeurs, des types <code>char*</code> et de la mémoire brute. * <strong><code>difmap_native</code></strong> est la “façade” : elle reçoit des objets Python (comme des chaînes de caractères ou des listes) et les transforme pour la tuyauterie.</p>
 </section>
 </section>
 </div>
@@ -931,7 +958,7 @@ Bilan de Sécurité Matérielle
 <section id="a.-contrainte-scientifique-conflit-de-référentiel-du-demi-pixel" class="level3">
 <h3 class="anchored" data-anchor-id="a.-contrainte-scientifique-conflit-de-référentiel-du-demi-pixel">A. Contrainte scientifique : Conflit de référentiel du “Demi-Pixel”</h3>
 <p>Pour que les mesures scientifiques soient exactes, la coordonnée spatiale (0, 0) doit tomber exactement au bon endroit sur la grille de pixels. Or, il existe un décalage entre l’ancien code et les outils modernes (Matplotlib).</p>
-<p>Les algorithmes FFT de Difmap exigent des images paires (ex: 256x256). 1. <strong>Logique Matplotlib :</strong> Le centre d’une image paire se trouve exactement au milieu géométrique (entre deux pixels). 2. <strong>Logique Difmap :</strong> Le moteur C place la phase mathématique exactement <strong>sur</strong> un pixel entier (à l’indice N/2).</p>
+<p>Les algorithmes FFT de Difmap exigent des images paires (ex: 256x256).<br> 1. <strong>Logique Matplotlib :</strong> Le centre d’une image paire se trouve exactement au milieu géométrique (entre deux pixels). <br> 2. <strong>Logique Difmap :</strong> Le moteur C place la phase mathématique exactement <strong>sur</strong> un pixel entier (à l’indice N/2).</p>
 <p>Si nous renvoyons les données brutes, Matplotlib va superposer son système avec un décalage de <strong>0.5 pixel</strong>. L’astronome lira une position fausse, ruinant la précision astrométrique.</p>
 <p>Les algorithmes FFT de Difmap exigent des images paires (ex: 256x256). Prenons un exemple simplifié avec une image de <strong>4 pixels</strong> de large (indices <code>0, 1, 2, 3</code>) :</p>
 <pre class="text"><code>Indices des cases :     0         1         2         3
