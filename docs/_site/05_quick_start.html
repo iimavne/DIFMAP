@@ -285,7 +285,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#environnement-dexécution" id="toc-environnement-dexécution" class="nav-link" data-scroll-target="#environnement-dexécution">1. Environnement d’exécution</a></li>
   <li><a href="#le-flux-de-travail-standard" id="toc-le-flux-de-travail-standard" class="nav-link" data-scroll-target="#le-flux-de-travail-standard">2. Le flux de travail standard</a>
   <ul class="collapse">
-  <li><a href="#exemple-complet-génération-dune-dirty-map" id="toc-exemple-complet-génération-dune-dirty-map" class="nav-link" data-scroll-target="#exemple-complet-génération-dune-dirty-map">Exemple complet : Génération d’une Dirty Map</a></li>
+  <li><a href="#approche-a-lexploration-rapide-haut-niveau" id="toc-approche-a-lexploration-rapide-haut-niveau" class="nav-link" data-scroll-target="#approche-a-lexploration-rapide-haut-niveau">Approche A : L’Exploration Rapide (Haut Niveau)</a></li>
+  <li><a href="#approche-b-lanalyse-personnalisée-bas-niveau" id="toc-approche-b-lanalyse-personnalisée-bas-niveau" class="nav-link" data-scroll-target="#approche-b-lanalyse-personnalisée-bas-niveau">Approche B : L’Analyse Personnalisée (Bas Niveau)</a></li>
   </ul></li>
   <li><a href="#structure-des-données-retournées" id="toc-structure-des-données-retournées" class="nav-link" data-scroll-target="#structure-des-données-retournées">3. Structure des données retournées</a></li>
   <li><a href="#gestion-sécurisée-des-états" id="toc-gestion-sécurisée-des-états" class="nav-link" data-scroll-target="#gestion-sécurisée-des-états">4. Gestion sécurisée des états</a></li>
@@ -306,56 +307,73 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="environnement-dexécution" class="level2">
 <h2 class="anchored" data-anchor-id="environnement-dexécution">1. Environnement d’exécution</h2>
 <p>Puisque la bibliothèque a été installée au sein d’un environnement virtuel (<code>.venv</code>), elle est accessible globalement, peu importe le répertoire de travail, <strong>à condition que cet environnement soit activé</strong>.</p>
-<p>Pour garantir la stabilité de l’affichage graphique via Matplotlib sous Linux, il est recommandé d’exécuter vos analyses via des scripts Python standards (<code>.py</code>).</p>
+<p>Pour garantir la stabilité de l’affichage graphique via Matplotlib, il est recommandé d’exécuter vos analyses via des scripts Python standards (<code>.py</code>) ou dans des Notebooks Jupyter.</p>
 <ol type="1">
-<li>Ouvrez un terminal dans le répertoire de votre projet.</li>
-<li>Activez votre environnement : <code>source /chemin/vers/le/projet/.venv/bin/activate</code></li>
+<li>Ouvrez un terminal dans le répertoire de votre projet d’analyse. <br></li>
+<li>Activez votre environnement : <code>source /chemin/vers/le/projet/.venv/bin/activate</code> <br></li>
 <li>Créez un fichier d’analyse, par exemple <code>script_imagerie.py</code>.</li>
 </ol>
 </section>
 <section id="le-flux-de-travail-standard" class="level2">
 <h2 class="anchored" data-anchor-id="le-flux-de-travail-standard">2. Le flux de travail standard</h2>
-<p>L’utilisation préconisée de l’API repose sur le gestionnaire de contexte natif de Python (<code>with</code>). Cette conception architecturale garantit de manière déterministe que la mémoire RAM allouée par le moteur C sera libérée à la fin du bloc d’exécution, prévenant ainsi toute fuite de mémoire.</p>
-<section id="exemple-complet-génération-dune-dirty-map" class="level3">
-<h3 class="anchored" data-anchor-id="exemple-complet-génération-dune-dirty-map">Exemple complet : Génération d’une Dirty Map</h3>
-<p>Le script suivant illustre le chargement d’un fichier FITS de visibilités (plan UV) et la reconstruction d’une image brute.</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> difmap_wrapper <span class="im">import</span> DifmapSession</span>
+<p>L’utilisation préconisée de l’API repose sur le gestionnaire de contexte natif de Python (le bloc <code>with</code>). Cette conception architecturale garantit de manière stricte que la mémoire vive (RAM) allouée par le moteur C sera libérée à la fin du calcul, prévenant ainsi toute fuite de mémoire.</p>
+<p>Selon vos besoins, l’API vous propose deux manières de générer et d’afficher vos images (Dirty Map).</p>
+<section id="approche-a-lexploration-rapide-haut-niveau" class="level3">
+<h3 class="anchored" data-anchor-id="approche-a-lexploration-rapide-haut-niveau">Approche A : L’Exploration Rapide (Haut Niveau)</h3>
+<p><strong>Cas d’usage :</strong> Idéal pour vérifier rapidement vos données dans un Notebook Jupyter. Vous n’avez pas besoin de configurer Matplotlib vous-même : l’API s’occupe de tout afficher avec une seule ligne de code.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> difmap_wrapper <span class="im">import</span> DifmapSession</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> difmap_wrapper.imaging <span class="im">import</span> DifmapImager</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"Initialisation du traitement..."</span>)</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Ouverture de la session sécurisée</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> DifmapSession() <span class="im">as</span> session:</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Le bloc 'with' est vital pour purger la mémoire après exécution !</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> DifmapSession() <span class="im">as</span> session:</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 1. Chargement du fichier FITS</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    session.load_observation(<span class="st">"test_data/0003-066_X.SPLIT.1"</span>) <span class="co"># Adapter avec votre fichier data</span></span>
 <span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 2. Chargement des données UV</span></span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Cette étape charge les visibilités et réinitialise l'automate d'état interne</span></span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    session.load_observation(<span class="st">"votre_observation.fits"</span>)</span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 3. Génération de l'image (Dirty Map)</span></span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Paramétrage de la grille spatiale et de la résolution (cellsize) en mas</span></span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    img_package <span class="op">=</span> session.create_image(size<span class="op">=</span><span class="dv">512</span>, cellsize<span class="op">=</span><span class="fl">0.1</span>)</span>
-<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"Reconstruction terminée. Formatage de l'affichage..."</span>)</span>
-<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 4. Extraction des données pour visualisation</span></span>
-<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>    data <span class="op">=</span> img_package[<span class="st">'data'</span>]      <span class="co"># Matrice de flux numpy.ndarray</span></span>
-<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    extent <span class="op">=</span> img_package[<span class="st">'extent'</span>]  <span class="co"># Limites spatiales corrigées</span></span>
-<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 5. Visualisation scientifique via Matplotlib</span></span>
-<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    plt.figure(figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="dv">6</span>))</span>
-<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    plt.imshow(data, extent<span class="op">=</span>extent, origin<span class="op">=</span><span class="st">'lower'</span>, cmap<span class="op">=</span><span class="st">'magma'</span>)</span>
-<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    plt.colorbar(label<span class="op">=</span><span class="st">'Densité de flux (Jy/beam)'</span>)</span>
-<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    plt.title(<span class="st">"Imagerie de synthèse (Dirty Map) via Difmap API"</span>)</span>
-<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    plt.xlabel(<span class="st">"Décalage Ascension Droite (mas)"</span>)</span>
-<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    plt.ylabel(<span class="st">"Décalage Déclinaison (mas)"</span>)</span>
-<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>    plt.show()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Pour exécuter ce traitement, lancez simplement :</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> script_imagerie.py</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 2. Génération de l'image</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    img <span class="op">=</span> session.create_image(size<span class="op">=</span><span class="dv">512</span>, cellsize<span class="op">=</span><span class="fl">0.1</span>)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 3. Affichage automatique via la méthode intégrée</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    DifmapImager.plot_image(img, title<span class="op">=</span><span class="st">"Ma Première Image"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="approche-b-lanalyse-personnalisée-bas-niveau" class="level3">
+<h3 class="anchored" data-anchor-id="approche-b-lanalyse-personnalisée-bas-niveau">Approche B : L’Analyse Personnalisée (Bas Niveau)</h3>
+<p><strong>Cas d’usage :</strong> Parfait si vous avez besoin de créer une figure sur mesure pour un article scientifique ou de modifier l’image à votre goût (changer les axes, superposer d’autres graphiques, sauvegarder en PDF sans ouvrir de fenêtre). Au lieu d’utiliser notre affichage automatique, vous récupérez simplement les données brutes pour les dessiner vous-même avec Matplotlib.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> difmap_wrapper <span class="im">import</span> DifmapSession</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">"Initialisation du traitement..."</span>)</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> DifmapSession() <span class="im">as</span> session:</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 1. Chargement des données UV </span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    session.load_observation(<span class="st">"test_data/0003-066_X.SPLIT.1"</span>) <span class="co"># Adapter avec votre fichier data</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 2. Génération de l'image (Dirty Map)</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    img_package <span class="op">=</span> session.create_image(size<span class="op">=</span><span class="dv">512</span>, cellsize<span class="op">=</span><span class="fl">0.1</span>)</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"Reconstruction terminée. Formatage de l'affichage..."</span>)</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 3. Extraction manuelle des données brutes</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    data <span class="op">=</span> img_package[<span class="st">'data'</span>]      <span class="co"># La matrice des pixels</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    extent <span class="op">=</span> img_package[<span class="st">'extent'</span>]  <span class="co"># L'alignement correct des axes</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>    <span class="co"># 4. Dessin personnalisé avec Matplotlib</span></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>    plt.figure(figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="dv">6</span>))</span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>    plt.imshow(data, extent<span class="op">=</span>extent, origin<span class="op">=</span><span class="st">'lower'</span>, cmap<span class="op">=</span><span class="st">'magma'</span>)</span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>    plt.colorbar(label<span class="op">=</span><span class="st">'Densité de flux (Jy/beam)'</span>)</span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>    plt.title(<span class="st">"Imagerie de synthèse personnalisée"</span>)</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>    plt.xlabel(<span class="st">"Décalage Ascension Droite (mas)"</span>)</span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>    plt.ylabel(<span class="st">"Décalage Déclinaison (mas)"</span>)</span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Affichage ou sauvegarde (ex: plt.savefig("ma_figure.pdf"))</span></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>    plt.show()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Pour exécuter votre traitement depuis le terminal, lancez simplement :</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> script_imagerie.py</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
 </section>
 <section id="structure-des-données-retournées" class="level2">
 <h2 class="anchored" data-anchor-id="structure-des-données-retournées">3. Structure des données retournées</h2>
-<p>La méthode d’imagerie <code>create_image</code> renvoie un dictionnaire exhaustif encapsulant à la fois les données quantitatives et les métadonnées de l’observation :</p>
+<p>La méthode d’imagerie <code>create_image</code> ne renvoie pas qu’une simple image. Elle renvoie un dictionnaire complet (<code>img_package</code>) encapsulant à la fois les données quantitatives et les métadonnées :</p>
 <table class="table">
 <colgroup>
 <col style="width: 33%">
@@ -364,52 +382,48 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </colgroup>
 <thead>
 <tr class="header">
-<th>Clé</th>
-<th>Type</th>
-<th>Description</th>
+<th style="text-align: left;">Clé</th>
+<th style="text-align: left;">Type</th>
+<th style="text-align: left;">Description</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>data</code></td>
-<td><code>numpy.ndarray</code></td>
-<td>La matrice bidimensionnelle contenant les valeurs d’intensité.</td>
+<td style="text-align: left;"><strong><code>data</code></strong></td>
+<td style="text-align: left;"><code>numpy.ndarray</code></td>
+<td style="text-align: left;">La matrice bidimensionnelle contenant les valeurs d’intensité prêtes à être affichées.</td>
 </tr>
 <tr class="even">
-<td><code>extent</code></td>
-<td><code>list</code></td>
-<td>Les limites d’affichage spatial <code>[x_max, x_min, y_min, y_max]</code> intégrant la correction astrométrique de demi-pixel.</td>
+<td style="text-align: left;"><strong><code>extent</code></strong></td>
+<td style="text-align: left;"><code>list</code></td>
+<td style="text-align: left;">Les limites d’affichage spatial <code>[x_max, x_min, y_min, y_max]</code> intégrant automatiquement la correction astrométrique du demi-pixel.</td>
 </tr>
 <tr class="odd">
-<td><code>beam</code></td>
-<td><code>dict</code></td>
-<td>Caractéristiques de la fonction d’étalement du point (PSF) incluant le grand axe (<code>bmaj</code>), le petit axe (<code>bmin</code>) et</td>
+<td style="text-align: left;"><strong><code>beam</code></strong></td>
+<td style="text-align: left;"><code>dict</code></td>
+<td style="text-align: left;">Caractéristiques du faisceau (PSF) incluant le grand axe (<code>bmaj</code>), le petit axe (<code>bmin</code>) et l’angle de position (<code>bpa</code>).</td>
 </tr>
 <tr class="even">
-<td>l’angle de position (<code>bpa</code>).</td>
-<td></td>
-<td></td>
-</tr>
-<tr class="odd">
-<td><code>header</code></td>
-<td><code>dict</code></td>
-<td>Métadonnées de l’observation extraites du moteur C (dimensions de grille, fréquences, etc.).</td>
+<td style="text-align: left;"><strong><code>header</code></strong></td>
+<td style="text-align: left;"><code>dict</code></td>
+<td style="text-align: left;">Métadonnées de l’observation extraites du moteur C (dimensions de grille, fréquences, etc.).</td>
 </tr>
 </tbody>
 </table>
 </section>
 <section id="gestion-sécurisée-des-états" class="level2">
 <h2 class="anchored" data-anchor-id="gestion-sécurisée-des-états">4. Gestion sécurisée des états</h2>
-<p>Le moteur C original de Difmap est vulnérable aux erreurs de segmentation (segfaults) si les commandes sont appelées de manière asynchrone ou dans un ordre illogique. La surcouche Python implémente un automate d’état restrictif pour pallier ce problème.</p>
-<p>Toute violation de cet ordre logique (par exemple, invoquer la transformée de Fourier avant de charger les visibilités) lève une exception dédiée qui intercepte le crash :</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> difmap_wrapper.exceptions <span class="im">import</span> DifmapStateError</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> DifmapSession() <span class="im">as</span> session:</span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Tentative d'imagerie sans chargement préalable de données UV</span></span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>        session.create_image()</span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> DifmapStateError <span class="im">as</span> erreur:</span>
-<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"Opération interrompue par sécurité : </span><span class="sc">{</span>erreur<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Le moteur C original de Difmap est vulnérable aux erreurs de segmentation (<em>segfaults</em>) si les commandes sont appelées dans un ordre illogique. La surcouche Python implémente un “automate d’état” restrictif pour vous protéger de ces crashs.</p>
+<p>Toute violation de la logique astronomique (par exemple, essayer de générer une image alors qu’aucun fichier FITS n’a été chargé) lève une exception Python propre qui n’arrête pas brutalement votre programme :</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> difmap_wrapper.exceptions <span class="im">import</span> DifmapStateError</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> DifmapSession() <span class="im">as</span> session:</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Tentative d'imagerie SANS chargement préalable de données UV</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>        session.create_image(size<span class="op">=</span><span class="dv">512</span>, cellsize<span class="op">=</span><span class="fl">0.1</span>)</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> DifmapStateError <span class="im">as</span> erreur:</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"Opération bloquée par sécurité : </span><span class="sc">{</span>erreur<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
 
 </section>

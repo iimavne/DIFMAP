@@ -11,6 +11,11 @@ class DifmapSession:
     et fait le pont avec le moteur C sous-jacent. Elle est conçue pour être 
     utilisée comme un Context Manager (`with DifmapSession() as session:`) 
     afin de garantir l'absence de fuites mémoire (RAM).
+    
+    ::: {.callout-note title="Qu'est-ce qu'un Context Manager ?"}
+    Le gestionnaire de contexte (le bloc `with`) agit comme une sécurité matérielle : il garantit de manière déterministe que la mémoire vive (RAM) 
+    allouée par le moteur C sera obligatoirement libérée à la fin du traitement, même si votre script Python plante.
+    :::
 
     Examples
     --------

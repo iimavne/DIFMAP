@@ -1,7 +1,6 @@
 # Premier pas avec l'API
 
-Ce guide présente le flux de travail standard pour initialiser une analyse, charger des données d'observation interférométriques et générer une 
-première image scientifique. 
+Ce guide présente le flux de travail standard pour initialiser une analyse, charger des données d'observation interférométriques et générer une première image scientifique.
 
 L'API est conçue autour du concept de **Session** (`DifmapSession`), qui centralise et sécurise la communication avec le moteur natif C.
 
@@ -9,19 +8,39 @@ L'API est conçue autour du concept de **Session** (`DifmapSession`), qui centra
 
 Puisque la bibliothèque a été installée au sein d'un environnement virtuel (`.venv`), elle est accessible globalement, peu importe le répertoire de travail, **à condition que cet environnement soit activé**.
 
-Pour garantir la stabilité de l'affichage graphique via Matplotlib sous Linux, il est recommandé d'exécuter vos analyses via des scripts Python standards (`.py`).
+Pour garantir la stabilité de l'affichage graphique via Matplotlib, il est recommandé d'exécuter vos analyses via des scripts Python standards (`.py`) ou dans des Notebooks Jupyter.
 
-1. Ouvrez un terminal dans le répertoire de votre projet.
-2. Activez votre environnement : `source /chemin/vers/le/projet/.venv/bin/activate`
+1. Ouvrez un terminal dans le répertoire de votre projet d'analyse. <br>
+2. Activez votre environnement : `source /chemin/vers/le/projet/.venv/bin/activate` <br>
 3. Créez un fichier d'analyse, par exemple `script_imagerie.py`.
 
 ## 2. Le flux de travail standard
 
-L'utilisation préconisée de l'API repose sur le gestionnaire de contexte natif de Python (`with`). Cette conception architecturale garantit de manière déterministe que la mémoire RAM allouée par le moteur C sera libérée à la fin du bloc d'exécution, prévenant ainsi toute fuite de mémoire.
+L'utilisation préconisée de l'API repose sur le gestionnaire de contexte natif de Python (le bloc `with`). Cette conception architecturale garantit de manière stricte que la mémoire vive (RAM) allouée par le moteur C sera libérée à la fin du calcul, prévenant ainsi toute fuite de mémoire.
 
-### Exemple complet : Génération d'une Dirty Map
+Selon vos besoins, l'API vous propose deux manières de générer et d'afficher vos images (Dirty Map).
 
-Le script suivant illustre le chargement d'un fichier FITS de visibilités (plan UV) et la reconstruction d'une image brute.
+### Approche A : L'Exploration Rapide (Haut Niveau)
+**Cas d'usage :** Idéal pour vérifier rapidement vos données dans un Notebook Jupyter. Vous n'avez pas besoin de configurer Matplotlib vous-même : l'API s'occupe de tout afficher avec une seule ligne de code.
+
+```python
+from difmap_wrapper import DifmapSession
+from difmap_wrapper.imaging import DifmapImager
+
+# Le bloc 'with' est vital pour purger la mémoire après exécution !
+with DifmapSession() as session:
+    # 1. Chargement du fichier FITS
+    session.load_observation("test_data/0003-066_X.SPLIT.1") # Adapter avec votre fichier data
+    
+    # 2. Génération de l'image
+    img = session.create_image(size=512, cellsize=0.1)
+    
+    # 3. Affichage automatique via la méthode intégrée
+    DifmapImager.plot_image(img, title="Ma Première Image")
+```
+
+### Approche B : L'Analyse Personnalisée (Bas Niveau)
+**Cas d'usage :** Parfait si vous avez besoin de créer une figure sur mesure pour un article scientifique ou de modifier l'image à votre goût (changer les axes, superposer d'autres graphiques, sauvegarder en PDF sans ouvrir de fenêtre). Au lieu d'utiliser notre affichage automatique, vous récupérez simplement les données brutes pour les dessiner vous-même avec Matplotlib.
 
 ```python
 import matplotlib.pyplot as plt
@@ -29,63 +48,62 @@ from difmap_wrapper import DifmapSession
 
 print("Initialisation du traitement...")
 
-# 1. Ouverture de la session sécurisée
 with DifmapSession() as session:
     
-    # 2. Chargement des données UV
-    # Cette étape charge les visibilités et réinitialise l'automate d'état interne
-    session.load_observation("votre_observation.fits")
+    # 1. Chargement des données UV 
+    session.load_observation("test_data/0003-066_X.SPLIT.1") # Adapter avec votre fichier data
     
-    # 3. Génération de l'image (Dirty Map)
-    # Paramétrage de la grille spatiale et de la résolution (cellsize) en mas
+    # 2. Génération de l'image (Dirty Map)
     img_package = session.create_image(size=512, cellsize=0.1)
     
     print("Reconstruction terminée. Formatage de l'affichage...")
     
-    # 4. Extraction des données pour visualisation
-    data = img_package['data']      # Matrice de flux numpy.ndarray
-    extent = img_package['extent']  # Limites spatiales corrigées
+    # 3. Extraction manuelle des données brutes
+    data = img_package['data']      # La matrice des pixels
+    extent = img_package['extent']  # L'alignement correct des axes
     
-    # 5. Visualisation scientifique via Matplotlib
+    # 4. Dessin personnalisé avec Matplotlib
     plt.figure(figsize=(8, 6))
     plt.imshow(data, extent=extent, origin='lower', cmap='magma')
     plt.colorbar(label='Densité de flux (Jy/beam)')
-    plt.title("Imagerie de synthèse (Dirty Map) via Difmap API")
+    plt.title("Imagerie de synthèse personnalisée")
     plt.xlabel("Décalage Ascension Droite (mas)")
     plt.ylabel("Décalage Déclinaison (mas)")
+    
+    # Affichage ou sauvegarde (ex: plt.savefig("ma_figure.pdf"))
     plt.show()
 ```
 
-Pour exécuter ce traitement, lancez simplement :
+Pour exécuter votre traitement depuis le terminal, lancez simplement :
 ```bash
 python script_imagerie.py
 ```
 
 ## 3. Structure des données retournées
 
-La méthode d'imagerie `create_image` renvoie un dictionnaire exhaustif encapsulant à la fois les données quantitatives et les métadonnées de l'observation :
+La méthode d'imagerie `create_image` ne renvoie pas qu'une simple image. Elle renvoie un dictionnaire complet (`img_package`) encapsulant à la fois les données quantitatives et les métadonnées :
 
 | Clé | Type | Description |
-|---|---|---|
-| `data` | `numpy.ndarray` | La matrice bidimensionnelle contenant les valeurs d'intensité. |
-| `extent` | `list` | Les limites d'affichage spatial `[x_max, x_min, y_min, y_max]` intégrant la correction astrométrique de demi-pixel. |
-| `beam` | `dict` | Caractéristiques de la fonction d'étalement du point (PSF) incluant le grand axe (`bmaj`), le petit axe (`bmin`) et 
-l'angle de position (`bpa`). |
-| `header` | `dict` | Métadonnées de l'observation extraites du moteur C (dimensions de grille, fréquences, etc.). |
+| :--- | :--- | :--- |
+| **`data`** | `numpy.ndarray` | La matrice bidimensionnelle contenant les valeurs d'intensité prêtes à être affichées. |
+| **`extent`** | `list` | Les limites d'affichage spatial `[x_max, x_min, y_min, y_max]` intégrant automatiquement la correction astrométrique du demi-pixel. |
+| **`beam`** | `dict` | Caractéristiques du faisceau (PSF) incluant le grand axe (`bmaj`), le petit axe (`bmin`) et l'angle de position (`bpa`). |
+| **`header`** | `dict` | Métadonnées de l'observation extraites du moteur C (dimensions de grille, fréquences, etc.). |
 
 ## 4. Gestion sécurisée des états
 
-Le moteur C original de Difmap est vulnérable aux erreurs de segmentation (segfaults) si les commandes sont appelées de manière asynchrone ou dans un ordre illogique. La surcouche Python implémente un automate d'état restrictif pour pallier ce problème.
+Le moteur C original de Difmap est vulnérable aux erreurs de segmentation (*segfaults*) si les commandes sont appelées dans un ordre illogique. La surcouche Python implémente un "automate d'état" restrictif pour vous protéger de ces crashs.
 
-Toute violation de cet ordre logique (par exemple, invoquer la transformée de Fourier avant de charger les visibilités) lève une exception dédiée qui intercepte le crash :
+Toute violation de la logique astronomique (par exemple, essayer de générer une image alors qu'aucun fichier FITS n'a été chargé) lève une exception Python propre qui n'arrête pas brutalement votre programme :
 
 ```python
 from difmap_wrapper.exceptions import DifmapStateError
 
 with DifmapSession() as session:
     try:
-        # Tentative d'imagerie sans chargement préalable de données UV
-        session.create_image()
+        # Tentative d'imagerie SANS chargement préalable de données UV
+        session.create_image(size=512, cellsize=0.1)
+        
     except DifmapStateError as erreur:
-        print(f"Opération interrompue par sécurité : {erreur}")
+        print(f"Opération bloquée par sécurité : {erreur}")
 ```

@@ -42,15 +42,16 @@ Pour garantir une séparation stricte des responsabilités et ne pas corrompre l
 graph TD
     %% Définition du contenu des Couches
     subgraph Couche3 ["<span style='color:#1e40af'><b> Couche 3 : API Python (High-Level)</b></span>"]
-        A[" Script Utilisateur"] -->|Appel Méthode| B(" DifmapSession")
-        B -->|Astrométrie WCS| C(" Module Imaging")
+        A[" Script Utilisateur"] -->|Appel Méthode| B(" Façade principale pour piloter 
+    <br> l'environnement Difmap -DifmapSession")
+        B -->|Astrométrie WCS| C(" Module pour génération d'images astrophysiques <br> - DifmapImager")
     end
 
     subgraph Couche2 ["<span style='color:#92400e'><b>Couche 2 : Pont Cython (Binding)</b></span>"]
-        D{" difmap_native.pyx"}
+        D{" Binding - difmap_native.pyx"}
     end
 
-    subgraph Couche1 ["<span style='color:#991b1b'><b> Couche 1 : Moteur (Low-Level)</b></span>"]
+    subgraph Couche1 ["<span style='color:#991b1b'><b> Couche 1 : Moteur - Difmap en C </b></span>"]
         E[" Variables Globales C"]
         F[" Algorithmes"]
         G[" Mémoire RAM"]
@@ -78,31 +79,41 @@ graph TD
     style G fill:#fef2f2,stroke:#991b1b,color:#991b1b,stroke-width:1px
 ```
 
-### Couche 1 : Le Moteur Natif (Bas Niveau)
-Composée des dossiers `difmap_src/` et `slalib_src/`, cette couche est le "muscle" du logiciel. Elle ne gère plus aucune interface utilisateur. Elle se contente d'allouer la mémoire RAM pour les images et d'exécuter les mathématiques. Nous avons ajouté de légers *getters* et *setters* en C pour exposer ses variables globales en toute sécurité.
+### Couche 1 : Le Moteur Difmap
+Composée notamment du dossiers `difmap_src/` cette couche est le "muscle" du logiciel. Elle ne gère plus aucune interface utilisateur.
+Elle se contente d'allouer la mémoire RAM pour les images et d'exécuter les mathématiques. Nous avons ajouté de légers *getters* et *setters* en C pour 
+exposer ses variables globales en toute sécurité.
 
 ### Couche 2 : Le Binding Cython (Niveau Intermédiaire)
-C'est le cœur de l'innovation de ce projet (le dossier `binding/`). Écrit en Cython, le fichier `difmap_native.pyx` agit comme un traducteur bidirectionnel. Il convertit les objets Python en pointeurs C compréhensibles par Difmap, et surtout, il récupère les immenses tableaux de pixels générés par le C pour les transformer en objets `NumPy` instantanément via la technique du **Zéro-Copie**.
+C'est le cœur de l'innovation de ce projet (le dossier `binding/`). Écrit en Cython, le fichier `difmap_native.pyx` agit comme un traducteur 
+bidirectionnel. Il convertit les objets Python en pointeurs C compréhensibles par Difmap, et surtout, il récupère les immenses tableaux de pixels générés 
+par le C pour les transformer en objets `NumPy` instantanément via la technique du **Zéro-Copie**.
 
 ### Couche 3 : L'API Orientée Objet (Haut Niveau)
-C'est la partie visible de l'iceberg (le dossier `difmap_wrapper/`). Elle offre des classes Python élégantes (`DifmapSession`) qui masquent totalement la complexité des pointeurs C à l'utilisateur final.
+C'est la partie visible de l'iceberg (le dossier `difmap_wrapper/`). Elle offre des classes Python tel que`DifmapSession` qui masquent totalement 
+la complexité des pointeurs C à l'utilisateur final.
 
 
 ## 2.3. Le nouveau flux d'exécution : Le contournement de SPHERE
 
 L'un des apports majeurs de cette architecture est la mise hors-circuit de l'interpréteur de commandes historique, SPHERE.
 
-Dans l'ancienne architecture, l'utilisateur tapait une commande texte (`clean 100`) qui était parsée par `difmap.c` avant d'invoquer la fonction mathématique C correspondante. 
-Désormais, **la Couche 2 (Cython) attaque directement les fonctions mathématiques C**. Le terminal SPHERE n'est jamais initialisé lors de l'utilisation en tant que bibliothèque Python, supprimant ainsi tout le goulot d'étranglement lié au parsing de texte et aux I/O sur le disque dur.
+Dans l'ancienne architecture, l'utilisateur tapait une commande texte (`clean 100`) qui était parsée par `difmap.c` avant d'invoquer la fonction
+mathématique C correspondante. 
+Désormais, **la Couche 2 (Cython) attaque directement les fonctions mathématiques C**. Le terminal SPHERE n'est jamais initialisé lors de l'utilisation
+en tant que bibliothèque Python, supprimant ainsi tout le goulot d'étranglement lié au parsing de texte et aux I/O sur le disque dur.
 
 ## 2.4. La gestion moderne de la compilation (Build System)
 
-Intégrer du code C/Fortran des années 90 dans l'écosystème Python de 2026 exige un système de compilation robuste. Les anciens fichiers `Makefile`, souvent capricieux selon les systèmes d'exploitation, ont été remplacés par une chaîne de compilation standardisée (PEP 517) :
+Intégrer du code C/Fortran des années 90 dans l'écosystème Python de 2026 exige un système de compilation robuste. 
+Les anciens fichiers `Makefile`, souvent capricieux selon les systèmes d'exploitation, ont été remplacés par une chaîne de compilation standardisée:
 
 1. **`pyproject.toml` :** Définit les métadonnées du projet Python et force l'utilisation d'un environnement de build isolé.
-2. **Meson & Ninja :** Remplacent les outils historiques pour compiler le code C. Meson est capable de détecter dynamiquement les compilateurs système (GCC, GFortran) et de lier les dépendances complexes (PGPLOT, GSL, X11) de manière transparente.
+2. **Meson & Ninja :** Remplacent les outils historiques pour compiler le code C. Meson est capable de détecter dynamiquement les 
+compilateurs système (GCC, GFortran) et de lier les dépendances complexes (PGPLOT, GSL, X11) de manière transparente.
 
 ::: {.callout-tip}
 ### Le résultat pour l'utilisateur
-Grâce à ce nouveau système de Build, toute cette complexité d'ingénierie se résume à une seule commande standard pour l'astronome : `pip install .`. Le système compile silencieusement le C, transpile le Cython, et installe le package Python en quelques secondes.
+Grâce à ce nouveau système de Build, toute cette complexité d'ingénierie se résume à une seule commande standard pour l'astronome : `pip install .`. 
+Le système compile silencieusement le C, transpile le Cython, et installe le package Python en quelques secondes.
 :::

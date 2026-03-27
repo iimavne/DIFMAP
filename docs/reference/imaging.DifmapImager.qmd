@@ -34,17 +34,17 @@ soucier de l'alignement des axes, la clé `extent` est prête à l'emploi.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type   | Description                                                                                                      | Default    |
-|----------|--------|------------------------------------------------------------------------------------------------------------------|------------|
-| size     | int    | Dimension de la grille (ex: 512 pour une image 512x512).  Privilégiez les puissances de 2 pour optimiser la FFT. | _required_ |
-| cellsize | float  | Résolution spatiale d'un pixel en millisecondes d'arc (mas).                                                     | _required_ |
-| pol      | str    | La polarisation à imager ("I", "Q", "U", "V").  Par défaut défini sur "I" (intensité totale).                    | `"I"`      |
+| Name     | Type   | Description                                                                                                                                                                                                                                                                                                                                                                                                             | Default    |
+|----------|--------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| size     | int    | Dimension de la grille (ex: 512 pour une image 512x512).  Privilégiez les puissances de 2 pour optimiser la FFT.                                                                                                                                                                                                                                                                                                        | _required_ |
+| cellsize | float  | Résolution spatiale d'un pixel en millisecondes d'arc (mas).                                                                                                                                                                                                                                                                                                                                                            | _required_ |
+| pol      | str    | La polarisation à imager. Accepte les paramètres de Stokes ou les corrélations brutes : <br> - "I" : Intensité totale (luminosité globale, valeur par défaut). <br> - "Q", "U" : Polarisation linéaire (cartographie des champs magnétiques). <br> - "V" : Polarisation circulaire. <BR> - "RR", "LL" : Corrélations directes des antennes (circulaire droite/gauche). <br> - "RL", "LR" : Polarisations croisées. <br> | `"I"`      |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type   | Description                                                                                                                                                                                                                                                                                                                              |
-|--------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | dict   | Le "Package Complet" de l'image contenant : - **data** (*numpy.ndarray*): La matrice 2D des flux (Jy/beam). - **header** (*dict*): Les métadonnées du header FITS (NX, NY, etc.). - **beam** (*dict*): Les paramètres de la PSF (bmaj, bmin, bpa). - **extent** (*list*): Coordonnées absolues `[x_min, x_max, y_min, y_max]` corrigées. |
+| Name   | Type   | Description                                                                                                                                                                                                                                                                                                                                                      |
+|--------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | dict   | Le "Package Complet" de l'image contenant : <br> - **data** (*numpy.ndarray*): La matrice 2D des flux (Jy/beam). <br> - **header** (*dict*): Les métadonnées du header FITS (NX, NY, etc.). <br> - **beam** (*dict*): Les paramètres de la PSF (bmaj, bmin, bpa). <br> - **extent** (*list*): Coordonnées absolues `[x_min, x_max, y_min, y_max]` corrigées.<br> |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -87,13 +87,13 @@ angulaire, échelle de flux).
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type   | Description                                                                                                                                                                                  | Default             |
-|----------|--------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------|
-| img_dict | dict   | Le dictionnaire de l'image produit par l'API Difmap. Il doit  impérativement contenir les clés 'data' (la matrice bidimensionnelle  des flux) et 'extent' (les limites spatiales corrigées). | _required_          |
-| cmap     | str    | La palette de couleurs Matplotlib à utiliser pour le rendu.  Par défaut défini sur 'magma'.                                                                                                  | `'magma'`           |
-| figsize  | tuple  | Les dimensions de la figure générée (largeur, hauteur) en pouces.  Par défaut défini sur (8, 6).                                                                                             | `(8, 6)`            |
-| title    | str    | Le titre principal affiché au-dessus de la figure.  Par défaut défini sur "Imagerie Difmap".                                                                                                 | `'Imagerie Difmap'` |
-| **kwargs | dict   | Arguments supplémentaires transmis directement à la fonction  `matplotlib.pyplot.imshow` (par exemple `vmin`, `vmax`, `interpolation`).                                                      | `{}`                |
+| Name     | Type   | Description                                                                                                                                                                                       | Default             |
+|----------|--------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------|
+| img_dict | dict   | Le dictionnaire de l'image produit par l'API Difmap. Il doit  impérativement contenir les clés 'data' (la matrice bidimensionnelle  des flux) et 'extent' (les limites spatiales corrigées). <br> | _required_          |
+| cmap     | str    | La palette de couleurs Matplotlib à utiliser pour le rendu.  Par défaut défini sur 'magma'. <br>                                                                                                  | `'magma'`           |
+| figsize  | tuple  | Les dimensions de la figure générée (largeur, hauteur) en pouces.  Par défaut défini sur (8, 6). <br>                                                                                             | `(8, 6)`            |
+| title    | str    | Le titre principal affiché au-dessus de la figure.  Par défaut défini sur "Imagerie Difmap". <br>                                                                                                 | `'Imagerie Difmap'` |
+| **kwargs | dict   | Arguments supplémentaires transmis directement à la fonction  `matplotlib.pyplot.imshow` (par exemple `vmin`, `vmax`, `interpolation`).                                                           | `{}`                |
 
 #### Returns {.doc-section .doc-section-returns}
 

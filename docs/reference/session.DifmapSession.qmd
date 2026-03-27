@@ -11,6 +11,11 @@ et fait le pont avec le moteur C sous-jacent. Elle est conçue pour être
 utilisée comme un Context Manager (`with DifmapSession() as session:`) 
 afin de garantir l'absence de fuites mémoire (RAM).
 
+::: {.callout-note title="Qu'est-ce qu'un Context Manager ?"}
+Le gestionnaire de contexte (le bloc `with`) agit comme une sécurité matérielle : il garantit de manière déterministe que la mémoire vive (RAM) 
+allouée par le moteur C sera obligatoirement libérée à la fin du traitement, même si votre script Python plante.
+:::
+
 ## Examples {.doc-section .doc-section-examples}
 
 Voici le workflow standard recommandé pour analyser une observation :
@@ -73,11 +78,11 @@ Cette fonction délègue le calcul mathématique lourd au module spécialisé
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type   | Description                                                                                                                                                                                                                                                                                                                                                                                                   | Default   |
-|----------|--------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
-| size     | int    | La taille de la grille d'image en pixels (ex: 512 pour 512x512).  Il est recommandé d'utiliser des puissances de 2 pour optimiser la FFT.                                                                                                                                                                                                                                                                     | `512`     |
-| cellsize | float  | La résolution d'un pixel en millisecondes d'arc (mas).                                                                                                                                                                                                                                                                                                                                                        | `1.0`     |
-| pol      | str    | La polarisation à imager. Accepte les paramètres de Stokes ou les corrélations brutes : <br> - "I" : Intensité totale (luminosité globale, valeur par défaut). <br> - "Q", "U" : Polarisation linéaire (cartographie des champs magnétiques). <br> - "V" : Polarisation circulaire. <BR> - "RR", "LL" : Corrélations directes des antennes (circulaire droite/gauche). - "RL", "LR" : Polarisations croisées. | `"I"`     |
+| Name     | Type   | Description                                                                                                                                                                                                                                                                                                                                                                                                             | Default   |
+|----------|--------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| size     | int    | La taille de la grille d'image en pixels (ex: 512 pour 512x512).  Il est recommandé d'utiliser des puissances de 2 pour optimiser la FFT.                                                                                                                                                                                                                                                                               | `512`     |
+| cellsize | float  | La résolution d'un pixel en millisecondes d'arc (mas).                                                                                                                                                                                                                                                                                                                                                                  | `1.0`     |
+| pol      | str    | La polarisation à imager. Accepte les paramètres de Stokes ou les corrélations brutes : <br> - "I" : Intensité totale (luminosité globale, valeur par défaut). <br> - "Q", "U" : Polarisation linéaire (cartographie des champs magnétiques). <br> - "V" : Polarisation circulaire. <BR> - "RR", "LL" : Corrélations directes des antennes (circulaire droite/gauche). <br> - "RL", "LR" : Polarisations croisées. <br> | `"I"`     |
 
 #### Returns {.doc-section .doc-section-returns}
 

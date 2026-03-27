@@ -304,6 +304,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>session.DifmapSession()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Façade principale pour piloter l’environnement Difmap en toute sécurité.</p>
 <p>Cette classe gère le cycle de vie des données (chargement, nettoyage) et fait le pont avec le moteur C sous-jacent. Elle est conçue pour être utilisée comme un Context Manager (<code>with DifmapSession() as session:</code>) afin de garantir l’absence de fuites mémoire (RAM).</p>
+<div class="callout callout-style-default callout-note callout-titled" title="Qu'est-ce qu'un Context Manager ?">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Qu’est-ce qu’un Context Manager ?
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Le gestionnaire de contexte (le bloc <code>with</code>) agit comme une sécurité matérielle : il garantit de manière déterministe que la mémoire vive (RAM) allouée par le moteur C sera obligatoirement libérée à la fin du traitement, même si votre script Python plante.</p>
+</div>
+</div>
 <section id="examples" class="level2 doc-section doc-section-examples">
 <h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
 <p>Voici le workflow standard recommandé pour analyser une observation :</p>
@@ -395,7 +408,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>pol</td>
 <td>str</td>
-<td>La polarisation à imager. Accepte les paramètres de Stokes ou les corrélations brutes : <br> - “I” : Intensité totale (luminosité globale, valeur par défaut). <br> - “Q”, “U” : Polarisation linéaire (cartographie des champs magnétiques). <br> - “V” : Polarisation circulaire. <br> - “RR”, “LL” : Corrélations directes des antennes (circulaire droite/gauche). - “RL”, “LR” : Polarisations croisées.</td>
+<td>La polarisation à imager. Accepte les paramètres de Stokes ou les corrélations brutes : <br> - “I” : Intensité totale (luminosité globale, valeur par défaut). <br> - “Q”, “U” : Polarisation linéaire (cartographie des champs magnétiques). <br> - “V” : Polarisation circulaire. <br> - “RR”, “LL” : Corrélations directes des antennes (circulaire droite/gauche). <br> - “RL”, “LR” : Polarisations croisées. <br></td>
 <td><code>"I"</code></td>
 </tr>
 </tbody>

@@ -43,11 +43,11 @@ class DifmapImager:
         Returns
         -------
         dict
-            Le "Package Complet" de l'image contenant : 
-            - **data** (*numpy.ndarray*): La matrice 2D des flux (Jy/beam).
-            - **header** (*dict*): Les métadonnées du header FITS (NX, NY, etc.).
-            - **beam** (*dict*): Les paramètres de la PSF (bmaj, bmin, bpa).
-            - **extent** (*list*): Coordonnées absolues `[x_min, x_max, y_min, y_max]` corrigées.
+            Le "Package Complet" de l'image contenant : <br>
+            - **data** (*numpy.ndarray*): La matrice 2D des flux (Jy/beam). <br>
+            - **header** (*dict*): Les métadonnées du header FITS (NX, NY, etc.). <br>
+            - **beam** (*dict*): Les paramètres de la PSF (bmaj, bmin, bpa). <br>
+            - **extent** (*list*): Coordonnées absolues `[x_min, x_max, y_min, y_max]` corrigées.<br>
 
         Raises
         ------

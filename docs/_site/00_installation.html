@@ -312,15 +312,13 @@ window.Quarto = {
   <li><a href="#installation-et-configuration" id="toc-installation-et-configuration" class="nav-link active" data-scroll-target="#installation-et-configuration">Installation et Configuration</a>
   <ul class="collapse">
   <li><a href="#prérequis-système-linux" id="toc-prérequis-système-linux" class="nav-link" data-scroll-target="#prérequis-système-linux">1. Prérequis système (Linux)</a></li>
-  <li><a href="#configuration-de-lenvironnement-virtuel" id="toc-configuration-de-lenvironnement-virtuel" class="nav-link" data-scroll-target="#configuration-de-lenvironnement-virtuel">2. Configuration de l’environnement virtuel</a></li>
-  <li><a href="#dépendances-python" id="toc-dépendances-python" class="nav-link" data-scroll-target="#dépendances-python">3. Dépendances Python</a></li>
-  <li><a href="#installation-pour-les-utilisateurs" id="toc-installation-pour-les-utilisateurs" class="nav-link" data-scroll-target="#installation-pour-les-utilisateurs">4. Installation pour les utilisateurs</a></li>
-  <li><a href="#installation-pour-les-développeurs" id="toc-installation-pour-les-développeurs" class="nav-link" data-scroll-target="#installation-pour-les-développeurs">5. Installation pour les développeurs</a>
-  <ul class="collapse">
-  <li><a href="#mode-éditable" id="toc-mode-éditable" class="nav-link" data-scroll-target="#mode-éditable">Mode éditable</a></li>
-  <li><a href="#compilation-native-isolée" id="toc-compilation-native-isolée" class="nav-link" data-scroll-target="#compilation-native-isolée">Compilation native isolée</a></li>
-  </ul></li>
-  <li><a href="#test-de-validation" id="toc-test-de-validation" class="nav-link" data-scroll-target="#test-de-validation">6. Test de validation</a></li>
+  <li><a href="#téléchargement-du-code-source" id="toc-téléchargement-du-code-source" class="nav-link" data-scroll-target="#téléchargement-du-code-source">2. Téléchargement du code source</a></li>
+  <li><a href="#configuration-de-lenvironnement-virtuel" id="toc-configuration-de-lenvironnement-virtuel" class="nav-link" data-scroll-target="#configuration-de-lenvironnement-virtuel">3. Configuration de l’environnement virtuel</a></li>
+  <li><a href="#dépendances-python" id="toc-dépendances-python" class="nav-link" data-scroll-target="#dépendances-python">4. Dépendances Python</a></li>
+  <li><a href="#installation-de-la-bibliothèque-difmap" id="toc-installation-de-la-bibliothèque-difmap" class="nav-link" data-scroll-target="#installation-de-la-bibliothèque-difmap">5. Installation de la bibliothèque Difmap</a></li>
+  <li><a href="#c.-compilation-native-isolée" id="toc-c.-compilation-native-isolée" class="nav-link" data-scroll-target="#c.-compilation-native-isolée">C. Compilation native isolée</a></li>
+  <li><a href="#utilisation-avec-jupyter-notebook-et-vs-code" id="toc-utilisation-avec-jupyter-notebook-et-vs-code" class="nav-link" data-scroll-target="#utilisation-avec-jupyter-notebook-et-vs-code">6. Utilisation avec Jupyter Notebook et VS Code</a></li>
+  <li><a href="#test-de-validation" id="toc-test-de-validation" class="nav-link" data-scroll-target="#test-de-validation">7. Test de validation</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -333,41 +331,46 @@ window.Quarto = {
 
 <section id="installation-et-configuration" class="level1">
 <h1>Installation et Configuration</h1>
-<p>Ce guide détaille les étapes nécessaires pour compiler le moteur natif et installer l’interface Python de Difmap. Le projet utilise <strong>Meson</strong> comme système de construction pour garantir des performances optimales et une compilation robuste des composants C et Fortran.</p>
-<section id="prérequis-système-linux" class="level2">
-<h2 class="anchored" data-anchor-id="prérequis-système-linux">1. Prérequis système (Linux)</h2>
-<p>Avant de commencer, votre système doit disposer des compilateurs et des bibliothèques de développement. Sur les distributions modernes (comme Ubuntu 24.04), il est impératif d’installer les paquets de gestion d’environnement Python isolés pour éviter les conflits systèmes.</p>
-<p>Exécutez la commande suivante dans votre terminal :</p>
+<p>Ce guide détaille les étapes nécessaires pour compiler le moteur natif et installer l’interface Python de Difmap. Le projet utilise Meson comme système de construction pour garantir des performances optimales et une compilation robuste des composants C et Fortran.</p>
+<section id="prérequis-système-linux" class="level3">
+<h3 class="anchored" data-anchor-id="prérequis-système-linux">1. Prérequis système (Linux)</h3>
+<p>Avant de commencer, votre système doit disposer des compilateurs et des bibliothèques de développement. Sur les distributions modernes (comme Ubuntu 24.04), il est impératif d’installer les paquets de gestion d’environnement Python isolés pour éviter les conflits systèmes. Exécutez la commande suivante dans votre terminal :</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sudo</span> apt-get update <span class="kw">&amp;&amp;</span> <span class="fu">sudo</span> apt-get install <span class="at">-y</span> <span class="dt">\</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  python3-full python3-venv <span class="dt">\</span></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  gcc gfortran pkg-config libgsl-dev pgplot5 libx11-dev <span class="dt">\</span></span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  libncurses-dev libtecla-dev meson ninja-build</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout callout-style-default callout-note callout-titled" title="Détail des paquets systèmes">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
 <i class="callout-icon"></i>
 </div>
 <div class="callout-title-container flex-fill">
-Note
+Détail des paquets systèmes
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>Cette commande installe notamment <code>libx11-dev</code> pour la gestion graphique des fenêtres et <code>libtecla-dev</code> pour la gestion de la ligne de commande native. Les paquets <code>python3-full</code> et <code>python3-venv</code> sont requis pour la norme PEP 668.</p>
+<p>Cette commande installe notamment <code>libx11-dev</code> pour la gestion graphique des fenêtres et <code>libtecla-dev</code> pour la gestion de la ligne de commande native. Les paquets <code>python3-full</code> et <code>python3-venv</code> sont requis pour respecter la norme PEP 668.</p>
 </div>
 </div>
 </section>
-<section id="configuration-de-lenvironnement-virtuel" class="level2">
-<h2 class="anchored" data-anchor-id="configuration-de-lenvironnement-virtuel">2. Configuration de l’environnement virtuel</h2>
+<section id="téléchargement-du-code-source" class="level3">
+<h3 class="anchored" data-anchor-id="téléchargement-du-code-source">2. Téléchargement du code source</h3>
+<p>Commencez par récupérer le code source du projet. C’est à l’intérieur de ce répertoire que nous configurerons l’environnement.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/iimavne/DIFMAP.git</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> DIFMAP</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="configuration-de-lenvironnement-virtuel" class="level3">
+<h3 class="anchored" data-anchor-id="configuration-de-lenvironnement-virtuel">3. Configuration de l’environnement virtuel</h3>
 <p>Pour protéger votre système (et éviter l’erreur <code>externally-managed-environment</code>), vous devez créer un environnement virtuel dédié. C’est dans cet espace isolé que la bibliothèque sera compilée et installée.</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Création de l'environnement virtuel (à faire une seule fois)</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> <span class="at">-m</span> venv .venv</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Activation de l'environnement (à refaire à chaque nouvelle session terminal)</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> .venv/bin/activate</span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. Mise à jour des outils de base</span></span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">--upgrade</span> pip</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="callout callout-style-default callout-important callout-titled">
+<div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Création de l'environnement virtuel (à faire une seule fois)</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> <span class="at">-m</span> venv .venv</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Activation de l'environnement (à refaire à chaque nouvelle session terminal)</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> .venv/bin/activate</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. Mise à jour des outils de base</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">--upgrade</span> pip</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="callout callout-style-default callout-warning callout-titled" title="Attention">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
 <i class="callout-icon"></i>
@@ -381,47 +384,76 @@ Attention
 </div>
 </div>
 </section>
-<section id="dépendances-python" class="level2">
-<h2 class="anchored" data-anchor-id="dépendances-python">3. Dépendances Python</h2>
-<p>Une fois l’environnement activé, installez les dépendances scientifiques fondamentales requises par le projet :</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">"numpy&gt;=2.0.0"</span> <span class="st">"cython&gt;=3.0.0"</span> astropy matplotlib</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="dépendances-python" class="level3">
+<h3 class="anchored" data-anchor-id="dépendances-python">4. Dépendances Python</h3>
+<p>Une fois l’environnement activé, installez les dépendances scientifiques fondamentales, ainsi que les outils requis pour utiliser l’API dans des Notebooks :</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">"numpy&gt;=2.0.0"</span> <span class="st">"cython&gt;=3.0.0"</span> astropy matplotlib ipykernel</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <ul>
-<li><strong>NumPy</strong> (<span class="math inline">\(\ge\)</span> 2.0.0) : Indispensable pour la manipulation des matrices d’images et le partage de mémoire inter-processus avec le moteur C.</li>
-<li><strong>Cython</strong> (<span class="math inline">\(\ge\)</span> 3.0.0) : Nécessaire pour transpiler le code de liaison (<code>.pyx</code>) en code source C compilable.</li>
-<li><strong>Astropy</strong> : Utilisé pour la gestion structurelle des formats de fichiers astronomiques et des systèmes de coordonnées.</li>
-<li><strong>Matpotlib</strong> : Requis pour la visualisation bidimensionnelle des matrices d’images générées et la production de figures scientifiques.</li>
+<li><strong>NumPy (<span class="math inline">\(\ge\)</span> 2.0.0)</strong> : Indispensable pour la manipulation des matrices d’images et le partage de mémoire inter-processus (Zéro-Copie) avec le moteur C. <br></li>
+<li><strong>Cython (<span class="math inline">\(\ge\)</span> 3.0.0)</strong> : Nécessaire pour transpiler le code de liaison (<code>.pyx</code>) en code source C compilable. <br></li>
+<li><strong>Astropy</strong> : Utilisé pour la gestion structurelle des formats de fichiers astronomiques et des systèmes de coordonnées. <br></li>
+<li><strong>Matplotlib</strong> : Requis pour la visualisation bidimensionnelle des matrices d’images générées et la production de figures scientifiques. <br></li>
+<li><strong>ipykernel</strong> : Indispensable pour exposer cet environnement virtuel à Jupyter Notebook et VS Code.</li>
 </ul>
 </section>
-<section id="installation-pour-les-utilisateurs" class="level2">
-<h2 class="anchored" data-anchor-id="installation-pour-les-utilisateurs">4. Installation pour les utilisateurs</h2>
-<p>Cette méthode est recommandée pour une utilisation standard de l’API dans vos scripts d’analyse.</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Téléchargement du code source</span></span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/iimavne/DIFMAP.git</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> DIFMAP</span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Compilation et installation</span></span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install .</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p><em>Le backend <code>meson-python</code> se charge automatiquement d’invoquer Cython et de compiler les extensions natives <code>difmap_native</code> lors de cette étape.</em></p>
+<section id="installation-de-la-bibliothèque-difmap" class="level3">
+<h3 class="anchored" data-anchor-id="installation-de-la-bibliothèque-difmap">5. Installation de la bibliothèque Difmap</h3>
+<section id="a.-installation-pour-les-utilisateurs-recommandée" class="level4">
+<h4 class="anchored" data-anchor-id="a.-installation-pour-les-utilisateurs-recommandée">A. Installation pour les utilisateurs (Recommandée)</h4>
+<p>Cette méthode est recommandée pour une utilisation standard de l’API dans vos scripts d’analyse et Notebooks Jupyter. Elle compile le moteur une fois pour toutes.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install .</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Le backend <code>meson-python</code> se charge automatiquement d’invoquer Cython et de compiler les extensions natives <code>difmap_native</code> lors de cette étape.</p>
+</div>
+</div>
 </section>
-<section id="installation-pour-les-développeurs" class="level2">
-<h2 class="anchored" data-anchor-id="installation-pour-les-développeurs">5. Installation pour les développeurs</h2>
-<p>Si vous prévoyez d’altérer le code C, Fortran, ou les fichiers Cython, privilégiez les approches suivantes.</p>
-<section id="mode-éditable" class="level3">
-<h3 class="anchored" data-anchor-id="mode-éditable">Mode éditable</h3>
-<p>Pour que les modifications apportées aux fichiers Python soient appliquées dynamiquement sans nécessiter de réinstallation :</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> . <span class="at">--no-build-isolation</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="b.-installation-pour-les-développeurs" class="level4">
+<h4 class="anchored" data-anchor-id="b.-installation-pour-les-développeurs">B. Installation pour les développeurs</h4>
+<p>Si vous prévoyez d’altérer le code C, Fortran, ou les fichiers Cython, privilégiez le mode éditable.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-e</span> . <span class="at">--no-build-isolation</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="callout callout-style-default callout-important callout-titled" title="Avertissement concernant le mode éditable et VS Code">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Avertissement concernant le mode éditable et VS Code
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Le mode éditable utilise un chargeur dynamique (Smartedit Loader). Si vous utilisez ce mode, <strong>vous devez exécuter vos scripts strictement depuis le terminal</strong>. L’utilisation du mode éditable directement dans les Notebooks VS Code peut entraîner une erreur <code>FileNotFoundError: build/cp312</code> due à une perte du contexte des variables d’environnement.</p>
+</div>
+</div>
 </section>
-<section id="compilation-native-isolée" class="level3">
-<h3 class="anchored" data-anchor-id="compilation-native-isolée">Compilation native isolée</h3>
+</section>
+<section id="c.-compilation-native-isolée" class="level3">
+<h3 class="anchored" data-anchor-id="c.-compilation-native-isolée">C. Compilation native isolée</h3>
 <p>Pour compiler l’exécutable interactif classique <code>difmap</code> (version CLI) ou pour le débogage direct du moteur natif :</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> setup.sh</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb7"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">bash</span> setup.sh</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>L’exécutable binaire résultant sera localisé dans le répertoire de construction <code>builddir/</code>.</p>
+<hr>
 </section>
+<section id="utilisation-avec-jupyter-notebook-et-vs-code" class="level3">
+<h3 class="anchored" data-anchor-id="utilisation-avec-jupyter-notebook-et-vs-code">6. Utilisation avec Jupyter Notebook et VS Code</h3>
+<p>Pour garantir que vos éditeurs de code (comme VS Code) détectent correctement l’environnement virtuel contenant Difmap et ses dépendances (sans générer d’erreur <code>ModuleNotFoundError</code>), vous devez “déclarer” ce noyau explicitement.</p>
+<p>Toujours dans votre terminal avec le <code>(.venv)</code> activé, exécutez :</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> <span class="at">-m</span> ipykernel install <span class="at">--user</span> <span class="at">--name</span><span class="op">=</span>difmap-venv <span class="at">--display-name</span> <span class="st">"Python (Difmap VENV)"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Dans VS Code :</strong> 1. Ouvrez votre fichier <code>.ipynb</code>. <br> 2. Cliquez en haut à droite sur <strong>Sélectionner un noyau</strong> (Select Kernel). <br> 3. Choisissez <strong>Noyaux Jupyter</strong> (Jupyter Kernels). <br> 4. Sélectionnez <strong>Python (Difmap VENV)</strong>. Votre notebook est maintenant synchronisé avec le moteur C !</p>
+<hr>
 </section>
-<section id="test-de-validation" class="level2">
-<h2 class="anchored" data-anchor-id="test-de-validation">6. Test de validation</h2>
-<p>Pour confirmer que la liaison entre Python et la bibliothèque C est opérationnelle, lancez la commande suivante :</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> <span class="at">-c</span> <span class="st">"from difmap_wrapper import DifmapSession; s = DifmapSession(); print('Le module Difmap est correctement installé.')"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="test-de-validation" class="level3">
+<h3 class="anchored" data-anchor-id="test-de-validation">7. Test de validation</h3>
+<p>Pour confirmer que la liaison entre Python et la bibliothèque C est opérationnelle, lancez la commande suivante dans votre terminal :</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python3</span> <span class="at">-c</span> <span class="st">"from difmap_wrapper import DifmapSession; s = DifmapSession(); print('Le module Difmap est correctement installé.')"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
 
 </section>

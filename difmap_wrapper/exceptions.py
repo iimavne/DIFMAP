@@ -8,6 +8,26 @@ class DifmapError(Exception):
     un problème interne qu'il ne peut pas résoudre (ex: échec d'allocation 
     mémoire, erreur mathématique dans la FFT, fichier FITS introuvable). 
     C'est la classe parente de toutes les exceptions spécifiques du paquet.
+
+    Examples
+    --------
+    Interception d'une erreur critique du moteur lors de l'automatisation 
+    d'un pipeline de traitement :
+
+    ```python
+    from difmap_wrapper import DifmapSession
+    from difmap_wrapper.exceptions import DifmapError
+
+    with DifmapSession() as session:
+        try:
+            # Tentative de chargement d'un fichier corrompu ou inexistant
+            session.load_observation("donnees_corrompues.fits")
+            
+        except DifmapError as e:
+            print(f"Alerte : Le moteur C a rejeté l'opération. Détail : {e}")
+            # Le script peut continuer à analyser la galaxie suivante 
+            # sans s'arrêter net.
+    ```
     """
     pass
 
