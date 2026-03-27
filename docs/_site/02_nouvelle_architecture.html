@@ -282,7 +282,7 @@ window.Quarto = {
   <li><a href="#le-modèle-en-3-couches-architecture-3-tier" id="toc-le-modèle-en-3-couches-architecture-3-tier" class="nav-link" data-scroll-target="#le-modèle-en-3-couches-architecture-3-tier">2.2. Le modèle en 3 couches (Architecture 3-Tier)</a>
   <ul class="collapse">
   <li><a href="#larchitecture" id="toc-larchitecture" class="nav-link" data-scroll-target="#larchitecture">2.2.1 L’architecture</a></li>
-  <li><a href="#couche-1-le-moteur-natif-bas-niveau" id="toc-couche-1-le-moteur-natif-bas-niveau" class="nav-link" data-scroll-target="#couche-1-le-moteur-natif-bas-niveau">Couche 1 : Le Moteur Natif (Bas Niveau)</a></li>
+  <li><a href="#couche-1-le-moteur-difmap" id="toc-couche-1-le-moteur-difmap" class="nav-link" data-scroll-target="#couche-1-le-moteur-difmap">Couche 1 : Le Moteur Difmap</a></li>
   <li><a href="#couche-2-le-binding-cython-niveau-intermédiaire" id="toc-couche-2-le-binding-cython-niveau-intermédiaire" class="nav-link" data-scroll-target="#couche-2-le-binding-cython-niveau-intermédiaire">Couche 2 : Le Binding Cython (Niveau Intermédiaire)</a></li>
   <li><a href="#couche-3-lapi-orientée-objet-haut-niveau" id="toc-couche-3-lapi-orientée-objet-haut-niveau" class="nav-link" data-scroll-target="#couche-3-lapi-orientée-objet-haut-niveau">Couche 3 : L’API Orientée Objet (Haut Niveau)</a></li>
   </ul></li>
@@ -357,15 +357,16 @@ Lexique Métier : Les termes clés
 <pre class="mermaid mermaid-js">graph TD
     %% Définition du contenu des Couches
     subgraph Couche3 ["&lt;span style='color:#1e40af'&gt;&lt;b&gt; Couche 3 : API Python (High-Level)&lt;/b&gt;&lt;/span&gt;"]
-        A[" Script Utilisateur"] --&gt;|Appel Méthode| B(" DifmapSession")
-        B --&gt;|Astrométrie WCS| C(" Module Imaging")
+        A[" Script Utilisateur"] --&gt;|Appel Méthode| B(" Façade principale pour piloter 
+    &lt;br&gt; l'environnement Difmap -DifmapSession")
+        B --&gt;|Astrométrie WCS| C(" Module pour génération d'images astrophysiques &lt;br&gt; - DifmapImager")
     end
 
     subgraph Couche2 ["&lt;span style='color:#92400e'&gt;&lt;b&gt;Couche 2 : Pont Cython (Binding)&lt;/b&gt;&lt;/span&gt;"]
-        D{" difmap_native.pyx"}
+        D{" Binding - difmap_native.pyx"}
     end
 
-    subgraph Couche1 ["&lt;span style='color:#991b1b'&gt;&lt;b&gt; Couche 1 : Moteur (Low-Level)&lt;/b&gt;&lt;/span&gt;"]
+    subgraph Couche1 ["&lt;span style='color:#991b1b'&gt;&lt;b&gt; Couche 1 : Moteur - Difmap en C &lt;/b&gt;&lt;/span&gt;"]
         E[" Variables Globales C"]
         F[" Algorithmes"]
         G[" Mémoire RAM"]
@@ -398,9 +399,9 @@ Lexique Métier : Les termes clés
 </div>
 </div>
 </section>
-<section id="couche-1-le-moteur-natif-bas-niveau" class="level3">
-<h3 class="anchored" data-anchor-id="couche-1-le-moteur-natif-bas-niveau">Couche 1 : Le Moteur Natif (Bas Niveau)</h3>
-<p>Composée des dossiers <code>difmap_src/</code> et <code>slalib_src/</code>, cette couche est le “muscle” du logiciel. Elle ne gère plus aucune interface utilisateur. Elle se contente d’allouer la mémoire RAM pour les images et d’exécuter les mathématiques. Nous avons ajouté de légers <em>getters</em> et <em>setters</em> en C pour exposer ses variables globales en toute sécurité.</p>
+<section id="couche-1-le-moteur-difmap" class="level3">
+<h3 class="anchored" data-anchor-id="couche-1-le-moteur-difmap">Couche 1 : Le Moteur Difmap</h3>
+<p>Composée notamment du dossiers <code>difmap_src/</code> cette couche est le “muscle” du logiciel. Elle ne gère plus aucune interface utilisateur. Elle se contente d’allouer la mémoire RAM pour les images et d’exécuter les mathématiques. Nous avons ajouté de légers <em>getters</em> et <em>setters</em> en C pour exposer ses variables globales en toute sécurité.</p>
 </section>
 <section id="couche-2-le-binding-cython-niveau-intermédiaire" class="level3">
 <h3 class="anchored" data-anchor-id="couche-2-le-binding-cython-niveau-intermédiaire">Couche 2 : Le Binding Cython (Niveau Intermédiaire)</h3>
@@ -408,7 +409,7 @@ Lexique Métier : Les termes clés
 </section>
 <section id="couche-3-lapi-orientée-objet-haut-niveau" class="level3">
 <h3 class="anchored" data-anchor-id="couche-3-lapi-orientée-objet-haut-niveau">Couche 3 : L’API Orientée Objet (Haut Niveau)</h3>
-<p>C’est la partie visible de l’iceberg (le dossier <code>difmap_wrapper/</code>). Elle offre des classes Python élégantes (<code>DifmapSession</code>) qui masquent totalement la complexité des pointeurs C à l’utilisateur final.</p>
+<p>C’est la partie visible de l’iceberg (le dossier <code>difmap_wrapper/</code>). Elle offre des classes Python tel que<code>DifmapSession</code> qui masquent totalement la complexité des pointeurs C à l’utilisateur final.</p>
 </section>
 </section>
 <section id="le-nouveau-flux-dexécution-le-contournement-de-sphere" class="level2">
@@ -418,7 +419,7 @@ Lexique Métier : Les termes clés
 </section>
 <section id="la-gestion-moderne-de-la-compilation-build-system" class="level2">
 <h2 class="anchored" data-anchor-id="la-gestion-moderne-de-la-compilation-build-system">2.4. La gestion moderne de la compilation (Build System)</h2>
-<p>Intégrer du code C/Fortran des années 90 dans l’écosystème Python de 2026 exige un système de compilation robuste. Les anciens fichiers <code>Makefile</code>, souvent capricieux selon les systèmes d’exploitation, ont été remplacés par une chaîne de compilation standardisée (PEP 517) :</p>
+<p>Intégrer du code C/Fortran des années 90 dans l’écosystème Python de 2026 exige un système de compilation robuste. Les anciens fichiers <code>Makefile</code>, souvent capricieux selon les systèmes d’exploitation, ont été remplacés par une chaîne de compilation standardisée:</p>
 <ol type="1">
 <li><strong><code>pyproject.toml</code> :</strong> Définit les métadonnées du projet Python et force l’utilisation d’un environnement de build isolé.</li>
 <li><strong>Meson &amp; Ninja :</strong> Remplacent les outils historiques pour compiler le code C. Meson est capable de détecter dynamiquement les compilateurs système (GCC, GFortran) et de lier les dépendances complexes (PGPLOT, GSL, X11) de manière transparente.</li>

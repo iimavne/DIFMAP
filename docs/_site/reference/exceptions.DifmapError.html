@@ -280,7 +280,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#difmap_wrapper.exceptions.DifmapError" id="toc-difmap_wrapper.exceptions.DifmapError" class="nav-link active" data-scroll-target="#difmap_wrapper.exceptions.DifmapError">exceptions.DifmapError</a></li>
+  <li><a href="#difmap_wrapper.exceptions.DifmapError" id="toc-difmap_wrapper.exceptions.DifmapError" class="nav-link active" data-scroll-target="#difmap_wrapper.exceptions.DifmapError">exceptions.DifmapError</a>
+  <ul class="collapse">
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
+  </ul></li>
   </ul>
 </nav>
     </div>
@@ -295,8 +298,24 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>exceptions.DifmapError()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Exception de base pour toutes les erreurs liées au moteur C de Difmap.</p>
 <p>Cette exception est levée lorsque le code natif (C/Cython) rencontre un problème interne qu’il ne peut pas résoudre (ex: échec d’allocation mémoire, erreur mathématique dans la FFT, fichier FITS introuvable). C’est la classe parente de toutes les exceptions spécifiques du paquet.</p>
+<section id="examples" class="level2 doc-section doc-section-examples">
+<h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
+<p>Interception d’une erreur critique du moteur lors de l’automatisation d’un pipeline de traitement :</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> difmap_wrapper <span class="im">import</span> DifmapSession</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> difmap_wrapper.exceptions <span class="im">import</span> DifmapError</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> DifmapSession() <span class="im">as</span> session:</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Tentative de chargement d'un fichier corrompu ou inexistant</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>        session.load_observation(<span class="st">"donnees_corrompues.fits"</span>)</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>        </span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> DifmapError <span class="im">as</span> e:</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"Alerte : Le moteur C a rejeté l'opération. Détail : </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Le script peut continuer à analyser la galaxie suivante </span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>        <span class="co"># sans s'arrêter net.</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
 
+</section>
 </section>
 
 </main> <!-- /main -->

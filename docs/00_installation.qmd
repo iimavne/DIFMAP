@@ -1,11 +1,9 @@
 # Installation et Configuration
 
-Ce guide détaille les étapes nécessaires pour compiler le moteur natif et installer l'interface Python de Difmap. Le projet utilise **Meson** comme système de construction pour garantir des performances optimales et une compilation robuste des composants C et Fortran.
+Ce guide détaille les étapes nécessaires pour compiler le moteur natif et installer l’interface Python de Difmap. Le projet utilise Meson comme système de construction pour garantir des performances optimales et une compilation robuste des composants C et Fortran.
 
-## 1. Prérequis système (Linux)
-
-Avant de commencer, votre système doit disposer des compilateurs et des bibliothèques de développement. Sur les distributions modernes (comme Ubuntu 24.04), il est impératif d'installer les paquets de gestion d'environnement Python isolés pour éviter les conflits systèmes.
-
+### 1. Prérequis système (Linux)
+Avant de commencer, votre système doit disposer des compilateurs et des bibliothèques de développement. Sur les distributions modernes (comme Ubuntu 24.04), il est impératif d’installer les paquets de gestion d’environnement Python isolés pour éviter les conflits systèmes.
 Exécutez la commande suivante dans votre terminal :
 
 ```bash
@@ -15,13 +13,20 @@ sudo apt-get update && sudo apt-get install -y \
   libncurses-dev libtecla-dev meson ninja-build
 ```
 
-::: {.callout-note}
-Cette commande installe notamment `libx11-dev` pour la gestion graphique des fenêtres et `libtecla-dev` pour la gestion de la ligne de commande native. Les paquets `python3-full` et `python3-venv` sont requis pour la norme PEP 668.
-::: 
+::: {.callout-note title="Détail des paquets systèmes"}
+Cette commande installe notamment `libx11-dev` pour la gestion graphique des fenêtres et `libtecla-dev` pour la gestion de la ligne de commande native. Les paquets `python3-full` et `python3-venv` sont requis pour respecter la norme PEP 668.
+:::
 
-## 2. Configuration de l'environnement virtuel
+### 2. Téléchargement du code source
+Commencez par récupérer le code source du projet. C'est à l'intérieur de ce répertoire que nous configurerons l'environnement.
 
-Pour protéger votre système (et éviter l'erreur `externally-managed-environment`), vous devez créer un environnement virtuel dédié. C'est dans cet espace isolé que la bibliothèque sera compilée et installée.
+```bash
+git clone https://github.com/iimavne/DIFMAP.git
+cd DIFMAP
+```
+
+### 3. Configuration de l’environnement virtuel
+Pour protéger votre système (et éviter l’erreur `externally-managed-environment`), vous devez créer un environnement virtuel dédié. C’est dans cet espace isolé que la bibliothèque sera compilée et installée.
 
 ```bash
 # 1. Création de l'environnement virtuel (à faire une seule fois)
@@ -34,62 +39,73 @@ source .venv/bin/activate
 pip install --upgrade pip
 ```
 
-::: {.callout-important}
-## Attention
+::: {.callout-warning title="Attention"}
 Vérifiez toujours que le préfixe `(.venv)` est présent au début de la ligne de votre terminal avant de procéder aux étapes suivantes.
 :::
 
-## 3. Dépendances Python
-
-Une fois l'environnement activé, installez les dépendances scientifiques fondamentales requises par le projet :
+### 4. Dépendances Python
+Une fois l’environnement activé, installez les dépendances scientifiques fondamentales, ainsi que les outils requis pour utiliser l'API dans des Notebooks :
 
 ```bash
-pip install "numpy>=2.0.0" "cython>=3.0.0" astropy matplotlib
+pip install "numpy>=2.0.0" "cython>=3.0.0" astropy matplotlib ipykernel
 ```
 
-* **NumPy** ($\ge$ 2.0.0) : Indispensable pour la manipulation des matrices d'images et le partage de mémoire inter-processus avec le moteur C.
-* **Cython** ($\ge$ 3.0.0) : Nécessaire pour transpiler le code de liaison (`.pyx`) en code source C compilable.
-* **Astropy** : Utilisé pour la gestion structurelle des formats de fichiers astronomiques et des systèmes de coordonnées.
-* **Matpotlib** : Requis pour la visualisation bidimensionnelle des matrices d'images générées et la production de figures scientifiques.
+* **NumPy ($\ge$ 2.0.0)** : Indispensable pour la manipulation des matrices d’images et le partage de mémoire inter-processus (Zéro-Copie) avec le moteur C. <br>
+* **Cython ($\ge$ 3.0.0)** : Nécessaire pour transpiler le code de liaison (`.pyx`) en code source C compilable. <br>
+* **Astropy** : Utilisé pour la gestion structurelle des formats de fichiers astronomiques et des systèmes de coordonnées. <br>
+* **Matplotlib** : Requis pour la visualisation bidimensionnelle des matrices d’images générées et la production de figures scientifiques. <br>
+* **ipykernel** : Indispensable pour exposer cet environnement virtuel à Jupyter Notebook et VS Code.
 
-## 4. Installation pour les utilisateurs
+### 5. Installation de la bibliothèque Difmap
 
-Cette méthode est recommandée pour une utilisation standard de l'API dans vos scripts d'analyse.
+#### A. Installation pour les utilisateurs (Recommandée)
+Cette méthode est recommandée pour une utilisation standard de l’API dans vos scripts d’analyse et Notebooks Jupyter. Elle compile le moteur une fois pour toutes.
 
 ```bash
-# 1. Téléchargement du code source
-git clone https://github.com/iimavne/DIFMAP.git
-cd DIFMAP
-
-# 2. Compilation et installation
 pip install .
 ```
+::: {.callout-note}
+Le backend `meson-python` se charge automatiquement d’invoquer Cython et de compiler les extensions natives `difmap_native` lors de cette étape.
+:::
 
-*Le backend `meson-python` se charge automatiquement d'invoquer Cython et de compiler les extensions natives `difmap_native` lors de cette étape.*
+#### B. Installation pour les développeurs
+Si vous prévoyez d’altérer le code C, Fortran, ou les fichiers Cython, privilégiez le mode éditable. 
 
-## 5. Installation pour les développeurs
-
-Si vous prévoyez d'altérer le code C, Fortran, ou les fichiers Cython, privilégiez les approches suivantes.
-
-### Mode éditable
-Pour que les modifications apportées aux fichiers Python soient appliquées dynamiquement sans nécessiter de réinstallation :
 ```bash
 pip install -e . --no-build-isolation
 ```
+::: {.callout-important title="Avertissement concernant le mode éditable et VS Code"}
+Le mode éditable utilise un chargeur dynamique (Smartedit Loader). Si vous utilisez ce mode, **vous devez exécuter vos scripts strictement depuis le terminal**. L'utilisation du mode éditable directement dans les Notebooks VS Code peut entraîner une erreur `FileNotFoundError: build/cp312` due à une perte du contexte des variables d'environnement.
+:::
 
-### Compilation native isolée
+### C. Compilation native isolée
 Pour compiler l'exécutable interactif classique `difmap` (version CLI) ou pour le débogage direct du moteur natif :
 ```bash
 bash setup.sh
 ```
 L'exécutable binaire résultant sera localisé dans le répertoire de construction `builddir/`.
 
-## 6. Test de validation
+---
 
-Pour confirmer que la liaison entre Python et la bibliothèque C est opérationnelle, lancez la commande suivante :
+### 6. Utilisation avec Jupyter Notebook et VS Code
+Pour garantir que vos éditeurs de code (comme VS Code) détectent correctement l'environnement virtuel contenant Difmap et ses dépendances (sans générer d'erreur `ModuleNotFoundError`), vous devez "déclarer" ce noyau explicitement.
+
+Toujours dans votre terminal avec le `(.venv)` activé, exécutez :
+```bash
+python -m ipykernel install --user --name=difmap-venv --display-name "Python (Difmap VENV)"
+```
+
+**Dans VS Code :**
+1. Ouvrez votre fichier `.ipynb`. <br>
+2. Cliquez en haut à droite sur **Sélectionner un noyau** (Select Kernel). <br>
+3. Choisissez **Noyaux Jupyter** (Jupyter Kernels). <br>
+4. Sélectionnez **Python (Difmap VENV)**. Votre notebook est maintenant synchronisé avec le moteur C !
+
+---
+
+### 7. Test de validation
+Pour confirmer que la liaison entre Python et la bibliothèque C est opérationnelle, lancez la commande suivante dans votre terminal :
 
 ```bash
 python3 -c "from difmap_wrapper import DifmapSession; s = DifmapSession(); print('Le module Difmap est correctement installé.')"
 ```
-
-

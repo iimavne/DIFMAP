@@ -332,10 +332,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h4>
 <table class="table">
 <colgroup>
-<col style="width: 6%">
-<col style="width: 5%">
-<col style="width: 79%">
-<col style="width: 8%">
+<col style="width: 2%">
+<col style="width: 1%">
+<col style="width: 93%">
+<col style="width: 2%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -361,7 +361,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>pol</td>
 <td>str</td>
-<td>La polarisation à imager (“I”, “Q”, “U”, “V”). Par défaut défini sur “I” (intensité totale).</td>
+<td>La polarisation à imager. Accepte les paramètres de Stokes ou les corrélations brutes : <br> - “I” : Intensité totale (luminosité globale, valeur par défaut). <br> - “Q”, “U” : Polarisation linéaire (cartographie des champs magnétiques). <br> - “V” : Polarisation circulaire. <br> - “RR”, “LL” : Corrélations directes des antennes (circulaire droite/gauche). <br> - “RL”, “LR” : Polarisations croisées. <br></td>
 <td><code>"I"</code></td>
 </tr>
 </tbody>
@@ -386,7 +386,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td>dict</td>
-<td>Le “Package Complet” de l’image contenant : - <strong>data</strong> (<em>numpy.ndarray</em>): La matrice 2D des flux (Jy/beam). - <strong>header</strong> (<em>dict</em>): Les métadonnées du header FITS (NX, NY, etc.). - <strong>beam</strong> (<em>dict</em>): Les paramètres de la PSF (bmaj, bmin, bpa). - <strong>extent</strong> (<em>list</em>): Coordonnées absolues <code>[x_min, x_max, y_min, y_max]</code> corrigées.</td>
+<td>Le “Package Complet” de l’image contenant : <br> - <strong>data</strong> (<em>numpy.ndarray</em>): La matrice 2D des flux (Jy/beam). <br> - <strong>header</strong> (<em>dict</em>): Les métadonnées du header FITS (NX, NY, etc.). <br> - <strong>beam</strong> (<em>dict</em>): Les paramètres de la PSF (bmaj, bmin, bpa). <br> - <strong>extent</strong> (<em>list</em>): Coordonnées absolues <code>[x_min, x_max, y_min, y_max]</code> corrigées.<br></td>
 </tr>
 </tbody>
 </table>
@@ -444,8 +444,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <colgroup>
 <col style="width: 4%">
 <col style="width: 3%">
-<col style="width: 82%">
-<col style="width: 9%">
+<col style="width: 83%">
+<col style="width: 8%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -459,25 +459,25 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>img_dict</td>
 <td>dict</td>
-<td>Le dictionnaire de l’image produit par l’API Difmap. Il doit impérativement contenir les clés ‘data’ (la matrice bidimensionnelle des flux) et ‘extent’ (les limites spatiales corrigées).</td>
+<td>Le dictionnaire de l’image produit par l’API Difmap. Il doit impérativement contenir les clés ‘data’ (la matrice bidimensionnelle des flux) et ‘extent’ (les limites spatiales corrigées). <br></td>
 <td><em>required</em></td>
 </tr>
 <tr class="even">
 <td>cmap</td>
 <td>str</td>
-<td>La palette de couleurs Matplotlib à utiliser pour le rendu. Par défaut défini sur ‘magma’.</td>
+<td>La palette de couleurs Matplotlib à utiliser pour le rendu. Par défaut défini sur ‘magma’. <br></td>
 <td><code>'magma'</code></td>
 </tr>
 <tr class="odd">
 <td>figsize</td>
 <td>tuple</td>
-<td>Les dimensions de la figure générée (largeur, hauteur) en pouces. Par défaut défini sur (8, 6).</td>
+<td>Les dimensions de la figure générée (largeur, hauteur) en pouces. Par défaut défini sur (8, 6). <br></td>
 <td><code>(8, 6)</code></td>
 </tr>
 <tr class="even">
 <td>title</td>
 <td>str</td>
-<td>Le titre principal affiché au-dessus de la figure. Par défaut défini sur “Imagerie Difmap”.</td>
+<td>Le titre principal affiché au-dessus de la figure. Par défaut défini sur “Imagerie Difmap”. <br></td>
 <td><code>'Imagerie Difmap'</code></td>
 </tr>
 <tr class="odd">
