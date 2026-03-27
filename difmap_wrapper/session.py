@@ -137,7 +137,7 @@ class DifmapSession:
             raise DifmapError(f"Impossible de lire le fichier {filepath}")
         self.uv_loaded = True
         
-    def create_image(self, size: int = 512, cellsize: float = 1.0) -> dict:
+    def create_image(self, size: int = 512, cellsize: float = 1.0, pol: str = "I") -> dict:
         """
         Orchestre la création d'une carte brute (Dirty Map) à partir des visibilités.
         
@@ -151,11 +151,19 @@ class DifmapSession:
             Il est recommandé d'utiliser des puissances de 2 pour optimiser la FFT.
         cellsize : float, default=1.0
             La résolution d'un pixel en millisecondes d'arc (mas).
+        pol : str, default="I"
+            La polarisation à imager. Accepte les paramètres de Stokes ou les corrélations brutes : <br>
+            - "I" : Intensité totale (luminosité globale, valeur par défaut). <br>
+            - "Q", "U" : Polarisation linéaire (cartographie des champs magnétiques). <br>
+            - "V" : Polarisation circulaire. <BR>
+            - "RR", "LL" : Corrélations directes des antennes (circulaire droite/gauche). <br>
+            - "RL", "LR" : Polarisations croisées. <br>
 
         Returns
         -------
         dict
-            Le dictionnaire contenant les données de l'image générée (data, extent, etc.).
+            Le dictionnaire (ou l'objet DifmapImage) contenant les données 
+            de l'image générée (data, extent, etc.).
 
         Raises
         ------
@@ -165,15 +173,23 @@ class DifmapSession:
         Examples
         --------
         ```python
-        # Création d'une grille HD
-        img = session.create_image(size=2048, cellsize=0.05)
+        # Création d'une grille HD en intensité totale (Stokes I par défaut)
+        img_i = session.create_image(size=2048, cellsize=0.05)
+        
+        # Création d'une image spécifique pour la polarisation circulaire droite (RR)
+        img_rr = session.create_image(size=512, cellsize=0.1, pol="RR")
         ```
         """
+        # Le videur vérifie la liste des invités
+        if pol not in ["I", "Q", "U", "V", "RR", "LL", "RL", "LR"]:
+            raise ValueError(f"Erreur : La polarisation '{pol}' n'existe pas !")
+        
         if not self.uv_loaded:
             raise DifmapStateError(
                 "Vous devez charger une observation (load_observation) avant de créer une image."
             )
         
-        # Délégation à la classe spécialisée (Pôle 2)
-        self.current_image = DifmapImager.make_dirty_map(size, cellsize)
+        # Délégation avec le passage explicite de 'pol'
+        self.current_image = DifmapImager.make_dirty_map(size=size, cellsize=cellsize, pol=pol)
+        
         return self.current_image

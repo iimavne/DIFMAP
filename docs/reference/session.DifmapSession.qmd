@@ -63,7 +63,7 @@ session.cleanup()
 ### create_image { #difmap_wrapper.session.DifmapSession.create_image }
 
 ```python
-session.DifmapSession.create_image(size=512, cellsize=1.0)
+session.DifmapSession.create_image(size=512, cellsize=1.0, pol='I')
 ```
 
 Orchestre la création d'une carte brute (Dirty Map) à partir des visibilités.
@@ -73,16 +73,17 @@ Cette fonction délègue le calcul mathématique lourd au module spécialisé
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type   | Description                                                                                                                               | Default   |
-|----------|--------|-------------------------------------------------------------------------------------------------------------------------------------------|-----------|
-| size     | int    | La taille de la grille d'image en pixels (ex: 512 pour 512x512).  Il est recommandé d'utiliser des puissances de 2 pour optimiser la FFT. | `512`     |
-| cellsize | float  | La résolution d'un pixel en millisecondes d'arc (mas).                                                                                    | `1.0`     |
+| Name     | Type   | Description                                                                                                                                                                                                                                                                                                                                                                                                   | Default   |
+|----------|--------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| size     | int    | La taille de la grille d'image en pixels (ex: 512 pour 512x512).  Il est recommandé d'utiliser des puissances de 2 pour optimiser la FFT.                                                                                                                                                                                                                                                                     | `512`     |
+| cellsize | float  | La résolution d'un pixel en millisecondes d'arc (mas).                                                                                                                                                                                                                                                                                                                                                        | `1.0`     |
+| pol      | str    | La polarisation à imager. Accepte les paramètres de Stokes ou les corrélations brutes : <br> - "I" : Intensité totale (luminosité globale, valeur par défaut). <br> - "Q", "U" : Polarisation linéaire (cartographie des champs magnétiques). <br> - "V" : Polarisation circulaire. <BR> - "RR", "LL" : Corrélations directes des antennes (circulaire droite/gauche). - "RL", "LR" : Polarisations croisées. | `"I"`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type   | Description                                                                    |
-|--------|--------|--------------------------------------------------------------------------------|
-|        | dict   | Le dictionnaire contenant les données de l'image générée (data, extent, etc.). |
+| Name   | Type   | Description                                                                                              |
+|--------|--------|----------------------------------------------------------------------------------------------------------|
+|        | dict   | Le dictionnaire (ou l'objet DifmapImage) contenant les données  de l'image générée (data, extent, etc.). |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -93,8 +94,11 @@ Cette fonction délègue le calcul mathématique lourd au module spécialisé
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
-# Création d'une grille HD
-img = session.create_image(size=2048, cellsize=0.05)
+# Création d'une grille HD en intensité totale (Stokes I par défaut)
+img_i = session.create_image(size=2048, cellsize=0.05)
+
+# Création d'une image spécifique pour la polarisation circulaire droite (RR)
+img_rr = session.create_image(size=512, cellsize=0.1, pol="RR")
 ```
 
 ### load_observation { #difmap_wrapper.session.DifmapSession.load_observation }
