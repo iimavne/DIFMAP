@@ -8,7 +8,7 @@ Exécutez la commande suivante dans votre terminal :
 
 ```bash
 sudo apt-get update && sudo apt-get install -y \
-  python3-full python3-venv \
+  python3-full python3-venv python3-dev \
   gcc gfortran pkg-config libgsl-dev pgplot5 libx11-dev \
   libncurses-dev libtecla-dev meson ninja-build
 ```
@@ -47,7 +47,8 @@ Vérifiez toujours que le préfixe `(.venv)` est présent au début de la ligne 
 Une fois l’environnement activé, installez les dépendances scientifiques fondamentales, ainsi que les outils requis pour utiliser l'API dans des Notebooks :
 
 ```bash
-pip install "numpy>=2.0.0" "cython>=3.0.0" astropy matplotlib ipykernel
+pip install meson-python meson ninja \
+  "numpy>=2.0.0" "cython>=3.0.0" astropy matplotlib ipykernel
 ```
 
 * **NumPy ($\ge$ 2.0.0)** : Indispensable pour la manipulation des matrices d’images et le partage de mémoire inter-processus (Zéro-Copie) avec le moteur C. <br>
