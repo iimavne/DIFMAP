@@ -72,6 +72,62 @@ def test_load_observation_cleans_previous(mock_observe):
 # 3. TEST DE LA CRÉATION D'IMAGE (create_image)
 # ---------------------------------------------------------
 
+import os
+import numpy as np
+
+# ---------------------------------------------------------
+# 4. TESTS D'INTÉGRATION (AVEC LE VRAI MOTEUR C)
+# ---------------------------------------------------------
+
+# On définit le chemin vers ton vrai fichier de test
+# (Assure-toi que ce chemin correspond à ton arborescence)
+REAL_FITS_FILE = "tests/test_data/0003-066_X.SPLIT.1"
+
+# Cette décoration "skipif" est magique : si le fichier FITS n'est pas sur le PC 
+# (par exemple si tu lances les tests sur Github Actions), il ignorera le test 
+# au lieu de le faire planter bêtement.
+@pytest.mark.skipif(not os.path.exists(REAL_FITS_FILE), reason="Fichier FITS de test introuvable")
+def test_integration_load_real_file():
+    """Test le chargement d'un vrai fichier dans la RAM du moteur C."""
+    with DifmapSession() as session:
+        # Pas de @patch ! On appelle le vrai moteur C
+        session.load_observation(REAL_FITS_FILE)
+        
+        # Si on arrive ici sans que Python ne crashe (Segfault), c'est déjà un succès !
+        assert session.uv_loaded is True
+
+
+@pytest.mark.skipif(not os.path.exists(REAL_FITS_FILE), reason="Fichier FITS de test introuvable")
+def test_integration_create_real_image():
+    """Test la création d'une Dirty Map entière via la FFT du moteur C."""
+    with DifmapSession() as session:
+        session.load_observation(REAL_FITS_FILE)
+        
+        # On demande au moteur C de calculer la FFT
+        size = 256
+        cellsize = 0.5
+        img_package = session.create_image(size=size, cellsize=cellsize, pol="I")
+        
+        # --- VÉRIFICATIONS DES DONNÉES RÉELLES ---
+        
+        # 1. Vérification des clés
+        assert "data" in img_package
+        assert "extent" in img_package
+        assert "header" in img_package
+        assert "beam" in img_package
+        
+        # 2. Vérification de la matrice (Zéro-Copie depuis le C)
+        data = img_package["data"]
+        assert isinstance(data, np.ndarray), "Les données doivent être un tableau NumPy"
+        assert data.shape == (size, size), f"L'image devrait faire {size}x{size} pixels"
+        
+        # 3. Vérification mathématique basique (la carte ne doit pas être vide)
+        assert np.max(data) != 0.0, "La carte générée est complètement vide (que des zéros) !"
+        
+        # 4. Vérification de l'astrométrie (l'extent doit avoir 4 valeurs)
+        assert len(img_package["extent"]) == 4
+        
+
 def test_create_image_fails_if_not_loaded():
     """Vérifie la barrière de sécurité (DifmapStateError)."""
     session = DifmapSession()
@@ -101,3 +157,5 @@ def test_create_image_success(mock_make_map):
     assert result == fake_img
     assert session.current_image == fake_img
     mock_make_map.assert_called_once_with(size=256, cellsize=0.5, pol="I")
+    
+    

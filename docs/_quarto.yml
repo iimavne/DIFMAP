@@ -17,7 +17,7 @@ website:
     style: "floating"
     search: true
     contents:
-      # --- TES CHAPITRES MANUELS ---
+      # --- CHAPITRES MANUELS ---
       - text: "Accueil"
         file:  index.qmd
       - text: "Installation"
@@ -29,13 +29,13 @@ website:
       - text: "3. Implémentation Technique"
         file: 03_implementation_technique.qmd
       
-      # --- TA DOC AUTOMATIQUE (Intégrée au même menu) ---
+      # --- DOC AUTOMATIQUE (Intégrée au même menu) ---
       - section: "4. Référence API"
         contents:
           - text: "Vue d'ensemble"
             file: reference/index.qmd
           
-          # On ajoute directement les fichiers générés par quartodoc !
+          # On ajoute directement les fichiers générés par quartodoc 
           - section: "Session & Environnement"
             contents:
               - reference/session.DifmapSession.qmd

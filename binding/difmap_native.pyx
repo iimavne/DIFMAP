@@ -89,4 +89,37 @@ def get_beam_info() -> dict:
     }
 
 
-    jiza +ppgplot
+
+def get_uv_data() -> dict:
+    """
+    Récupère les données de visibilité brutes (Zéro-Copie).
+    """
+    # 1. On demande combien il y a de points
+    cdef int n_pts = cdifmap.get_native_uv_count()
+    
+    if n_pts <= 0:
+        raise RuntimeError("Aucune donnée UV en mémoire. Avez-vous chargé une observation ?")
+
+    # 2. On récupère les pointeurs bruts du C
+    cdef float* u_ptr = cdifmap.get_native_u_coords()
+    cdef float* v_ptr = cdifmap.get_native_v_coords()
+    cdef float* amp_ptr = cdifmap.get_native_vis_amp()
+    cdef float* wgt_ptr = cdifmap.get_native_vis_wgt()
+
+    if u_ptr == NULL or v_ptr == NULL or amp_ptr == NULL or wgt_ptr == NULL:
+        raise RuntimeError("Erreur interne : Pointeurs UV invalides.")
+
+    # 3. MAGIE ZÉRO-COPIE : On plaque un calque (Memoryview) 1D sur la RAM C
+    cdef float[:] u_view = <float[:n_pts]> u_ptr
+    cdef float[:] v_view = <float[:n_pts]> v_ptr
+    cdef float[:] amp_view = <float[:n_pts]> amp_ptr
+    cdef float[:] wgt_view = <float[:n_pts]> wgt_ptr
+
+    # 4. On renvoie le tout empaqueté pour Python
+    # np.asarray ne copie pas les données si on lui passe une Memoryview Cython !
+    return {
+        "u": np.asarray(u_view),
+        "v": np.asarray(v_view),
+        "amp": np.asarray(amp_view),
+        "weight": np.asarray(wgt_view)
+    }

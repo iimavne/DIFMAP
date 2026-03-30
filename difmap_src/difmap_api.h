@@ -20,4 +20,10 @@ int native_select(char *polarization);
 int native_mapsize(int nx, float cellsize);
 int native_invert(void);
 
+/* Fonctions pour extraire les visibilités (UV) en RAM */
+int get_native_uv_count(void);         /* Renvoie le nombre total de points */
+float* get_native_u_coords(void);      /* Pointeur vers le tableau des U */
+float* get_native_v_coords(void);      /* Pointeur vers le tableau des V */
+float* get_native_vis_amp(void);       /* Pointeur vers les amplitudes */
+float* get_native_vis_wgt(void);       /* Pointeur vers les poids (weights) */
 #endif

@@ -198,3 +198,15 @@ class DifmapSession:
         self.current_image = DifmapImager.make_dirty_map(size=size, cellsize=cellsize, pol=pol)
         
         return self.current_image
+    
+    def get_uv_data(self) -> dict:
+        """
+        Extrait les visibilités de l'observation courante.
+        """
+        if not self.uv_loaded:
+            raise DifmapStateError(
+                "Vous devez charger une observation (load_observation) avant de demander les données UV."
+            )
+            
+        # Appel direct à la fonction Cython qu'on vient de créer
+        return difmap_native.get_uv_data()

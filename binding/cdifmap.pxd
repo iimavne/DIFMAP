@@ -22,3 +22,10 @@ cdef extern from "difmap_api.h":
     int   get_native_map_nx()
     int   get_native_map_ny()
     const char* get_native_source_name()
+
+    # Fonctions pour extraire les visibilités (UV) en RAM */
+    int get_native_uv_count()
+    float* get_native_u_coords()
+    float* get_native_v_coords()
+    float* get_native_vis_amp()
+    float* get_native_vis_wgt()

@@ -7952,3 +7952,89 @@ double get_native_pixsize() {
     /* Dans Difmap, la taille du pixel est stockée dans la variable 'xinc' */
     return (vlbmap) ? vlbmap->xinc * RTOMAS : 0.0; 
 }
+
+
+
+
+/* ==========================================================================
+ * SECTION : EXTRACTION DES VISIBILITÉS UV (ZÉRO-COPIE VERS PYTHON)
+ * ========================================================================== */
+
+/* Buffers plats (SOA) pour l'exportation vers NumPy */
+static int uv_buffer_size = 0;
+static float *flat_u = NULL;
+static float *flat_v = NULL;
+static float *flat_amp = NULL;
+static float *flat_wgt = NULL;
+
+int get_native_uv_count(void) {
+    int isub, itime, ibase, cif;
+    int count = 0;
+
+    if(vlbob == NULL) return -1;
+
+    /* 1. Sécurité : S'assurer qu'une polarisation par défaut est sélectionnée */
+    if (!ob_ready(vlbob, OB_SELECT, NULL)) {
+        if(ob_select(vlbob, 0, NULL, NO_POL)) return -1;
+    }
+
+    /* 2. COMPTAGE : On parcourt toutes les bandes (IFs) pour compter les points valides */
+    for(cif=0; (cif=nextIF(vlbob, cif, 1, 1)) >= 0; cif++) {
+        if(getIF(vlbob, cif)) return -1; /* Charge la bande depuis le disque vers la RAM */
+        
+        for(isub=0; isub < vlbob->nsub; isub++) {
+            Subarray *sub = &vlbob->sub[isub];
+            for(itime=0; itime < sub->ntime; itime++) {
+                Integration *integ = &sub->integ[itime];
+                for(ibase=0; ibase < sub->nbase; ibase++) {
+                    Visibility *vis = &integ->vis[ibase];
+                    /* On ignore les données flaggées (bad != 0) ou avec un poids nul */
+                    if(vis->bad == 0 && vis->wt > 0.0) count++;
+                }
+            }
+        }
+    }
+
+    if(count == 0) return 0;
+
+    /* 3. ALLOCATION : On agrandit nos buffers plats si nécessaire */
+    if(count > uv_buffer_size) {
+        flat_u = (float*)realloc(flat_u, count * sizeof(float));
+        flat_v = (float*)realloc(flat_v, count * sizeof(float));
+        flat_amp = (float*)realloc(flat_amp, count * sizeof(float));
+        flat_wgt = (float*)realloc(flat_wgt, count * sizeof(float));
+        uv_buffer_size = count;
+    }
+
+    /* 4. REMPLISSAGE : On refait la boucle pour copier les valeurs dans les tableaux */
+    int index = 0;
+    for(cif=0; (cif=nextIF(vlbob, cif, 1, 1)) >= 0; cif++) {
+        if(getIF(vlbob, cif)) return -1;
+        
+        for(isub=0; isub < vlbob->nsub; isub++) {
+            Subarray *sub = &vlbob->sub[isub];
+            for(itime=0; itime < sub->ntime; itime++) {
+                Integration *integ = &sub->integ[itime];
+                for(ibase=0; ibase < sub->nbase; ibase++) {
+                    Visibility *vis = &integ->vis[ibase];
+                    
+                    if(vis->bad == 0 && vis->wt > 0.0) {
+                        flat_u[index] = vis->u;
+                        flat_v[index] = vis->v;
+                        flat_amp[index] = vis->amp;
+                        flat_wgt[index] = vis->wt;
+                        index++;
+                    }
+                }
+            }
+        }
+    }
+
+    return count; /* Renvoie le nombre exact pour Cython */
+}
+
+/* Getters qui renvoient les buffers plats à Cython */
+float* get_native_u_coords(void) { return flat_u; }
+float* get_native_v_coords(void) { return flat_v; }
+float* get_native_vis_amp(void)  { return flat_amp; }
+float* get_native_vis_wgt(void)  { return flat_wgt; }
