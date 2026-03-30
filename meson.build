@@ -41,7 +41,6 @@ pgplot_dep = cc.find_library('pgplot', required : true)
 cpgplot_dep = cc.find_library('cpgplot', required : true)
 py3 = import('python').find_installation()
 py3_dep = py3.dependency()
-pybind11_dep = dependency('pybind11', required : true)
 cython = find_program('cython')
 numpy_inc_dir = run_command(py3, '-c', 'import numpy; print(numpy.get_include())', check : true).stdout().strip()
 
