@@ -162,6 +162,7 @@ py3.install_sources(
     'difmap_wrapper/session.py',
     'difmap_wrapper/imaging.py',
     'difmap_wrapper/exceptions.py',
+    'difmap_wrapper/observation.py',
     subdir: 'difmap_wrapper'
 )
 

@@ -1,7 +1,7 @@
 #ifndef DIFMAP_API_H
 #define DIFMAP_API_H
 
-/* Fonctions pour lire les variables (Getters) */
+/* Getters (Lecture de la RAM) */
 int get_native_no_error(void);
 int get_native_map_nx(void);
 int get_native_map_ny(void);
@@ -13,10 +13,14 @@ double get_native_bmin(void);
 double get_native_bpa(void);
 double get_native_pixsize(void);
 
+/* Commandes (Actions) */
+int native_observe(const char* filepath);
+int native_nsub(void);
+int native_select(const char* pol, int if_beg, int if_end, int ch_beg, int ch_end);
 
-/* Fonctions pour piloter le moteur (Actions) */
-int native_observe(char *name);
-int native_select(char *polarization);
+/* NOUVEAU : Paramètres d'imagerie complets (Non-bridés) */
+int native_uvweight(float uvbin, float errpow, int dorad);
+int native_uvtaper(float gauval, float gaurad_wav);
 int native_mapsize(int nx, float cellsize);
 int native_invert(void);
 

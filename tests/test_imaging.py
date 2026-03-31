@@ -8,20 +8,24 @@ from difmap_wrapper.exceptions import DifmapError
 # 1. TESTS DE LA MÉTHODE make_dirty_map
 # ---------------------------------------------------------
 
-@patch("difmap_native.select")
-@patch("difmap_native.mapsize")
-@patch("difmap_native.invert")
-@patch("difmap_native.get_header")
-@patch("difmap_native.get_map")
-@patch("difmap_native.get_beam")
-def test_make_dirty_map_success(mock_beam, mock_map, mock_hdr, mock_invert, mock_msize, mock_select):
+# Astuce : On mocke TOUT le module difmap_native d'un coup, c'est beaucoup plus propre !
+@patch("difmap_wrapper.imaging.difmap_native")
+def test_make_dirty_map_success(mock_native):
     """Vérifie le succès de la génération et le calcul de l'extent."""
-    # ARRANGE
-    mock_msize.return_value = 0
-    mock_invert.return_value = 0
-    mock_hdr.return_value = {"NX": 512, "NY": 512}
-    mock_map.return_value = np.zeros((512, 512))
-    mock_beam.return_value = {"bmaj": 1.0, "bmin": 1.0, "bpa": 0.0}
+    
+    # ARRANGE : Configuration du faux module C
+    mock_native.select.return_value = 0
+    mock_native.mapsize.return_value = 0
+    mock_native.invert.return_value = 0
+    
+    # On simule les retours des fonctions C "Zéro-Copie"
+    mock_native.get_native_map_nx.return_value = 512
+    mock_native.get_native_map_ny.return_value = 512
+    mock_native.get_native_map_data.return_value = np.zeros((512, 512))
+    mock_native.get_native_beam_data.return_value = np.zeros((512, 512))
+    mock_native.get_native_bmaj.return_value = 1.0
+    mock_native.get_native_bmin.return_value = 1.0
+    mock_native.get_native_bpa.return_value = 0.0
     
     size = 512
     cell = 0.1 # mas
@@ -30,31 +34,35 @@ def test_make_dirty_map_success(mock_beam, mock_map, mock_hdr, mock_invert, mock
     result = DifmapImager.make_dirty_map(size, cell, pol="I")
     
     # ASSERT
-    # Vérification des appels au moteur C
-    mock_select.assert_called_with("I")
-    mock_msize.assert_called_with(size, cell)
-    mock_invert.assert_called_once()
+    # Vérification des 5 arguments passés au select
+    mock_native.select.assert_called_with("I", 1, 0, 1, 0) 
+    mock_native.mapsize.assert_called_with(size, cell)
+    mock_native.invert.assert_called_once()
     
-    # Vérification du calcul de l'astrométrie (Logic "0.5 pixel shift")
-    # RA+ = (512/2 * 0.1) + (0.5 * 0.1) = 25.65
+    # Vérification du calcul de l'astrométrie (Décalage du demi-pixel)
     expected_ra_max = 25.65
     assert abs(result["extent"][0] - expected_ra_max) < 1e-7
     assert "data" in result
-    assert "beam" in result
+    assert "beam_data" in result
+    assert "info" in result
+    assert result["info"]["nx"] == 512
 
-@patch("difmap_native.mapsize")
-def test_make_dirty_map_mapsize_error(mock_msize):
+@patch("difmap_wrapper.imaging.difmap_native")
+def test_make_dirty_map_mapsize_error(mock_native):
     """Vérifie la levée d'erreur si l'allocation échoue."""
-    mock_msize.return_value = 1 # Code erreur C
+    mock_native.select.return_value = 0
+    mock_native.mapsize.return_value = 1 # Code erreur C simulé pour mapsize
+    
     with pytest.raises(DifmapError, match="allocation de la grille"):
         DifmapImager.make_dirty_map(512, 0.1)
 
-@patch("difmap_native.mapsize")
-@patch("difmap_native.invert")
-def test_make_dirty_map_invert_error(mock_invert, mock_msize):
+@patch("difmap_wrapper.imaging.difmap_native")
+def test_make_dirty_map_invert_error(mock_native):
     """Vérifie la levée d'erreur si la FFT (invert) échoue."""
-    mock_msize.return_value = 0
-    mock_invert.return_value = 1 # Code erreur C
+    mock_native.select.return_value = 0
+    mock_native.mapsize.return_value = 0
+    mock_native.invert.return_value = 1 # Code erreur C simulé pour invert
+    
     with pytest.raises(DifmapError, match="Échec de la transformée"):
         DifmapImager.make_dirty_map(512, 0.1)
 

@@ -15,7 +15,7 @@ dossier_tests = os.path.dirname(os.path.abspath(__file__))
 DATASETS = [
     ("0003-066_X.SPLIT.1", "verite_terrain_test.fits"),
     ("0017+200_X.SPLIT.1", "test_wrapper_strict.fits"),
-    #("0028-137_X.SPLIT.1", "verite_terrain_test.fits")
+    ("0028-137_X.SPLIT.1", "verite_terrain_test.fits")
     # ("ma_troisieme_galaxie.uvf", "ma_troisieme_verite.fits"),
 ]
 
@@ -39,7 +39,7 @@ def charger_images(request):
 
     # 2. Exécuter notre binding natif
     difmap_native.observe(chemin_uv)
-    difmap_native.select("RR")  # Stokes I, comme le FITS par défaut
+    difmap_native.select("RR", 1, 0, 1, 0)  # Stokes I, comme le FITS par défaut
     difmap_native.mapsize(512, 1.0)
     difmap_native.invert()
     img_ram = difmap_native.get_map()

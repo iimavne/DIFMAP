@@ -5,28 +5,30 @@ cimport numpy as np
 cimport cdifmap  # Importe tes déclarations depuis cdifmap.pxd
 
 # =====================================================================
-# COMMANDES DE BASE (Typage strict et gestion des erreurs)
+# COMMANDES D'OBSERVATION ET D'IMAGERIE
 # =====================================================================
 
 def observe(filepath: str) -> int:
-    """Charge un fichier UV FITS dans la mémoire de Difmap."""
-    # Encodage sécurisé de la chaîne Python vers const char* C
     cdef bytes filepath_bytes = filepath.encode('utf-8')
     return cdifmap.native_observe(filepath_bytes)
 
-def select(pol: str) -> int:
-    """Sélectionne la polarisation (ex: 'I', 'RR', 'LL')."""
+def select(pol: str, if_beg: int, if_end: int, ch_beg: int, ch_end: int) -> int:
     cdef bytes pol_bytes = pol.encode('utf-8')
-    return cdifmap.native_select(pol_bytes)
+    return cdifmap.native_select(pol_bytes, if_beg, if_end, ch_beg, ch_end)
+
+def nsub() -> int:
+    return cdifmap.native_nsub()
+
+def uvweight(uvbin: float, errpow: float, dorad: int) -> int:
+    return cdifmap.native_uvweight(uvbin, errpow, dorad)
+
+def uvtaper(gauval: float, gaurad_wav: float) -> int:
+    return cdifmap.native_uvtaper(gauval, gaurad_wav)
 
 def mapsize(size: int, cellsize: float) -> int:
-    """Définit la taille de l'image et du pixel en mas."""
-    if size <= 0 or size % 2 != 0:
-        print("Avertissement: Difmap préfère des tailles paires (ex: 256, 512).")
     return cdifmap.native_mapsize(size, cellsize)
 
 def invert() -> int:
-    """Calcule la Dirty Map (Transformée de Fourier + Gridding)."""
     return cdifmap.native_invert()
 
 # =====================================================================
@@ -87,6 +89,3 @@ def get_beam_info() -> dict:
         "BPA": cdifmap.get_native_bpa(),
         "RMS": 0.0
     }
-
-
-    jiza +ppgplot
