@@ -8,6 +8,13 @@ class Observation:
         self._session = session
         self._native = difmap_native
 
+    @property
+    def source(self) -> str:
+        """Récupère le nom de la source astronomique depuis la mémoire C."""
+        if not self._session.uv_loaded:
+            return "Inconnue"
+        return self._native.get_source()
+
     def nsub(self) -> int:
         """Retourne le nombre de sous-réseaux (Subarrays)."""
         if not self._session.uv_loaded:
@@ -23,34 +30,34 @@ class Observation:
             raise DifmapStateError("Aucune observation chargée.")
             
         pol = pol.upper()
-        # Appel de la version non-bridée (5 arguments)
         if self._native.select(pol, ifs[0], ifs[1], channels[0], channels[1]) != 0:
             raise DifmapError(f"Échec de la sélection (Pol: {pol})")
     
     def uvplot(self) -> None:
         """
-        Affiche la couverture du plan UV automatique.
-        Les coordonnées extraites sont déjà en longueurs d'onde.
+        Affiche la couverture du plan UV.
+        Les coordonnées extraites (RAM) sont déjà en longueurs d'onde.
         """
         import matplotlib.pyplot as plt
         import numpy as np
         
-        # 1. Extraction (les data['u'] et data['v'] sont déjà en lambda !)
         data = self._native.get_uv_data()
-        if not data:
+        if not data or len(data.get('u', [])) == 0:
+            print("Aucune donnée UV. Appelez select() avant uvplot().")
             return
 
-        u, v = data['u'], data['v']
+        u = data['u'] / 1e6
+        v = data['v'] / 1e6
         
-        # 2. Affichage
         plt.figure(figsize=(8, 8))
-        # On trace u,v et -u,-v pour la symétrie
         plt.scatter(u, v, s=1, color='blue', alpha=0.5)
         plt.scatter(-u, -v, s=1, color='blue', alpha=0.5)
         
-        plt.xlabel(r"$U$ ($\lambda$)")
-        plt.ylabel(r"$V$ ($\lambda$)")
+        plt.xlabel(r"$U$ ($M\lambda$)")
+        plt.ylabel(r"$V$ ($M\lambda$)")
         plt.title(f"Couverture UV : {self.source}")
+        
+        plt.gca().invert_xaxis()
         plt.axis('equal')
         plt.grid(True, linestyle=':', alpha=0.6)
         plt.show()
