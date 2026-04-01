@@ -31,6 +31,7 @@ class DifmapSession:
         """Charge un fichier FITS."""
         if self.uv_loaded:
             self.cleanup()
+            self.imager.uvtaper(0, 0)
         if self._native.observe(filepath) != 0:
             raise DifmapError(f"Impossible de lire : {filepath}")
         self.uv_loaded = True

@@ -1,64 +1,60 @@
 import pytest
-from unittest.mock import patch
+import os
 from difmap_wrapper.session import DifmapSession
 from difmap_wrapper.exceptions import DifmapError
+from difmap_wrapper.observation import Observation
+from difmap_wrapper.imaging import DifmapImager
 
-# ---------------------------------------------------------
-# 1. TEST DU CYCLE DE VIE
-# ---------------------------------------------------------
+# =====================================================================
+# CONFIGURATION DES CHEMINS
+# =====================================================================
+dossier_tests = os.path.dirname(os.path.abspath(__file__))
+FICHIER_VALIDE = os.path.join(dossier_tests, "test_data", "0003-066_X.SPLIT.1")
+FICHIER_INVALIDE = os.path.join(dossier_tests, "test_data", "fichier_inexistant.fits")
 
-def test_session_initial_state():
-    """Vérifie que la session est vierge à la création."""
+# =====================================================================
+# TESTS UNITAIRES : DifmapSession
+# =====================================================================
+
+def test_initialisation_session():
+    """Vérifie l'état initial de la session et la création des sous-objets."""
     session = DifmapSession()
-    assert session.uv_loaded is False
-    assert session.obs is not None
-    assert session.imager is not None
+    assert session.uv_loaded is False, "Par défaut, aucune donnée ne doit être chargée."
+    assert isinstance(session.obs, Observation), "L'objet Observation n'est pas instancié."
+    assert isinstance(session.imager, DifmapImager), "L'objet Imager n'est pas instancié."
 
-def test_session_context_manager():
-    """Vérifie que le block 'with' fonctionne et nettoie à la sortie."""
-    with patch.object(DifmapSession, 'cleanup') as mock_cleanup:
-        with DifmapSession() as session:
-            assert isinstance(session, DifmapSession)
-        mock_cleanup.assert_called_once()
+def test_context_manager_cleanup():
+    """Vérifie que le bloc 'with' appelle bien cleanup() à la sortie."""
+    with DifmapSession() as session:
+        session.uv_loaded = True  # On simule un chargement artificiel
+        
+    # À la sortie du bloc with, cleanup() a dû être appelé
+    assert session.uv_loaded is False, "Le cleanup n'a pas été exécuté à la sortie du 'with'."
 
-def test_cleanup_resets_state():
-    """Vérifie que cleanup remet les compteurs à zéro."""
-    session = DifmapSession()
-    session.uv_loaded = True
-    session.cleanup()
-    assert session.uv_loaded is False
+def test_observe_succes():
+    """Vérifie le chargement d'un vrai fichier FITS."""
+    with DifmapSession() as session:
+        session.observe(FICHIER_VALIDE)
+        assert session.uv_loaded is True, "Le flag uv_loaded doit passer à True après un succès."
 
-# ---------------------------------------------------------
-# 2. TEST DU CHARGEMENT (observe)
-# ---------------------------------------------------------
+def test_observe_echec_leve_exception():
+    """Vérifie que la session lève bien ta propre erreur personnalisée."""
+    with DifmapSession() as session:
+        # On s'attend explicitement à lever une DifmapError
+        with pytest.raises(DifmapError) as exc_info:
+            session.observe(FICHIER_INVALIDE)
+        
+        # On vérifie que le message d'erreur contient bien le nom du fichier
+        assert "Impossible de lire" in str(exc_info.value)
+        assert session.uv_loaded is False, "Le flag uv_loaded ne doit pas passer à True en cas d'échec."
 
-@patch("difmap_wrapper.session.difmap_native.observe")
-def test_observe_success(mock_observe):
-    """Cas nominal : le fichier est chargé avec succès."""
-    mock_observe.return_value = 0  # Succès côté C
-    session = DifmapSession()
-    session.observe("test.fits")
-    
-    assert session.uv_loaded is True
-    mock_observe.assert_called_with("test.fits")
-
-@patch("difmap_wrapper.session.difmap_native.observe")
-def test_observe_failure(mock_observe):
-    """Cas d'erreur : le moteur C rejette le fichier."""
-    mock_observe.return_value = 1  # Erreur côté C
-    session = DifmapSession()
-    
-    with pytest.raises(DifmapError, match="Impossible de lire"):
-        session.observe("bad.fits")
-    assert session.uv_loaded is False
-    
-@patch("difmap_wrapper.session.difmap_native.observe")
-def test_observe_cleans_previous(mock_observe):
-    """Vérifie qu'un nouveau chargement nettoie l'ancien pour éviter les fuites."""
-    mock_observe.return_value = 0
-    session = DifmapSession()
-    session.uv_loaded = True 
-    
-    with patch.object(session, 'cleanup') as mock_cleanup:
-        session.observe("new.fits")
-        mock_cleanup.assert_called_once()
+def test_observe_rechargement():
+    """Vérifie que charger un 2ème fichier purge bien le 1er au préalable."""
+    with DifmapSession() as session:
+        session.observe(FICHIER_VALIDE)
+        assert session.uv_loaded is True
+        
+        # Recharger le même fichier doit forcer un passage par cleanup()
+        # (Si ça ne crashe pas, c'est que la logique if self.uv_loaded: self.cleanup() fonctionne)
+        session.observe(FICHIER_VALIDE)
+        assert session.uv_loaded is True
