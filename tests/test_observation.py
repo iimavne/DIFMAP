@@ -71,3 +71,27 @@ def test_workflow_observe_nsub_select(real_fits_file):
         # 3. Test SELECT via l'objet Observation
         # Si le moteur C valide sans lever DifmapError, la plomberie est parfaite !
         session.obs.select(pol="I", ifs=(1, 1))
+
+# ---------------------------------------------------------
+# 3. TESTS DES GRAPHIQUES (Plan UV)
+# ---------------------------------------------------------
+
+def test_uvplot_fails_if_not_loaded():
+    """Vérifie qu'on ne peut pas faire de uvplot sans données."""
+    session = DifmapSession()
+    with pytest.raises(DifmapStateError, match="Aucune observation chargée"):
+        session.obs.uvplot()
+
+@patch("matplotlib.pyplot.show")
+@patch("matplotlib.pyplot.scatter")
+def test_uvplot_success(mock_scatter, mock_show, real_fits_file):
+    """Vérifie que la fonction graphique appelle bien Matplotlib avec les données."""
+    with DifmapSession() as session:
+        session.observe(real_fits_file)
+        
+        # Action : on génère le graphique
+        session.obs.uvplot()
+        
+        # Vérifications que le dessin a bien eu lieu
+        mock_scatter.assert_called_once()
+        mock_show.assert_called_once()

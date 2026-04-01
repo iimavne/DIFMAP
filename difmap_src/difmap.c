@@ -7861,3 +7861,94 @@ int native_invert(void) {
     respar.e_bpa  = vlbmap->e_bpa * rtod;
     return 0;
 }
+
+/* ================================================================= */
+/* EXTRACTION DES DONNÉES UV (ZÉRO-COPIE)                            */
+/* ================================================================= */
+
+/* Buffers statiques pour l'exportation */
+static int uv_buffer_size = 0;
+static float *flat_u = NULL;
+static float *flat_v = NULL;
+static float *flat_amp = NULL;
+static float *flat_wgt = NULL;
+
+/* Getters pour Cython */
+int get_native_uv_count(void) { return uv_buffer_size; }
+float* get_native_u(void) { return flat_u; }
+float* get_native_v(void) { return flat_v; }
+float* get_native_vis_amp(void) { return flat_amp; }
+float* get_native_vis_wgt(void) { return flat_wgt; }
+
+int l_extract_uv(void) {
+    int isub, itime, ibase, cif;
+    int count = 0;
+
+    if(vlbob == NULL) return -1;
+
+    /* 1. PREMIER PASSAGE : COMPTAGE */
+    for(cif=0; (cif=nextIF(vlbob, cif, 1, 1)) >= 0; cif++) {
+        if(getIF(vlbob, cif)) continue; 
+        for(isub=0; isub < vlbob->nsub; isub++) {
+            Subarray *sub = &vlbob->sub[isub];
+            for(itime=0; itime < sub->ntime; itime++) {
+                Integration *integ = &sub->integ[itime];
+                for(ibase=0; ibase < sub->nbase; ibase++) {
+                    Visibility *vis = &integ->vis[ibase];
+                    if(vis->bad == 0 && vis->wt > 0.0) count++;
+                }
+            }
+        }
+    }
+
+    if(count == 0) return 0;
+
+    /* 2. RÉALLOCATION */
+    if(count > uv_buffer_size) {
+        flat_u = (float*)realloc(flat_u, count * sizeof(float));
+        flat_v = (float*)realloc(flat_v, count * sizeof(float));
+        flat_amp = (float*)realloc(flat_amp, count * sizeof(float));
+        flat_wgt = (float*)realloc(flat_wgt, count * sizeof(float));
+    }
+    uv_buffer_size = count;
+
+    /* 3. DEUXIÈME PASSAGE : REMPLISSAGE ET CONVERSION PHYSIQUE */
+    int index = 0;
+    for(cif=0; (cif=nextIF(vlbob, cif, 1, 1)) >= 0; cif++) {
+        getIF(vlbob, cif);
+        
+        /* CORRECTION ICI : On récupère la fréquence de l'IF dans ob->ifs */
+        double if_freq = vlbob->ifs[cif].freq; 
+
+        for(isub=0; isub < vlbob->nsub; isub++) {
+            Subarray *sub = &vlbob->sub[isub];
+            for(itime=0; itime < sub->ntime; itime++) {
+                Integration *integ = &sub->integ[itime];
+                for(ibase=0; ibase < sub->nbase; ibase++) {
+                    Visibility *vis = &integ->vis[ibase];
+                    if(vis->bad == 0 && vis->wt > 0.0) {
+                        /* Conversion des secondes-lumière en longueurs d'onde */
+                        flat_u[index] = vis->u * if_freq;
+                        flat_v[index] = vis->v * if_freq;
+                        flat_amp[index] = vis->amp;
+                        flat_wgt[index] = vis->wt;
+                        index++;
+                    }
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+int native_wfits(const char *filename) {
+    if(!vlbob) return -1;
+    
+    /* On appelle la fonction officielle :
+       - vlbob : notre observation en RAM
+       - filename : le nom du fichier de sortie
+       - 0 : l'argument 'doshift'. On met 0 pour ne pas 
+             modifier le centre de phase par défaut.
+    */
+    return uvf_write(vlbob, filename, 0);
+}

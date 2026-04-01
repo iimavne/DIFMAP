@@ -11,6 +11,13 @@ cdef extern from "difmap_api.h":
     double get_native_bpa()
     double get_native_pixsize()
 
+    int l_extract_uv()
+    int get_native_uv_count()
+    float* get_native_u()
+    float* get_native_v()
+    float* get_native_vis_amp()
+    float* get_native_vis_wgt()
+
     # Setters / Actions
     int native_observe(const char* filepath)
     int native_nsub()
@@ -19,3 +26,5 @@ cdef extern from "difmap_api.h":
     int native_uvtaper(float gauval, float gaurad_wav)
     int native_mapsize(int nx, float cellsize)
     int native_invert()
+
+    int native_wfits(const char* filename)
