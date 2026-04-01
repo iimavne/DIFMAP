@@ -6,6 +6,7 @@ import numpy as np
 from astropy.io import fits
 import difmap_native
 from difmap_wrapper.session import DifmapSession
+from difmap_wrapper import standardizer
 
 # =====================================================================
 # CONFIGURATION DES CHEMINS ET DES DONNÉES DE TEST
@@ -177,7 +178,7 @@ def test_validation_strict_uv_data(charger_images):
     if os.path.exists(fits_temp): os.remove(fits_temp)
 
 def test_tests_diff_difmap_visuel(charger_images):
-    """Test de l'amplitude (radplot) avec la lecture secrète AIPS FQ."""
+    """Test de l'amplitude (radplot) en utilisant le module uv_extractor."""
     nom_uv, _, _ = charger_images
     chemin_uv = os.path.join(dossier_tests, "test_data", nom_uv)
     nom_base = nom_uv.replace('.SPLIT.1', '')
@@ -187,35 +188,12 @@ def test_tests_diff_difmap_visuel(charger_images):
         session.observe(chemin_uv)
         difmap_native.select("RR", 1, 0, 1, 0)
         difmap_native.wfits(fits_temp)
-        data_wrapper = difmap_native.get_uv_data()
+        data_ram = standardizer.extract_ram_standardized()
 
-    with fits.open(fits_temp) as hdul:
-        d, h = hdul[0].data, hdul[0].header
-        
-        # LA VRAIE LECTURE DES FRÉQUENCES IF (La table FQ)
-        fq_data = hdul['AIPS FQ'].data
-        if_offsets = fq_data['IF FREQ'][0] 
-        freqs = h['CRVAL4'] + if_offsets
-        
-        # UU et VV dans le même sens que la RAM
-        u_astro_2d = d['UU'][:, None] * freqs[None, :]
-        v_astro_2d = d['VV'][:, None] * freqs[None, :]
-        
-        d_sq = d['DATA'].squeeze()
-        amp_astro_2d = np.sqrt(d_sq[..., 0]**2 + d_sq[..., 1]**2)
-        masque = d_sq[..., 2] > 0
-        
-        u_a, v_a, amp_a = u_astro_2d[masque], v_astro_2d[masque], amp_astro_2d[masque]
+    data_fits = standardizer.extract_uvfits_standardized(fits_temp)
 
-    u_w, v_w, amp_w = data_wrapper['u'], data_wrapper['v'], data_wrapper['amp']
-
-    # On trie pour aligner (Robuste car on utilise les mêmes fréquences)
-    idx_w = np.lexsort((np.round(v_w).astype(np.int64), np.round(u_w).astype(np.int64)))
-    idx_a = np.lexsort((np.round(v_a).astype(np.int64), np.round(u_a).astype(np.int64)))
-
-    u_w_tri, v_w_tri, amp_w_tri = u_w[idx_w], v_w[idx_w], amp_w[idx_w]
-    u_a_tri, v_a_tri, amp_a_tri = u_a[idx_a], v_a[idx_a], amp_a[idx_a]
-
+    u_w_tri, v_w_tri, amp_w_tri = data_ram['u'], data_ram['v'], data_ram['amp']
+    amp_a_tri = data_fits['amp']
     diff = amp_w_tri - amp_a_tri
 
     print(f"\n\n{'='*75}")
@@ -258,6 +236,7 @@ def test_tests_diff_difmap_visuel(charger_images):
 
 
 def test_tests_diff_uvplot_visuel(charger_images):
+    """Test de la géométrie (uvplot) en utilisant le module uv_extractor."""
     nom_uv, _, _ = charger_images
     chemin_uv = os.path.join(dossier_tests, "test_data", nom_uv)
     nom_base = nom_uv.replace('.SPLIT.1', '')
@@ -267,29 +246,12 @@ def test_tests_diff_uvplot_visuel(charger_images):
         session.observe(chemin_uv)
         difmap_native.select("RR", 1, 0, 1, 0)
         difmap_native.wfits(fits_temp)
-        data_wrapper = difmap_native.get_uv_data()
+        data_ram = standardizer.extract_ram_standardized()
 
-    with fits.open(fits_temp) as hdul:
-        d, h = hdul[0].data, hdul[0].header
-        
-        fq_data = hdul['AIPS FQ'].data
-        if_offsets = fq_data['IF FREQ'][0]
-        freqs = h['CRVAL4'] + if_offsets
-        
-        u_a_2d = d['UU'][:, None] * freqs[None, :]
-        v_a_2d = d['VV'][:, None] * freqs[None, :]
-        masque = d['DATA'].squeeze()[..., 2] > 0
-        
-        u_astro, v_astro = u_a_2d[masque], v_a_2d[masque]
+    data_fits = standardizer.extract_uvfits_standardized(fits_temp)
 
-    u_w, v_w = data_wrapper['u'], data_wrapper['v']
-
-    idx_w = np.lexsort((np.round(v_w).astype(np.int64), np.round(u_w).astype(np.int64)))
-    idx_a = np.lexsort((np.round(v_astro).astype(np.int64), np.round(u_astro).astype(np.int64)))
-
-    u_w_tri, v_w_tri = u_w[idx_w], v_w[idx_w]
-    u_a_tri, v_a_tri = u_astro[idx_a], v_astro[idx_a]
-
+    u_w_tri, v_w_tri = data_ram['u'], data_ram['v']
+    u_a_tri, v_a_tri = data_fits['u'], data_fits['v']
     diff_u = u_w_tri - u_a_tri
     diff_v = v_w_tri - v_a_tri
 
