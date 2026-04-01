@@ -89,3 +89,29 @@ def get_beam_info() -> dict:
         "BPA": cdifmap.get_native_bpa(),
         "RMS": 0.0
     }
+
+def get_uv_data() -> dict:
+    """Récupère u, v, amp et weight (Zéro-Copie) filtrés."""
+    if cdifmap.l_extract_uv() != 0:
+        raise RuntimeError("Erreur lors de l'extraction des données UV.")
+        
+    cdef int n = cdifmap.get_native_uv_count()
+    if n <= 0:
+        return {}
+
+    # Memoryviews directes sur la RAM du C
+    cdef float[:] u = <float[:n]> cdifmap.get_native_u()
+    cdef float[:] v = <float[:n]> cdifmap.get_native_v()
+    cdef float[:] amp = <float[:n]> cdifmap.get_native_vis_amp()
+    cdef float[:] wgt = <float[:n]> cdifmap.get_native_vis_wgt()
+    
+    return {
+        "u": np.asarray(u), 
+        "v": np.asarray(v),
+        "amp": np.asarray(amp), 
+        "weight": np.asarray(wgt)
+    }
+
+def wfits(filepath: str) -> int:
+    cdef bytes filepath_bytes = filepath.encode('utf-8')
+    return cdifmap.native_wfits(filepath_bytes)

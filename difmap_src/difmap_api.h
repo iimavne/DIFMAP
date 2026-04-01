@@ -13,15 +13,24 @@ double get_native_bmin(void);
 double get_native_bpa(void);
 double get_native_pixsize(void);
 
+/* Extraction du plan UV */
+int l_extract_uv(void);
+int get_native_uv_count(void);
+float* get_native_u(void);
+float* get_native_v(void);
+float* get_native_vis_amp(void);
+float* get_native_vis_wgt(void);
+
 /* Commandes (Actions) */
 int native_observe(const char* filepath);
 int native_nsub(void);
 int native_select(const char* pol, int if_beg, int if_end, int ch_beg, int ch_end);
 
-/* NOUVEAU : Paramètres d'imagerie complets (Non-bridés) */
+/* Paramètres d'imagerie complets*/
 int native_uvweight(float uvbin, float errpow, int dorad);
 int native_uvtaper(float gauval, float gaurad_wav);
 int native_mapsize(int nx, float cellsize);
 int native_invert(void);
+int native_wfits(const char* filename);
 
 #endif
