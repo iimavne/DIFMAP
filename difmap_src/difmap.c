@@ -7832,7 +7832,7 @@ int native_uvweight(float uvbin, float errpow, int dorad) {
 int native_uvtaper(float gauval, float gaurad_wav) {
     if (vlbob == NULL) return -1;
     invpar.gauval = gauval;
-    invpar.gaurad = gaurad_wav;
+    invpar.gaurad = uvtowav(gaurad_wav); /*expliquer pq*/
     if(invpar.gauval<=0.0f || invpar.gauval>=0.99f || invpar.gaurad<=0.0f) {
       invpar.gauval = 0.0f;
       invpar.gaurad = 0.0f;
@@ -7852,7 +7852,6 @@ int native_mapsize(int nx, float cellsize) {
 int native_invert(void) {
     if(vlbmap == NULL || vlbob == NULL) return -1;
     
-    /* INVERT NON BRIDÉ : Utilise toutes les variables globales invpar */
     if(uvinvert(vlbob, vlbmap, invpar.uvmin, invpar.uvmax, invpar.gauval,
                 invpar.gaurad, invpar.dorad, invpar.errpow, invpar.uvbin)) return -1;
                 
@@ -7860,6 +7859,18 @@ int native_invert(void) {
     respar.e_bmaj = vlbmap->e_bmaj;
     respar.e_bpa  = vlbmap->e_bpa * rtod;
     return 0;
+}
+
+int native_wfits(const char *filename) {
+    if(!vlbob) return -1;
+    
+    /* On appelle la fonction officielle :
+       - vlbob : notre observation en RAM
+       - filename : le nom du fichier de sortie
+       - 0 : l'argument 'doshift'. On met 0 pour ne pas 
+             modifier le centre de phase par défaut.
+    */
+    return uvf_write(vlbob, filename, 0);
 }
 
 /* ================================================================= */
@@ -7917,7 +7928,7 @@ int l_extract_uv(void) {
     for(cif=0; (cif=nextIF(vlbob, cif, 1, 1)) >= 0; cif++) {
         getIF(vlbob, cif);
         
-        /* CORRECTION ICI : On récupère la fréquence de l'IF dans ob->ifs */
+        /* On récupère la fréquence de l'IF dans ob->ifs */
         double if_freq = vlbob->ifs[cif].freq; 
 
         for(isub=0; isub < vlbob->nsub; isub++) {
@@ -7941,14 +7952,3 @@ int l_extract_uv(void) {
     return 0;
 }
 
-int native_wfits(const char *filename) {
-    if(!vlbob) return -1;
-    
-    /* On appelle la fonction officielle :
-       - vlbob : notre observation en RAM
-       - filename : le nom du fichier de sortie
-       - 0 : l'argument 'doshift'. On met 0 pour ne pas 
-             modifier le centre de phase par défaut.
-    */
-    return uvf_write(vlbob, filename, 0);
-}

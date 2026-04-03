@@ -4,9 +4,33 @@ import difmap_native
 
 def extract_uvfits_standardized(filepath: str) -> dict:
     """
-    Lit un fichier UVFITS, applique les corrections de fréquences multi-IF (table AIPS FQ),
-    et renvoie les données (U, V, Amplitude, Rayon UV) converties en longueurs d'onde et alignées.
-    """
+        Extrait et standardise les visibilités depuis un fichier FITS de référence.
+
+        Cette fonction lit un fichier UVFITS, applique les corrections complexes 
+        de fréquences multi-IF (via la table AIPS FQ), et convertit les coordonnées 
+        spatiales en longueurs d'onde. Les données sont ensuite alignées par un 
+        tri lexicographique absolu pour garantir une comparaison parfaite.
+
+        Parameters
+        ----------
+        filepath : str
+            Le chemin absolu ou relatif vers le fichier UVFITS à analyser.
+
+        Returns
+        -------
+        dict
+            Un dictionnaire contenant les tableaux Numpy triés :
+            - 'u' : Coordonnées U en longueurs d'onde (λ).
+            - 'v' : Coordonnées V en longueurs d'onde (λ).
+            - 'amp' : Amplitudes des visibilités (Jy).
+            - 'uv_radius' : Rayon UV en Méga-longueurs d'onde (Mλ).
+
+        Examples
+        --------
+        >>> from difmap_wrapper import standardizer
+        >>> data_fits = standardizer.extract_uvfits_standardized("reference.fits")
+        >>> print(data_fits['uv_radius'].max())
+        """
     with fits.open(filepath) as hdul:
         d = hdul[0].data
         h = hdul[0].header
@@ -44,8 +68,28 @@ def extract_uvfits_standardized(filepath: str) -> dict:
 
 def extract_ram_standardized() -> dict:
     """
-    Récupère les données de la RAM (Zero-Copy) et les trie de manière
-    strictement identique au lecteur FITS pour une comparaison ou un export.
+    Extrait et standardise les visibilités directement depuis la mémoire (RAM).
+
+    Récupère les données actives du moteur C (Zéro-Copie) et les trie de manière 
+    strictement identique au lecteur FITS. Indispensable pour prouver que 
+    les données manipulées par le wrapper sont mathématiquement exactes.
+
+    Returns
+    -------
+    dict
+        Un dictionnaire contenant les tableaux Numpy triés ('u', 'v', 'amp', 'uv_radius').
+
+    Raises
+    ------
+    ValueError
+        Si aucune donnée n'est trouvée en RAM (nécessite un appel à `select()` au préalable).
+
+    Examples
+    --------
+    >>> with DifmapSession() as session:
+    >>>     session.observe("data.fits")
+    >>>     session.obs.select()
+    >>>     data_ram = standardizer.extract_ram_standardized()
     """
     data = difmap_native.get_uv_data()
     
@@ -71,8 +115,38 @@ def extract_ram_standardized() -> dict:
 
 def compare_uv_datasets(data_ref: dict, data_ram: dict) -> dict:
     """
-    Compare deux jeux de données UV alignés et renvoie les statistiques d'erreur
-    ainsi que les tableaux de différences pour l'affichage graphique.
+    Compare deux jeux de données UV et génère les statistiques d'erreur.
+
+    Calcule les résidus (différences) point par point entre une référence (FITS) 
+    et une cible (RAM). Utilisé pour valider la précision géométrique et 
+    photométrique du wrapper.
+
+    Parameters
+    ----------
+    data_ref : dict
+        Le jeu de données de référence (généralement issu de `extract_uvfits_standardized`).
+    data_ram : dict
+        Le jeu de données cible (généralement issu de `extract_ram_standardized`).
+
+    Returns
+    -------
+    dict
+        Dictionnaire des métriques contenant :
+        - 'delta_u_max', 'delta_v_max' : Erreur géométrique maximale (λ).
+        - 'delta_amp_max' : Divergence maximale d'amplitude (Jy).
+        - 'amp_rmse' : Erreur quadratique moyenne sur l'amplitude.
+        - 'points_valides' : Le nombre total de visibilités comparées.
+        - 'diff_u', 'diff_v', 'diff_amp' : Tableaux Numpy des résidus bruts.
+
+    Raises
+    ------
+    ValueError
+        Si les deux jeux de données n'ont pas le même nombre de points (désalignement).
+
+    Examples
+    --------
+    >>> metrics = standardizer.compare_uv_datasets(data_fits, data_ram)
+    >>> print(f"Erreur Max Amplitude : {metrics['delta_amp_max']} Jy")
     """
     if len(data_ref['u']) != len(data_ram['u']):
         raise ValueError(f"Désalignement : FITS a {len(data_ref['u'])} points, RAM a {len(data_ram['u'])} points.")
@@ -94,8 +168,36 @@ def compare_uv_datasets(data_ref: dict, data_ram: dict) -> dict:
 
 def compare_images(img_ref: np.ndarray, img_cible: np.ndarray) -> dict:
     """
-    Compare deux images (ex: Dirty Maps) et renvoie les statistiques d'erreur
-    et la carte des différences.
+    Compare deux matrices d'images pixel par pixel et génère les statistiques.
+
+    Calcule la carte des résidus (Dirty Map FITS vs Dirty Map RAM) pour 
+    vérifier l'intégrité de la Transformée de Fourier inverse.
+
+    Parameters
+    ----------
+    img_ref : numpy.ndarray
+        La matrice 2D de l'image de référence (ex: vérité terrain FITS).
+    img_cible : numpy.ndarray
+        La matrice 2D de l'image à valider (ex: image extraite de la RAM).
+
+    Returns
+    -------
+    dict
+        Dictionnaire des métriques contenant :
+        - 'diff_map' : La matrice 2D des différences (cible - référence).
+        - 'err_max' : L'erreur maximale absolue observée sur un pixel (Jy/beam).
+        - 'rmse' : L'erreur quadratique moyenne globale de l'image.
+        - 'std_err' : L'écart-type des résidus.
+
+    Raises
+    ------
+    ValueError
+        Si les dimensions (shape) des deux images ne sont pas strictement identiques.
+
+    Examples
+    --------
+    >>> metrics = standardizer.compare_images(img_fits, img_ram)
+    >>> assert metrics['err_max'] < 1e-4
     """
     if img_ref.shape != img_cible.shape:
         raise ValueError(f"Dimensions différentes : {img_ref.shape} vs {img_cible.shape}")

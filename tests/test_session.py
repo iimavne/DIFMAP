@@ -1,20 +1,16 @@
 import pytest
-import os
 from difmap_wrapper.session import DifmapSession
 from difmap_wrapper.exceptions import DifmapError
 from difmap_wrapper.observation import Observation
 from difmap_wrapper.imaging import DifmapImager
 
 # =====================================================================
-# CONFIGURATION DES CHEMINS
-# =====================================================================
-dossier_tests = os.path.dirname(os.path.abspath(__file__))
-FICHIER_VALIDE = os.path.join(dossier_tests, "test_data", "0003-066_X.SPLIT.1")
-FICHIER_INVALIDE = os.path.join(dossier_tests, "test_data", "fichier_inexistant.fits")
-
-# =====================================================================
 # TESTS UNITAIRES : DifmapSession
 # =====================================================================
+
+# ---------------------------------------------------------------------
+# CAS NOMINAUX 
+# ---------------------------------------------------------------------
 
 def test_initialisation_session():
     """Vérifie l'état initial de la session et la création des sous-objets."""
@@ -23,38 +19,76 @@ def test_initialisation_session():
     assert isinstance(session.obs, Observation), "L'objet Observation n'est pas instancié."
     assert isinstance(session.imager, DifmapImager), "L'objet Imager n'est pas instancié."
 
-def test_context_manager_cleanup():
-    """Vérifie que le bloc 'with' appelle bien cleanup() à la sortie."""
+def test_context_manager_cleanup(fichier_valide):
+    """Vérifie que le bloc 'with' charge puis appelle bien cleanup() à la sortie."""
     with DifmapSession() as session:
-        session.uv_loaded = True  # On simule un chargement artificiel
+        session.observe(fichier_valide)
+        assert session.uv_loaded is True, "Le fichier aurait dû être chargé."
         
-    # À la sortie du bloc with, cleanup() a dû être appelé
+    # À la sortie du bloc with, cleanup() a dû être appelé automatiquement
     assert session.uv_loaded is False, "Le cleanup n'a pas été exécuté à la sortie du 'with'."
 
-def test_observe_succes():
-    """Vérifie le chargement d'un vrai fichier FITS."""
-    with DifmapSession() as session:
-        session.observe(FICHIER_VALIDE)
-        assert session.uv_loaded is True, "Le flag uv_loaded doit passer à True après un succès."
-
-def test_observe_echec_leve_exception():
-    """Vérifie que la session lève bien ta propre erreur personnalisée."""
-    with DifmapSession() as session:
-        # On s'attend explicitement à lever une DifmapError
-        with pytest.raises(DifmapError) as exc_info:
-            session.observe(FICHIER_INVALIDE)
-        
-        # On vérifie que le message d'erreur contient bien le nom du fichier
-        assert "Impossible de lire" in str(exc_info.value)
-        assert session.uv_loaded is False, "Le flag uv_loaded ne doit pas passer à True en cas d'échec."
-
-def test_observe_rechargement():
+def test_observe_rechargement(fichier_valide):
     """Vérifie que charger un 2ème fichier purge bien le 1er au préalable."""
     with DifmapSession() as session:
-        session.observe(FICHIER_VALIDE)
+        session.observe(fichier_valide)
         assert session.uv_loaded is True
         
-        # Recharger le même fichier doit forcer un passage par cleanup()
-        # (Si ça ne crashe pas, c'est que la logique if self.uv_loaded: self.cleanup() fonctionne)
-        session.observe(FICHIER_VALIDE)
+        # Recharger le même fichier force un passage par cleanup() sans crasher
+        session.observe(fichier_valide)
         assert session.uv_loaded is True
+
+
+# ---------------------------------------------------------------------
+# CAS LIMITES 
+# ---------------------------------------------------------------------
+
+def test_nettoyage_manuel_pendant_session(fichier_valide):
+    """Vérifie qu'appeler cleanup() manuellement ne fait pas crasher la sortie du 'with'."""
+    with DifmapSession() as session:
+        session.observe(fichier_valide)
+        session.cleanup()  # L'utilisateur force le nettoyage
+        
+        assert session.uv_loaded is False
+        # À la fin du bloc with, un 2ème cleanup() automatique va se lancer. 
+        # Ça ne doit pas planter.
+
+def test_double_instanciation_simultanee(fichier_valide):
+    """Vérifie que créer deux sessions successives fonctionne sans emmêler les variables."""
+    session1 = DifmapSession()
+    session1.observe(fichier_valide)
+    
+    session2 = DifmapSession()
+    assert session2.uv_loaded is False, "La nouvelle session doit s'initialiser vierge."
+    
+    session2.observe(fichier_valide)  # Va écraser la mémoire globale du C proprement
+    assert session2.uv_loaded is True
+    
+    # Nettoyage manuel (puisqu'on n'utilise pas le bloc with ici)
+    session1.cleanup()
+    session2.cleanup()
+
+
+# ---------------------------------------------------------------------
+# GESTION DES ERREURS 
+# ---------------------------------------------------------------------
+
+def test_observe_fichier_inexistant(fichier_inexistant):
+    """Vérifie qu'un fichier introuvable lève ta DifmapError personnalisée."""
+    with DifmapSession() as session:
+        with pytest.raises(DifmapError) as exc_info:
+            session.observe(fichier_inexistant)
+        
+        # On s'assure que le message indique la vraie raison
+        assert "Impossible de lire" in str(exc_info.value)
+        # On s'assure que la mémoire est restée propre
+        assert session.uv_loaded is False
+
+def test_observe_fichier_corrompu(fichier_corrompu):
+    """Vérifie qu'un fichier texte (non FITS) lève une erreur et sécurise l'état."""
+    with DifmapSession() as session:
+        with pytest.raises(DifmapError):
+            session.observe(fichier_corrompu)
+        
+        # L'état ne doit pas être marqué comme chargé si la lecture a planté
+        assert session.uv_loaded is False

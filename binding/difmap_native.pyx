@@ -31,6 +31,10 @@ def mapsize(size: int, cellsize: float) -> int:
 def invert() -> int:
     return cdifmap.native_invert()
 
+def wfits(filepath: str) -> int:
+    cdef bytes filepath_bytes = filepath.encode('utf-8')
+    return cdifmap.native_wfits(filepath_bytes)
+
 # =====================================================================
 # EXTRACTION DE DONNÉES (Principe Zero-Copy et Memoryviews)
 # =====================================================================
@@ -106,12 +110,10 @@ def get_uv_data() -> dict:
     cdef float[:] wgt = <float[:n]> cdifmap.get_native_vis_wgt()
     
     return {
-        "u": np.asarray(u), 
-        "v": np.asarray(v),
-        "amp": np.asarray(amp), 
-        "weight": np.asarray(wgt)
+        "u": np.array(u, copy=True), 
+        "v": np.array(v, copy=True),
+        "amp": np.array(amp, copy=True), 
+        "weight": np.array(wgt, copy=True)
     }
+    
 
-def wfits(filepath: str) -> int:
-    cdef bytes filepath_bytes = filepath.encode('utf-8')
-    return cdifmap.native_wfits(filepath_bytes)

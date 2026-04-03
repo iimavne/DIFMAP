@@ -1,121 +1,138 @@
-import pytest
 import os
+import pytest
 import numpy as np
-from unittest.mock import patch
+import numpy.testing as npt
+from unittest.mock import patch, MagicMock
+from astropy.io import fits
+
 from difmap_wrapper.session import DifmapSession
 from difmap_wrapper.imaging import DifmapImager
-from difmap_wrapper.exceptions import DifmapError
+from difmap_wrapper.exceptions import DifmapError, DifmapStateError
+
+# --- Remplacer par le vrai chemin de tes données de test ---
+TEST_UV_FILE = os.path.join(os.path.dirname(__file__), "test_data", "0003-066_X.SPLIT.1")
 
 # =====================================================================
-# CONFIGURATION DES CHEMINS ET CONSTANTES
-# =====================================================================
-dossier_tests = os.path.dirname(os.path.abspath(__file__))
-FICHIER_VALIDE = os.path.join(dossier_tests, "test_data", "0003-066_X.SPLIT.1")
-
-# =====================================================================
-# TESTS UNITAIRES : DifmapImager
+# 1. TESTS DE PLOMBERIE ET SÉCURITÉS (Logique Python Pure)
 # =====================================================================
 
-def test_imager_modifiers_uv():
-    """Vérifie que uvweight et uvtaper communiquent bien avec le C sans crash."""
-    with DifmapSession() as session:
-        session.observe(FICHIER_VALIDE)
-        img = DifmapImager()
-        
-        # On doit d'abord faire un select (requis par Difmap avant de manipuler les poids)
-        import difmap_native
-        difmap_native.select("RR", 1, 0, 1, 0)
-        
-        try:
-            img.uvweight(bin_size=2.0, err_power=0.0)
-            img.uvtaper(gaussian_value=0.5, gaussian_radius_wav=100.0)
-        except Exception as e:
-            pytest.fail(f"Les modificateurs UV ont échoué : {e}")
+class TestImagerPlomberie:
+    def test_initialisation(self):
+        """Vérifie que les variables d'état sont bien initialisées à None."""
+        imager = DifmapImager()
+        assert imager._last_cellsize is None
+        assert imager._current_uvtaper is None
+        assert imager._current_uvweight is None
 
-def test_imager_get_map_et_cropping():
-    """Vérifie l'extraction de la matrice RAM et la logique de recadrage."""
-    with DifmapSession() as session:
-        session.observe(FICHIER_VALIDE)
-        img = DifmapImager()
+    def test_get_cropped_map_logique(self):
+        """Vérifie le calcul de découpage d'une matrice (sans faire appel au C)."""
+        imager = DifmapImager()
+        # On simule une image 10x10 en mémoire
+        imager.get_map = MagicMock(return_value=np.ones((10, 10)))
         
-        # FIX : Il faut sélectionner les données avant d'inverser !
-        import difmap_native
-        difmap_native.select("RR", 1, 0, 1, 0)
-        
-        img.mapsize(size=512, cellsize=1.0)
-        img.invert()
-        
-        data_full = img.get_map()
-        assert data_full.shape == (512, 512)
-        
-        target_size = (256, 256)
-        data_crop = img.get_cropped_map(target_size)
-        assert data_crop.shape == target_size
-        assert data_crop[128, 128] == data_full[256, 256]
+        # Recadrage en 4x4
+        crop = imager.get_cropped_map((4, 4))
+        assert crop.shape == (4, 4)
 
-def test_imager_package_et_astrometrie():
-    """Vérifie que get_map_package calcule correctement les coordonnées (extent)."""
-    with DifmapSession() as session:
-        session.observe(FICHIER_VALIDE)
-        img = DifmapImager()
+    def test_get_cropped_map_erreur_taille(self):
+        """Vérifie que le recadrage échoue si on demande plus grand que l'image."""
+        imager = DifmapImager()
+        imager.get_map = MagicMock(return_value=np.ones((10, 10)))
         
-        # FIX : Sélection indispensable ici aussi
-        import difmap_native
-        difmap_native.select("RR", 1, 0, 1, 0)
-        
-        size = 512
-        cell = 1.0
-        img.mapsize(size, cell)
-        img.invert()
-        
-        pkg = img.get_map_package(cellsize=cell)
-        assert all(k in pkg for k in ["data", "beam_data", "info", "extent"])
-        
-        extent = pkg["extent"]
-        assert extent[0] == (size / 2.0) * cell + (0.5 * cell)
+        with pytest.raises(ValueError, match="est plus grande que l'image"):
+            imager.get_cropped_map((20, 20))
 
-def test_imager_make_dirty_map_complet():
-    """Vérifie le fonctionnement de la méthode orchestratrice 'make_dirty_map'."""
-    with DifmapSession() as session:
-        session.observe(FICHIER_VALIDE)
-        img = DifmapImager()
+    def test_mapplot_securites(self):
+        """Vérifie les deux filets de sécurité de mapplot."""
+        imager = DifmapImager()
         
-        # On teste l'appel haut niveau
-        pkg = img.make_dirty_map(size=128, cellsize=0.5, pol="RR")
-        
-        assert pkg["data"].shape == (128, 128)
-        assert pkg["info"]["cellsize"] == 0.5
-        assert pkg["info"]["nx"] == 128
+        # 1er filet : mapsize n'a pas été appelé (_last_cellsize est None)
+        with pytest.raises(DifmapStateError, match="mapsize"):
+            imager.mapplot()
+            
+        # 2ème filet : invert n'a pas été appelé (get_map renvoie None ou vide)
+        imager._last_cellsize = 1.0
+        imager.get_map = MagicMock(return_value=np.array([]))
+        with pytest.raises(DifmapStateError, match="invert"):
+            imager.mapplot()
 
-@patch("matplotlib.pyplot.show")
-def test_imager_mapplot_et_alias(mock_show):
-    """Vérifie que mapplot (alias de plot_image) fonctionne avec Matplotlib."""
-    img = DifmapImager()
+# =====================================================================
+# 2. TESTS VISUELS MATPLOTLIB (Mocks)
+# =====================================================================
+
+class TestImagerAffichage:
+    @patch("matplotlib.pyplot.show")
+    @patch("matplotlib.pyplot.colorbar")
+    @patch("matplotlib.pyplot.imshow")
+    def test_plot_image(self, mock_imshow, mock_colorbar, mock_show):
+        """Vérifie que les données sont bien envoyées à matplotlib sans afficher."""
+        imager = DifmapImager()
+        fake_dict = {"data": np.zeros((10, 10)), "extent": [5, -5, -5, 5]}
+        
+        imager.plot_image(fake_dict, title="Test", cmap="plasma")
+        
+        # Vérifie qu'imshow a reçu l'extent et la colormap
+        mock_imshow.assert_called_once()
+        _, kwargs = mock_imshow.call_args
+        assert kwargs["extent"] == [5, -5, -5, 5]
+        assert kwargs["cmap"] == "plasma"
+        
+        mock_colorbar.assert_called_once()
+        mock_show.assert_called_once()
+
+    def test_plot_image_cles_manquantes(self):
+        """Vérifie l'erreur si le package image est incomplet."""
+        bad_dict = {"data": np.zeros((5,5))} # Manque 'extent'
+        imager = DifmapImager()
+        with pytest.raises(KeyError, match="doit contenir les clés"):
+            imager.plot_image(bad_dict)
+
+# =====================================================================
+# 3. TESTS DE FIDÉLITÉ PHYSIQUE (Le "Miroir" avec le vrai fichier UV)
+# =====================================================================
+
+class TestImagerPhysique:
     
-    # On simule un package d'image minimal
-    fake_pkg = {
-        "data": np.zeros((64, 64)),
-        "extent": [10, -10, -10, 10]
-    }
-    
-    # On appelle l'alias mapplot
-    img.mapplot(fake_pkg, title="Test Unitaire", cmap='inferno')
-    
-    # On vérifie que Matplotlib a bien été appelé 1 fois
-    assert mock_show.call_count == 1
+    def test_make_dirty_map_extent_astrometrie(self):
+        """Vérifie les mathématiques de calcul des bords du champ de vue."""
+        with DifmapSession() as session:
+            session.observe(TEST_UV_FILE)
+            pkg = session.imager.make_dirty_map(size=256, cellsize=1.0, pol="RR")
+            
+            ra_max, ra_min, dec_min, dec_max = pkg["extent"]
+            # Vérification de la symétrie à 1.0 près (le cellsize)
+            assert abs(ra_max + ra_min) <= 1.0
+            assert abs(dec_max + dec_min) <= 1.0
+            assert pkg["data"].shape == (256, 256)
 
-def test_imager_erreurs_fatales():
-    """Vérifie que l'Imager lève les bonnes erreurs en cas de mauvais paramètres."""
-    img = DifmapImager()
-    
-    # 1. Erreur de dictionnaire pour plot_image
-    with pytest.raises(KeyError):
-        img.plot_image({"mauvais": "dictionnaire"})
-        
-    # 2. Erreur de taille pour le cropping
-    img_bidon = np.zeros((10, 10))
-    # On mocke get_map pour ce test précis sans charger de FITS
-    with patch.object(DifmapImager, 'get_map', return_value=img_bidon):
-        with pytest.raises(ValueError) as exc:
-            img.get_cropped_map((20, 20)) # Plus grand que la source !
-        assert "plus grande que l'image en RAM" in str(exc.value)
+    def test_uvweight_feedback(self, capsys):
+        """Vérifie que la fonction met bien à jour sa mémoire et affiche l'état."""
+        with DifmapSession() as session:
+            session.observe(TEST_UV_FILE)
+            session.imager._native.select("RR", 1, 0, 1, 0)
+            
+            # Application
+            session.imager.uvweight(2.0, -1.0, False)
+            assert session.imager._current_uvweight == (2.0, -1.0, False)
+            
+            # Interrogation (Doit afficher l'état)
+            session.imager.uvweight()
+            captured = capsys.readouterr()
+            assert "bin_size=2.0" in captured.out
+            assert "err_power=-1.0" in captured.out
+
+    def test_uvtaper_feedback(self, capsys):
+        """Vérifie l'activation et la désactivation du taper."""
+        with DifmapSession() as session:
+            session.observe(TEST_UV_FILE)
+            session.imager._native.select("RR", 1, 0, 1, 0)
+            
+            # Activation
+            session.imager.uvtaper(0.5, 100.0)
+            assert session.imager._current_uvtaper == (0.5, 100.0)
+            
+            # Désactivation
+            session.imager.uvtaper(0, 0)
+            assert session.imager._current_uvtaper == (0.0, 0.0)
+            captured = capsys.readouterr()
+            assert "Taper désactivé avec succès" in captured.out

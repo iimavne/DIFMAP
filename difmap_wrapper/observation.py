@@ -5,7 +5,18 @@ import numpy as np
         
 
 class Observation:
-    """Gère le filtrage et l'état des données UV chargées."""
+    """
+    Gère le filtrage, l'exploration et l'état des données UV chargées en mémoire.
+
+    Cette classe n'est pas censée être instanciée manuellement. Elle est 
+    accessible via l'attribut `obs` d'une instance de `DifmapSession`.
+
+    Examples
+    --------
+    >>> with DifmapSession() as session:
+    >>>     session.observe("data/0003-066.fits")
+    >>>     print(session.obs.source)
+    """
     
     def __init__(self, session):
         self._session = session
@@ -13,33 +24,86 @@ class Observation:
 
     @property
     def source(self) -> str:
-        """Récupère le nom de la source astronomique depuis la mémoire C."""
+        """
+        Récupère le nom de la source astronomique depuis la mémoire C.
+
+        Returns
+        -------
+        str
+            Le nom de la source (ex: "0003-066"). Retourne "Inconnue" si 
+            aucune observation n'est chargée.
+        """
         if not self._session.uv_loaded:
             return "Inconnue"
         return self._native.get_source()
 
     def nsub(self) -> int:
-            """
-            Affiche et retourne le nombre de sous-réseaux (Subarrays).
-            Imite le comportement informatif de l'ancien Difmap.
-            """
-            # 1. Sécurité : Vérifie qu'un fichier est bien chargé
-            if not self._session.uv_loaded:
-                raise DifmapStateError("Aucune observation chargée.")
-                
-            # 2. Appel au moteur C
-            res = self._native.nsub()
-            if res < 0: 
-                raise DifmapError("Erreur lors de la lecture des sous-réseaux.")
-                
-            # 3. Le comportement "Difmap classique" (Nouveau !)
-            print(f"Nombre de sous-réseaux (Subarrays) : {res}")
+        """
+        Affiche et retourne le nombre de sous-réseaux (Subarrays).
+
+        Cette commande imite le comportement informatif de l'ancien Difmap 
+        en affichant le résultat dans le terminal, tout en retournant l'entier 
+        pour une utilisation algorithmique en Python.
+
+        Returns
+        -------
+        int
+            Le nombre de sous-réseaux détectés dans les données.
+
+        Raises
+        ------
+        DifmapStateError
+            Si aucune observation n'est chargée.
+        DifmapError
+            Si le moteur C rencontre une erreur lors de la lecture.
             
-            # 4. On retourne la valeur au cas où un script Python en aurait besoin
-            return res
+        Examples
+        --------
+        >>> n = session.obs.nsub()
+        Nombre de sous-réseaux (Subarrays) : 1
+        """
+        # 1. Sécurité : Vérifie qu'un fichier est bien chargé
+        if not self._session.uv_loaded:
+            raise DifmapStateError("Aucune observation chargée.")
+                
+        # 2. Appel au moteur C
+        res = self._native.nsub()
+        if res < 0: 
+            raise DifmapError("Erreur lors de la lecture des sous-réseaux.")
+                
+        # 3. Le comportement "Difmap classique" (Nouveau !)
+        print(f"Nombre de sous-réseaux (Subarrays) : {res}")
+            
+        # 4. On retourne la valeur au cas où un script Python en aurait besoin
+        return res
 
     def select(self, pol: str = "I", ifs: tuple = (1, 0), channels: tuple = (1, 0)):
-        """Sélectionne le flux de données (Polarisation, IFs, Canaux)."""
+        """
+        Sélectionne le flux de données actif (Polarisation, IFs, Canaux).
+
+        Permet de filtrer les visibilités qui seront utilisées pour les 
+        prochaines opérations d'imagerie ou d'affichage.
+
+        Parameters
+        ----------
+        pol : str, optional
+            La polarisation souhaitée ("I", "RR", "LL", etc.). Par défaut "I".
+        ifs : tuple of int, optional
+            Plage des IFs à sélectionner sous la forme (debut, fin). Par défaut (1, 0) pour tous.
+        channels : tuple of int, optional
+            Plage des canaux spectraux sous la forme (debut, fin). Par défaut (1, 0) pour tous.
+
+        Raises
+        ------
+        DifmapStateError
+            Si aucune observation n'est chargée.
+        DifmapError
+            Si la sélection échoue (ex: polarisation inexistante).
+
+        Examples
+        --------
+        >>> session.obs.select(pol="RR")
+        """
         if not self._session.uv_loaded:
             raise DifmapStateError("Aucune observation chargée.")
             
@@ -49,8 +113,16 @@ class Observation:
     
     def uvplot(self) -> None:
         """
-        Affiche la couverture du plan UV.
-        Les coordonnées extraites (RAM) sont déjà en longueurs d'onde.
+        Affiche un graphique de la couverture du plan UV (U vs V).
+
+        Les coordonnées sont automatiquement converties en Méga-longueurs 
+        d'onde (Mλ). Affiche un message d'avertissement si les données 
+        n'ont pas été préalablement sélectionnées.
+
+        Examples
+        --------
+        >>> session.obs.select(pol="I")
+        >>> session.obs.uvplot()
         """
         data = self._native.get_uv_data()
         if not data or len(data.get('u', [])) == 0:
@@ -75,9 +147,24 @@ class Observation:
 
     def radplot(self, color='black', alpha=0.5, s=1) -> None:
         """
-        Affiche l'amplitude des visibilités en fonction du rayon UV (Radplot).
-        L'axe X représente la distance de la ligne de base en Méga-longueurs d'onde.
-        """        
+        Affiche l'amplitude des visibilités en fonction du rayon UV.
+
+        Le rayon UV représente la distance de la ligne de base au centre du plan, 
+        exprimée en Méga-longueurs d'onde (Mλ).
+
+        Parameters
+        ----------
+        color : str, optional
+            Couleur des points du graphique Matplotlib. Par défaut 'black'.
+        alpha : float, optional
+            Transparence des points (0.0 à 1.0). Par défaut 0.5.
+        s : int or float, optional
+            Taille des points (scatter size). Par défaut 1.
+
+        Examples
+        --------
+        >>> session.obs.radplot(color='blue', s=0.5)
+        """       
         data = self._native.get_uv_data()
         if not data or len(data.get('u', [])) == 0:
             print("Aucune donnée UV. Appelez select() avant radplot().")

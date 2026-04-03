@@ -1,21 +1,22 @@
-# tests/test_session.py
 import pytest
-from difmap_wrapper.session import DifmapSession
-from difmap_wrapper.exceptions import DifmapStateError
+import os
 
-def test_cannot_create_image_without_data():
-    """Vérifie que le wrapper empêche de faire 'invert' si on n'a pas fait 'observe'."""
-    session = DifmapSession()
-    
-    # On s'attend à ce que cette ligne lève une erreur précise :
-    with pytest.raises(DifmapStateError):
-        session.create_image()
+@pytest.fixture(scope="session")
+def dossier_data():
+    """Retourne le chemin absolu vers le dossier test_data."""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_data")
 
-def test_full_workflow(paths):
-    """Teste le flux normal d'un utilisateur."""
-    session = DifmapSession()
-    session.load_observation(paths["uv"])
-    img = session.create_image(size=128, cellsize=1.0)
-    
-    assert img is not None
-    assert session.uv_loaded is True
+@pytest.fixture
+def fichier_valide(dossier_data):
+    return os.path.join(dossier_data, "0003-066_X.SPLIT.1")
+
+@pytest.fixture
+def fichier_inexistant(dossier_data):
+    return os.path.join(dossier_data, "chemin_qui_n_existe_pas.fits")
+
+@pytest.fixture
+def fichier_corrompu(tmp_path):
+    """Crée dynamiquement un faux fichier FITS (juste du texte) pour tester les crashs."""
+    faux_fichier = tmp_path / "corrompu.fits"
+    faux_fichier.write_text("Ceci n'est pas un fichier FITS valide. C'est du texte.")
+    return str(faux_fichier)

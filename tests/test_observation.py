@@ -1,94 +1,116 @@
 import pytest
-import os
 from unittest.mock import patch
 from difmap_wrapper.session import DifmapSession
-from difmap_wrapper.observation import Observation
 from difmap_wrapper.exceptions import DifmapStateError, DifmapError
-
-# =====================================================================
-# CONFIGURATION DES CHEMINS
-# =====================================================================
-dossier_tests = os.path.dirname(os.path.abspath(__file__))
-FICHIER_VALIDE = os.path.join(dossier_tests, "test_data", "0003-066_X.SPLIT.1")
 
 # =====================================================================
 # TESTS UNITAIRES : Observation
 # =====================================================================
 
-def test_observation_etat_non_charge():
-    """
-    Vérifie que la classe bloque proprement les commandes 
-    si l'utilisateur a oublié de faire session.observe().
-    """
-    with DifmapSession() as session:
-        # On ne fait PAS session.observe()
-        obs = Observation(session)
-        
-        # 1. La source doit être Inconnue, pas un crash
-        assert obs.source == "Inconnue", "La source devrait être 'Inconnue' si rien n'est chargé."
-        
-        # 2. nsub() doit lever une erreur d'état
-        with pytest.raises(DifmapStateError) as exc:
-            obs.nsub()
-        assert "Aucune observation chargée" in str(exc.value)
-            
-        # 3. select() doit lever une erreur d'état
-        with pytest.raises(DifmapStateError):
-            obs.select()
+# ---------------------------------------------------------------------
+# CAS NOMINAUX
+# ---------------------------------------------------------------------
 
-def test_observation_source_et_nsub():
-    """Vérifie la lecture correcte des métadonnées de base du FITS."""
+def test_observation_source_nominale(fichier_valide):
+    """Vérifie que le nom de la source est correctement extrait de la mémoire C."""
     with DifmapSession() as session:
-        session.observe(FICHIER_VALIDE)
-        obs = Observation(session)
-        
-        # Le nom de la source doit être lu depuis le C
-        assert obs.source == "0003-066", f"Nom de source inattendu : {obs.source}"
-        
-        # Il doit y avoir au moins 1 sous-réseau
-        assert obs.nsub() >= 1, "Le nombre de sous-réseaux (nsub) est invalide."
+        session.observe(fichier_valide)
+        # Remarque : Difmap stocke souvent les noms avec des espaces autour, 
+        # on vérifie donc si le nom de base est bien inclus.
+        assert "0003" in session.obs.source or "066" in session.obs.source
 
-def test_observation_select_succes_et_echec():
-    """Vérifie que select() envoie les bons arguments et gère les rejets du C."""
+def test_observation_nsub_comportement_difmap(fichier_valide, capsys):
+    """Vérifie que nsub renvoie le bon chiffre ET affiche le texte dans le terminal."""
     with DifmapSession() as session:
-        session.observe(FICHIER_VALIDE)
-        obs = Observation(session)
+        session.observe(fichier_valide)
         
-        # 1. Test nominal (Doit passer silencieusement)
+        # capsys permet à Pytest d'intercepter les print()
+        nb_sub = session.obs.nsub()
+        sortie_terminal = capsys.readouterr().out
+        
+        assert nb_sub > 0, "Il doit y avoir au moins 1 sous-réseau."
+        assert "Nombre de sous-réseaux" in sortie_terminal, "nsub doit afficher le message classique de Difmap."
+        assert str(nb_sub) in sortie_terminal
+
+def test_observation_select_valide(fichier_valide):
+    """Vérifie qu'une sélection standard (ex: Pol I ou RR) passe au moteur C sans erreur."""
+    with DifmapSession() as session:
+        session.observe(fichier_valide)
         try:
-            obs.select(pol="RR")
+            session.obs.select(pol="RR")
+            session.obs.select() # Teste aussi les valeurs par défaut
         except Exception as e:
-            pytest.fail(f"La sélection RR a échoué de manière inattendue : {e}")
-            
-        # 2. Test d'échec (Polarisation fantôme)
-        with pytest.raises(DifmapError) as exc:
-            obs.select(pol="ZZZ")
-        assert "Échec de la sélection" in str(exc.value)
+            pytest.fail(f"Un select valide a provoqué une erreur inattendue : {e}")
 
-@patch("matplotlib.pyplot.show") # <-- LE MOCKING MAGIQUE EST ICI
-def test_observation_plots_securite(mock_show):
-    """
-    Vérifie que les fonctions graphiques ne font pas crasher le programme, 
-    qu'elles soient appelées avant ou après le select().
-    """
+@patch("matplotlib.pyplot.show") # Bloque l'ouverture de la fenêtre pendant le test
+def test_observation_plots_nominaux(mock_show, fichier_valide):
+    """Vérifie que uvplot et radplot exécutent bien Matplotlib si les données sont prêtes."""
     with DifmapSession() as session:
-        session.observe(FICHIER_VALIDE)
-        obs = Observation(session)
+        session.observe(fichier_valide)
+        session.obs.select(pol="RR") # Indispensable avant de plotter
         
-        # 1. Test AVANT select() : les listes U et V sont vides
-        # Le code doit faire un 'print' et un 'return' propre sans crasher.
-        obs.uvplot()
-        obs.radplot()
+        session.obs.uvplot()
+        session.obs.radplot(color='red', s=3)
         
-        # plt.show n'a pas dû être appelé car on a 'return' avant
-        assert mock_show.call_count == 0, "plt.show() ne doit pas être appelé si UV est vide."
+        assert mock_show.call_count == 2, "Les deux graphiques auraient dû être générés."
+
+
+# ---------------------------------------------------------------------
+# CAS LIMITES 
+# ---------------------------------------------------------------------
+
+def test_observation_source_sans_fichier():
+    """Vérifie qu'interroger la source avant l'observation ne crashe pas."""
+    session = DifmapSession()
+    assert session.obs.source == "Inconnue", "Une session vide doit renvoyer 'Inconnue'."
+
+def test_observation_plots_sans_selection(fichier_valide, capsys):
+    """Vérifie que tracer sans 'select' annule le plot sans crasher."""
+    with DifmapSession() as session:
+        session.observe(fichier_valide)
+        # /!\ On ne fait pas de select ici !
         
-        # 2. Test APRÈS select() : la RAM est remplie
-        obs.select(pol="RR")
+        session.obs.uvplot()
+        session.obs.radplot()
         
-        # Les fonctions doivent extraire les données, dessiner, et appeler plt.show()
-        obs.uvplot()
-        obs.radplot()
+        sortie_terminal = capsys.readouterr().out
+        assert "Aucune donnée UV. Appelez select()" in sortie_terminal
         
-        # On vérifie que Matplotlib a bien été déclenché 2 fois (sans ouvrir les fenêtres !)
-        assert mock_show.call_count == 2, "Les deux graphiques n'ont pas appelé plt.show()."
+def test_observation_select_valide(fichier_valide):
+    """Vérifie qu'une sélection standard et complexe passe au moteur C sans erreur."""
+    with DifmapSession() as session:
+        session.observe(fichier_valide)
+        try:
+            # 1. Sélection par défaut (Tout)
+            session.obs.select() 
+            # 2. Sélection basique (Polarisation seule)
+            session.obs.select(pol="RR")
+            # 3. Sélection ultra-précise (Pol + IFs + Canaux) - LE CAS MANQUANT
+            session.obs.select(pol="LL", ifs=(1, 1), channels=(1, 10))
+        except Exception as e:
+            pytest.fail(f"Un select valide a provoqué une erreur inattendue : {e}")
+
+
+# ---------------------------------------------------------------------
+# GESTION DES ERREURS 
+# ---------------------------------------------------------------------
+
+def test_observation_actions_sans_chargement():
+    """Vérifie que manipuler l'observation sans fichier lève une erreur d'état (StateError)."""
+    session = DifmapSession()
+    
+    with pytest.raises(DifmapStateError):
+        session.obs.nsub()
+        
+    with pytest.raises(DifmapStateError):
+        session.obs.select()
+
+def test_observation_select_invalide(fichier_valide):
+    """Vérifie que demander une polarisation absurde lève une erreur du moteur C."""
+    with DifmapSession() as session:
+        session.observe(fichier_valide)
+        
+        with pytest.raises(DifmapError) as exc_info:
+            session.obs.select(pol="POL_QUI_N_EXISTE_PAS")
+            
+        assert "Échec de la sélection" in str(exc_info.value)

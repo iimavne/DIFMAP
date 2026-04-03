@@ -1,156 +1,212 @@
 import pytest
 import os
+import shutil
+import subprocess
 import numpy as np
 from astropy.io import fits
 from matplotlib import pyplot as plt
 import difmap_native
 from difmap_wrapper.session import DifmapSession
 from difmap_wrapper import standardizer 
-from difmap_wrapper.imaging import DifmapImager
 
 # =====================================================================
-# CONFIGURATION DES DONNÉES DE RÉFÉRENCE
+# CONFIGURATION DES DONNÉES ET DES CAS PHYSIQUES
 # =====================================================================
 dossier_tests = os.path.dirname(os.path.abspath(__file__))
 
 DATASETS = [
-    ("0003-066_X.SPLIT.1", "verite_terrain_test.fits"),
-    ("0017+200_X.SPLIT.1", "test_wrapper_strict.fits"),
+    "0003-066_X.SPLIT.1",
+    "0017+200_X.SPLIT.1",
 ]
 
-@pytest.fixture(scope="function", params=DATASETS, ids=[d[0] for d in DATASETS])
-def setup_comparaison(request):
-    nom_uv, nom_fits = request.param
+# On teste la fidélité sur 3 états physiques différents pour chaque fichier !
+CAS_PHYSIQUES = [
+    ("", "Naturel"),
+    ("uvtaper 0.5,100", "Taper_Gaussien"),
+    ("uvweight 2,-1", "Poids_Uniforme")
+]
+
+@pytest.fixture(scope="function", params=DATASETS)
+def setup_uv(request, tmp_path):
+    nom_uv = request.param
     chemin_uv = os.path.join(dossier_tests, "test_data", nom_uv)
-    chemin_fits = os.path.join(dossier_tests, "test_data", nom_fits)
-    return nom_uv, chemin_uv, chemin_fits
+    return nom_uv, chemin_uv, tmp_path
+
+# =====================================================================
+# OUTILS DE PILOTAGE (LE MIROIR)
+# =====================================================================
+
+def generer_ref_difmap_cli(chemin_uv: str, fits_out: str, type_export: str, commandes_difmap: str = "") -> None:
+    """Pilote l'ancien Difmap avec la bonne syntaxe."""
+    dossier_cible = os.path.dirname(fits_out)
+    nom_court_out = "out.fits"
+    uv_court = "data.uvf"
+
+    shutil.copy(chemin_uv, os.path.join(dossier_cible, uv_court))
+
+    # ATTENTION : Il faut TOUJOURS un mapsize avant uvweight, même pour les UV !
+    lignes_script = [f"observe {uv_court}", "select RR", "mapsize 512,0.1"]
+    
+    if commandes_difmap:
+        lignes_script.append(commandes_difmap)
+        
+    if type_export == "image":
+        lignes_script.append("invert")
+        lignes_script.append(f"wdmap {nom_court_out}") # Le fameux wdmap qui marche !
+    elif type_export == "uv":
+        lignes_script.append(f"wobs {nom_court_out}")  # wobs exporte les UV modifiés
+        
+    lignes_script.append("quit")
+    script = "\n".join(lignes_script) + "\n"
+
+    res = subprocess.run(["difmap"], input=script, text=True, capture_output=True, cwd=dossier_cible)
+
+    chemin_out_complet = os.path.join(dossier_cible, nom_court_out)
+    if os.path.exists(chemin_out_complet):
+        os.rename(chemin_out_complet, fits_out)
+    else:
+        raise RuntimeError(f"Difmap CLI a échoué.\nSTDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}")
+
+def appliquer_physique_wrapper(session, cmd_difmap):
+    """Traduit la commande CLI en appel Python pour le wrapper."""
+    session.imager.mapsize(512, 0.1) # Toujours définir la grille d'abord
+    
+    if "uvtaper" in cmd_difmap:
+        val, rad = cmd_difmap.replace("uvtaper ", "").split(",")
+        session.imager.uvtaper(float(val), float(rad))
+    elif "uvweight" in cmd_difmap:
+        val, err = cmd_difmap.replace("uvweight ", "").split(",")
+        session.imager.uvweight(float(val), float(err))
 
 # =====================================================================
 # 1. VALIDATION DIRTY MAP (IMAGE)
 # =====================================================================
 
-def test_validation_dirty_map_visuelle(setup_comparaison):
-    nom_uv, chemin_uv, chemin_fits = setup_comparaison
-    nom_base = nom_uv.replace('.SPLIT.1', '')
+@pytest.mark.parametrize("cmd_difmap, nom_cas", CAS_PHYSIQUES)
+def test_validation_dirty_map_visuelle(setup_uv, cmd_difmap, nom_cas):
+    nom_uv, chemin_uv, tmp_path = setup_uv
+    nom_base = nom_uv.replace('.SPLIT.1', f'_{nom_cas}')
+    fits_ref = str(tmp_path / "ref_image.fits")
 
+    # 1. VÉRITÉ TERRAIN
+    generer_ref_difmap_cli(chemin_uv, fits_ref, type_export="image", commandes_difmap=cmd_difmap)
+    with fits.open(fits_ref) as hdul:
+        img_fits = hdul[0].data.squeeze()
+
+    # 2. WRAPPER EN RAM
     with DifmapSession() as session:
         session.observe(chemin_uv)
         difmap_native.select("RR", 1, 0, 1, 0)
-        difmap_native.mapsize(512, 1.0)
-        difmap_native.invert()
-
-        with fits.open(chemin_fits) as hdul:
-            img_fits = hdul[0].data.squeeze()
-
+        appliquer_physique_wrapper(session, cmd_difmap)
+        session.imager.invert()
         img_ram = session.imager.get_cropped_map(target_shape=img_fits.shape)
-        metrics = standardizer.compare_images(img_fits, img_ram)
 
-        # --- TABLEAU TERMINAL ---
-        print(f"\n\n{'='*75}\n🖼️  IMAGE COMPARISON : {nom_base}\n{'='*75}")
-        print(f"{'Erreur Max':<15} | {metrics['err_max']:.2e} Jy\n{'RMSE':<15} | {metrics['rmse']:.2e} Jy\n{'='*75}")
+    metrics = standardizer.compare_images(img_fits, img_ram)
 
-        # --- RENDU GRAPHIQUE ---
-        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-        fig.suptitle(f"Diagnostic RAM vs FITS : {nom_uv}", fontsize=16, fontweight='bold')
+    print(f"\n\n{'='*75}\n IMAGE COMPARISON : {nom_base}\n{'='*75}")
+    print(f"{'Erreur Max':<15} | {metrics['err_max']:.2e} Jy\n{'='*75}")
 
-        titles = ['FITS (Référence)', 'RAM (Wrapper)', 'Différence (FITS - RAM)']
-        images = [img_fits, img_ram, metrics['diff_map']]
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    fig.suptitle(f"Diagnostic RAM vs FITS : {nom_base}", fontsize=16, fontweight='bold')
+    images = [img_fits, img_ram, metrics['diff_map']]
+    titles = ['FITS (Ancien Difmap)', 'RAM (Wrapper)', 'Différence']
 
-        for i, ax in enumerate(axes):
-            im = ax.imshow(images[i], origin='lower', cmap='inferno' if i < 2 else 'coolwarm')
-            ax.set_title(titles[i])
-            ax.grid(True, linestyle=':', alpha=0.4, color='white' if i < 2 else 'black')
-            ax.set_axisbelow(True)
-            fig.colorbar(im, ax=ax, label='Jy/beam')
+    for i, ax in enumerate(axes):
+        im = ax.imshow(images[i], origin='lower', cmap='inferno' if i < 2 else 'coolwarm')
+        ax.set_title(titles[i])
+        fig.colorbar(im, ax=ax, label='Jy/beam')
 
-        plt.tight_layout()
-        plt.savefig(os.path.join(dossier_tests, f"comparaison_visuelle_{nom_base}.png"))
-        plt.close()
-        assert metrics['err_max'] < 1e-4
+    plt.tight_layout()
+    plt.savefig(os.path.join(dossier_tests, f"comparaison_img_{nom_base}.png"))
+    plt.close()
+    
+    assert metrics['err_max'] < 1e-4
 
 # =====================================================================
-# 2. VALIDATION RADPLOT (AMPLITUDE)
+# 2. VALIDATION RADPLOT (AMPLITUDE ET POIDS)
 # =====================================================================
 
-def test_validation_radplot_visuel(setup_comparaison, tmp_path):
-    nom_uv, chemin_uv, _ = setup_comparaison
-    nom_base = nom_uv.replace('.SPLIT.1', '')
-    fits_temp = str(tmp_path / "temp.fits")
+@pytest.mark.parametrize("cmd_difmap, nom_cas", CAS_PHYSIQUES)
+def test_validation_radplot_visuel(setup_uv, cmd_difmap, nom_cas):
+    nom_uv, chemin_uv, tmp_path = setup_uv
+    nom_base = nom_uv.replace('.SPLIT.1', f'_{nom_cas}')
+    fits_ref = str(tmp_path / "ref_uv.fits")
+
+    generer_ref_difmap_cli(chemin_uv, fits_ref, type_export="uv", commandes_difmap=cmd_difmap)
+    data_fits = standardizer.extract_uvfits_standardized(fits_ref)
 
     with DifmapSession() as session:
         session.observe(chemin_uv)
         difmap_native.select("RR", 1, 0, 1, 0)
-        difmap_native.wfits(fits_temp)
-        
+        appliquer_physique_wrapper(session, cmd_difmap)
         data_ram = standardizer.extract_ram_standardized()
-        data_fits = standardizer.extract_uvfits_standardized(fits_temp)
-        metrics = standardizer.compare_uv_datasets(data_fits, data_ram)
 
-        print(f"\n\n{'='*75}\n📊 RADPLOT (AMPLITUDE) : {nom_base}\n{'='*75}")
-        print(f"{'Points':<15} | {metrics['points_valides']}\n{'ΔAmp Max':<15} | {metrics['delta_amp_max']:.2e} Jy\n{'='*75}")
+    metrics = standardizer.compare_uv_datasets(data_fits, data_ram)
 
-        fig, axes = plt.subplots(1, 3, figsize=(20, 6))
-        fig.suptitle(f"Diagnostic Amplitude : {nom_base}", fontsize=16, fontweight='bold')
-        r_w = data_ram['uv_radius']
-        
-        # Ajout des labels pour la légende
-        axes[0].scatter(r_w, data_fits['amp'], s=0.5, color='black', alpha=0.5, label='FITS Reference')
-        axes[1].scatter(r_w, data_ram['amp'], s=0.5, color='blue', alpha=0.5, label='RAM Wrapper')
-        axes[2].scatter(r_w, metrics['diff_amp'], s=2, c=metrics['diff_amp'], cmap='coolwarm', label='Résidus')
-        
-        for ax in axes:
-            ax.set_xlabel(r"Rayon UV (M$\lambda$)")
-            ax.grid(True, linestyle=':', alpha=0.6)
-            ax.set_axisbelow(True)
-            ax.legend(loc='upper right', markerscale=5) # AFFICHAGE LEGENDE
+    print(f"\n\n{'='*75}\n RADPLOT (AMPLITUDE) : {nom_base}\n{'='*75}")
+    print(f"{'ΔAmp Max':<15} | {metrics['delta_amp_max']:.2e} Jy\n{'='*75}")
 
-        axes[0].set_ylabel("Amplitude (Jy)")
-        axes[2].axhline(0, color='black', linestyle='--')
-        
-        plt.tight_layout()
-        plt.savefig(os.path.join(dossier_tests, f"diag_3d_amp_{nom_base}.png"))
-        plt.close()
-        assert metrics['delta_amp_max'] < 1e-4
+    fig, axes = plt.subplots(1, 3, figsize=(20, 6))
+    fig.suptitle(f"Diagnostic Amplitude : {nom_base}", fontsize=16, fontweight='bold')
+    r_w = data_ram['uv_radius']
+    
+    axes[0].scatter(r_w, data_fits['amp'], s=0.5, color='black', label='FITS')
+    axes[1].scatter(r_w, data_ram['amp'], s=0.5, color='blue', label='RAM')
+    axes[2].scatter(r_w, metrics['diff_amp'], s=2, c=metrics['diff_amp'], cmap='coolwarm', label='Résidus')
+    
+    for ax in axes:
+        ax.set_xlabel(r"Rayon UV (M$\lambda$)")
+        ax.grid(True, linestyle=':', alpha=0.6)
+        ax.legend()
+
+    axes[0].set_ylabel("Amplitude (Jy)")
+    plt.tight_layout()
+    plt.savefig(os.path.join(dossier_tests, f"diag_radplot_{nom_base}.png"))
+    plt.close()
+    
+    assert metrics['delta_amp_max'] < 1e-4
 
 # =====================================================================
 # 3. VALIDATION UVPLOT (GÉOMÉTRIE)
 # =====================================================================
 
-def test_validation_uvplot_visuel(setup_comparaison, tmp_path):
-    nom_uv, chemin_uv, _ = setup_comparaison
-    nom_base = nom_uv.replace('.SPLIT.1', '')
-    fits_temp = str(tmp_path / "temp_uv.fits")
+@pytest.mark.parametrize("cmd_difmap, nom_cas", CAS_PHYSIQUES)
+def test_validation_uvplot_visuel(setup_uv, cmd_difmap, nom_cas):
+    nom_uv, chemin_uv, tmp_path = setup_uv
+    nom_base = nom_uv.replace('.SPLIT.1', f'_{nom_cas}')
+    fits_ref = str(tmp_path / "ref_uv2.fits")
+
+    generer_ref_difmap_cli(chemin_uv, fits_ref, type_export="uv", commandes_difmap=cmd_difmap)
+    data_fits = standardizer.extract_uvfits_standardized(fits_ref)
 
     with DifmapSession() as session:
         session.observe(chemin_uv)
         difmap_native.select("RR", 1, 0, 1, 0)
-        difmap_native.wfits(fits_temp)
-        
+        appliquer_physique_wrapper(session, cmd_difmap)
         data_ram = standardizer.extract_ram_standardized()
-        data_fits = standardizer.extract_uvfits_standardized(fits_temp)
-        metrics = standardizer.compare_uv_datasets(data_fits, data_ram)
-
-        print(f"\n\n{'='*75}\n🌍 UVPLOT (GEOMETRIE) : {nom_base}\n{'='*75}")
-        print(f"{'ΔU Max':<15} | {metrics['delta_u_max']:.2e} λ\n{'ΔV Max':<15} | {metrics['delta_v_max']:.2e} λ\n{'='*75}")
-
-        fig, axes = plt.subplots(1, 3, figsize=(20, 6))
-        fig.suptitle(f"Diagnostic UVPLOT : {nom_base}", fontsize=16, fontweight='bold')
         
-        axes[0].scatter(data_fits['u']/1e6, data_fits['v']/1e6, s=0.3, color='black', label='FITS')
-        axes[1].scatter(data_ram['u']/1e6, data_ram['v']/1e6, s=0.3, color='blue', label='RAM')
-        axes[2].scatter(data_ram['u']/1e6, metrics['diff_u'], s=2, c=metrics['diff_u'], cmap='coolwarm', label='ΔU')
+    metrics = standardizer.compare_uv_datasets(data_fits, data_ram)
 
-        for ax in axes:
-            ax.set_xlabel(r"U (M$\lambda$)")
-            ax.grid(True, linestyle=':', alpha=0.6)
-            ax.set_axisbelow(True)
-            ax.legend(loc='upper right', markerscale=10) # AFFICHAGE LEGENDE
-            if ax != axes[2]:
-                ax.set_ylabel(r"V (M$\lambda$)")
-                ax.axis('equal')
-                ax.invert_xaxis()
-        
-        plt.tight_layout()
-        plt.savefig(os.path.join(dossier_tests, f"diag_3d_uvplot_{nom_base}.png"))
-        plt.close()
-        assert metrics['delta_u_max'] < 50.0
+    print(f"\n\n{'='*75}\n UVPLOT (GEOMETRIE) : {nom_base}\n{'='*75}")
+    print(f"{'ΔU Max':<15} | {metrics['delta_u_max']:.2e} λ\n{'='*75}")
+
+    fig, axes = plt.subplots(1, 3, figsize=(20, 6))
+    fig.suptitle(f"Diagnostic UVPLOT : {nom_base}", fontsize=16, fontweight='bold')
+    
+    axes[0].scatter(data_fits['u']/1e6, data_fits['v']/1e6, s=0.3, color='black', label='FITS')
+    axes[1].scatter(data_ram['u']/1e6, data_ram['v']/1e6, s=0.3, color='blue', label='RAM')
+    axes[2].scatter(data_ram['u']/1e6, metrics['diff_u'], s=2, c=metrics['diff_u'], cmap='coolwarm', label='ΔU')
+
+    for ax in axes:
+        ax.set_xlabel(r"U (M$\lambda$)")
+        ax.grid(True, linestyle=':', alpha=0.6)
+        if ax != axes[2]:
+            ax.set_ylabel(r"V (M$\lambda$)")
+            ax.axis('equal')
+            ax.invert_xaxis()
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(dossier_tests, f"diag_uvplot_{nom_base}.png"))
+    plt.close()
+    
+    assert metrics['delta_u_max'] < 50.0
