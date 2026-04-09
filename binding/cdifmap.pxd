@@ -17,6 +17,12 @@ cdef extern from "difmap_api.h":
     float* get_native_v()
     float* get_native_vis_amp()
     float* get_native_vis_wgt()
+    int* get_native_tel_a()
+    int* get_native_tel_b()
+    double* get_native_time()
+    int* get_native_subarray()
+    const char* get_native_telescope_name(int isub, int itel)
+    int* get_native_if()
 
     # Setters / Actions
     int native_observe(const char* filepath)
@@ -28,3 +34,6 @@ cdef extern from "difmap_api.h":
     int native_invert()
 
     int native_wfits(const char* filename)
+    int flag_native_data(int *indices, int num_indices)
+    int save_native_wobs(const char* filepath)
+    int unflag_native_data(int *indices, int num_indices)

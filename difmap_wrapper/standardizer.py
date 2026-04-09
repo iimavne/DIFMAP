@@ -41,8 +41,14 @@ def extract_uvfits_standardized(filepath: str) -> dict:
         freqs = h['CRVAL4'] + if_offsets
         
         # 2. Conversion spatio-fréquentielle (Sec -> Longueurs d'onde)
-        u_2d = d['UU'][:, None] * freqs[None, :]
-        v_2d = d['VV'][:, None] * freqs[None, :]
+        # Gestion des dialectes UVFITS (Format standard vs Format AIPS)
+        noms_colonnes = d.names if hasattr(d, 'names') else d.columns.names
+        
+        u_key = 'UU' if 'UU' in noms_colonnes else 'uu---sin'
+        v_key = 'VV' if 'VV' in noms_colonnes else 'vv---sin'
+        
+        u_2d = d[u_key][:, None] * freqs[None, :]
+        v_2d = d[v_key][:, None] * freqs[None, :]
         
         # 3. Extraction des amplitudes et filtrage des visibilités supprimées (poids = 0)
         d_sq = d['DATA'].squeeze()

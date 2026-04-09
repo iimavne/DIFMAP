@@ -163,7 +163,10 @@ py3.install_sources(
     'difmap_wrapper/imaging.py',
     'difmap_wrapper/exceptions.py',
     'difmap_wrapper/observation.py',
+    'difmap_wrapper/visualizer.py',
     'difmap_wrapper/standardizer.py',
+    'difmap_wrapper/base.py',
+    'difmap_wrapper/uv_editor.py',
     subdir: 'difmap_wrapper'
 )
 

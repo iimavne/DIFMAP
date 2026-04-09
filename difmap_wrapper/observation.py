@@ -1,6 +1,5 @@
 import difmap_native
 from .exceptions import DifmapStateError, DifmapError
-import matplotlib.pyplot as plt
 import numpy as np
         
 
@@ -110,84 +109,31 @@ class Observation:
         pol = pol.upper()
         if self._native.select(pol, ifs[0], ifs[1], channels[0], channels[1]) != 0:
             raise DifmapError(f"Échec de la sélection (Pol: {pol})")
+        
+    def flag_data(self, indices):
+        """
+        Reçoit une liste d'index depuis l'éditeur graphique et 
+        demande au moteur C de les supprimer (flag 'bad').
+        """
+        # On s'assure que les indices sont bien au format attendu par le C (Entiers 32-bits continus)
+        indices_c = np.asarray(indices, dtype=np.int32)
+        
+        if len(indices_c) > 0:
+            # On passe la commande au moteur Cython
+            return self._native.flag_data(indices_c)
+        return 0 
+        
+    def unflag_data(self, indices):
+        indices_c = np.asarray(indices, dtype=np.int32)
+        if len(indices_c) > 0:
+            return self._native.unflag_data(indices_c)
+        return 0
     
-    def uvplot(self) -> None:
-        """
-        Affiche un graphique de la couverture du plan UV (U vs V).
-
-        Les coordonnées sont automatiquement converties en Méga-longueurs 
-        d'onde (Mλ). Affiche un message d'avertissement si les données 
-        n'ont pas été préalablement sélectionnées.
-
-        Examples
-        --------
-        >>> session.obs.select(pol="I")
-        >>> session.obs.uvplot()
-        """
-        data = self._native.get_uv_data()
-        if not data or len(data.get('u', [])) == 0:
-            print("Aucune donnée UV. Appelez select() avant uvplot().")
-            return
-
-        u = data['u'] / 1e6
-        v = data['v'] / 1e6
+    def save_wobs(self, filepath):
+        """Sauvegarde l'observation avec les flags actuels dans un nouveau fichier FITS."""
+        if not filepath.endswith('.fits'):
+            filepath += '.fits' # Sécurité pour toujours avoir la bonne extension
         
-        plt.figure(figsize=(8, 8))
-        plt.scatter(u, v, s=1, color='blue', alpha=0.5)
-        plt.scatter(-u, -v, s=1, color='blue', alpha=0.5)
-        
-        plt.xlabel(r"$U$ ($M\lambda$)")
-        plt.ylabel(r"$V$ ($M\lambda$)")
-        plt.title(f"Couverture UV : {self.source}")
-        
-        plt.gca().invert_xaxis()
-        plt.axis('equal')
-        plt.grid(True, linestyle=':', alpha=0.6)
-        plt.show()
-
-    def radplot(self, color='black', alpha=0.5, s=1) -> None:
-        """
-        Affiche l'amplitude des visibilités en fonction du rayon UV.
-
-        Le rayon UV représente la distance de la ligne de base au centre du plan, 
-        exprimée en Méga-longueurs d'onde (Mλ).
-
-        Parameters
-        ----------
-        color : str, optional
-            Couleur des points du graphique Matplotlib. Par défaut 'black'.
-        alpha : float, optional
-            Transparence des points (0.0 à 1.0). Par défaut 0.5.
-        s : int or float, optional
-            Taille des points (scatter size). Par défaut 1.
-
-        Examples
-        --------
-        >>> session.obs.radplot(color='blue', s=0.5)
-        """       
-        data = self._native.get_uv_data()
-        if not data or len(data.get('u', [])) == 0:
-            print("Aucune donnée UV. Appelez select() avant radplot().")
-            return
-
-        # Récupération des données brutes
-        u = data['u']
-        v = data['v']
-        amp = data['amp']
-        
-        # Calcul du rayon UV (distance au centre) converti en Méga-lambda
-        uv_radius = np.sqrt(u**2 + v**2) / 1e6
-        
-        # Création du graphique
-        plt.figure(figsize=(10, 6))
-        plt.scatter(uv_radius, amp, s=s, color=color, alpha=alpha)
-        
-        # Formatage scientifique
-        plt.xlabel(r"Rayon UV ($M\lambda$)")
-        plt.ylabel("Amplitude (Jy)")
-        plt.title(f"Radplot (Amplitude vs Rayon UV) : {self.source}")
-        
-        # Limite basse à 0 pour l'amplitude (une amplitude ne peut pas être négative)
-        plt.ylim(bottom=0)
-        plt.grid(True, linestyle=':', alpha=0.6)
-        plt.show()
+        print(f"Sauvegarde en cours via Difmap...")
+        self._native.save_wobs(filepath)
+        return True

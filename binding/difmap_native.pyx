@@ -94,8 +94,18 @@ def get_beam_info() -> dict:
         "RMS": 0.0
     }
 
+
+def get_telescope_name(int isub, int itel) -> str:
+    """Demande au moteur C le nom textuel d'une antenne."""
+    cdef const char* c_name = cdifmap.get_native_telescope_name(isub, itel)
+    
+    # Sécurité supplémentaire au cas où le C renvoie NULL
+    if c_name == NULL:
+        return "INCONNU"
+        
+    return c_name.decode('utf-8', errors='replace')
 def get_uv_data() -> dict:
-    """Récupère u, v, amp et weight (Zéro-Copie) filtrés."""
+    """Récupère u, v, amp, weight ET les métadonnées filtrés."""
     if cdifmap.l_extract_uv() != 0:
         raise RuntimeError("Erreur lors de l'extraction des données UV.")
         
@@ -103,17 +113,62 @@ def get_uv_data() -> dict:
     if n <= 0:
         return {}
 
-    # Memoryviews directes sur la RAM du C
+    # Memoryviews directes sur la RAM du C (Coordonnées)
     cdef float[:] u = <float[:n]> cdifmap.get_native_u()
     cdef float[:] v = <float[:n]> cdifmap.get_native_v()
     cdef float[:] amp = <float[:n]> cdifmap.get_native_vis_amp()
     cdef float[:] wgt = <float[:n]> cdifmap.get_native_vis_wgt()
     
+    # NOUVEAU : Memoryviews pour les métadonnées
+    cdef int[:] tel_a = <int[:n]> cdifmap.get_native_tel_a()
+    cdef int[:] tel_b = <int[:n]> cdifmap.get_native_tel_b()
+    cdef double[:] time = <double[:n]> cdifmap.get_native_time()
+    cdef int[:] subarray = <int[:n]> cdifmap.get_native_subarray()
+    cdef int[:] if_no = <int[:n]> cdifmap.get_native_if()
+    
     return {
         "u": np.array(u, copy=True), 
         "v": np.array(v, copy=True),
         "amp": np.array(amp, copy=True), 
-        "weight": np.array(wgt, copy=True)
+        "weight": np.array(wgt, copy=True),
+        # On transfère tout dans le dict
+        "tel_a": np.array(tel_a, copy=True),
+        "tel_b": np.array(tel_b, copy=True),
+        "time": np.array(time, copy=True),
+        "subarray": np.array(subarray, copy=True),
+        "if_no": np.array(if_no, copy=True)
     }
-    
 
+def flag_data(int[:] indices):
+        """
+        Envoie une liste d'index au moteur C pour marquer ces visibilités comme 'bad'.
+        L'action est persistante en RAM pour toute l'observation.
+        """
+        cdef int num_indices = indices.shape[0]
+        if num_indices == 0:
+            return 0
+            
+        # On passe le pointeur du premier élément du tableau Numpy directement au C
+        cdef int status = cdifmap.flag_native_data(&indices[0], num_indices)
+        
+        if status != 0:
+            raise RuntimeError("Erreur lors du flagging des données dans le moteur C.")
+            
+        return num_indices
+
+def unflag_data(int[:] indices):
+    cdef int num_indices = indices.shape[0]
+    if num_indices == 0: return 0
+    cdef int status = cdifmap.unflag_native_data(&indices[0], num_indices)
+    return num_indices
+
+def save_wobs(str filepath):
+    """Demande au moteur C de sauvegarder l'observation actuelle."""
+    # En Cython, il faut encoder la string Python en bytes (UTF-8) pour le C
+    cdef bytes filepath_bytes = filepath.encode('utf-8')
+    cdef const char* c_filepath = filepath_bytes
+    
+    cdef int status = cdifmap.save_native_wobs(c_filepath)
+    if status != 0:
+        raise RuntimeError(f"Erreur lors de la sauvegarde du fichier : {filepath}")
+    return True

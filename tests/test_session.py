@@ -1,6 +1,7 @@
 import pytest
 from difmap_wrapper.session import DifmapSession
 from difmap_wrapper.exceptions import DifmapError
+from difmap_wrapper.visualizer import Visualizer
 from difmap_wrapper.observation import Observation
 from difmap_wrapper.imaging import DifmapImager
 
@@ -13,11 +14,20 @@ from difmap_wrapper.imaging import DifmapImager
 # ---------------------------------------------------------------------
 
 def test_initialisation_session():
-    """Vérifie l'état initial de la session et la création des sous-objets."""
+    """Vérifie l'état initial de la session et la création de tous les sous-objets."""
     session = DifmapSession()
     assert session.uv_loaded is False, "Par défaut, aucune donnée ne doit être chargée."
     assert isinstance(session.obs, Observation), "L'objet Observation n'est pas instancié."
     assert isinstance(session.imager, DifmapImager), "L'objet Imager n'est pas instancié."
+    assert isinstance(session.vis, Visualizer), "L'objet Visualizer n'est pas instancié."
+
+def test_sous_objets_recoivent_session():
+    """Vérifie que tous les sous-objets ont une référence à la session."""
+    session = DifmapSession()
+    
+    assert session.obs._session is session, "Observation doit avoir référence à session"
+    assert session.imager._session is session, "DifmapImager doit avoir référence à session"
+    assert session.vis._session is session, "Visualizer doit avoir référence à session"
 
 def test_context_manager_cleanup(fichier_valide):
     """Vérifie que le bloc 'with' charge puis appelle bien cleanup() à la sortie."""
@@ -67,6 +77,15 @@ def test_double_instanciation_simultanee(fichier_valide):
     # Nettoyage manuel (puisqu'on n'utilise pas le bloc with ici)
     session1.cleanup()
     session2.cleanup()
+
+def test_sous_objets_independants_entre_sessions():
+    """Vérifie que deux sessions n'ont pas les mêmes objets Observation/Imager/Visualizer."""
+    session1 = DifmapSession()
+    session2 = DifmapSession()
+    
+    assert session1.obs is not session2.obs, "Observation doit être différent entre sessions"
+    assert session1.imager is not session2.imager, "Imager doit être différent entre sessions"
+    assert session1.vis is not session2.vis, "Visualizer doit être différent entre sessions"
 
 
 # ---------------------------------------------------------------------

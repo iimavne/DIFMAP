@@ -7794,13 +7794,21 @@ double get_native_bmin(void) { return (vlbmap) ? vlbmap->bmin * RTOMAS : 0.0; }
 double get_native_bpa(void) { return (vlbmap) ? vlbmap->bpa : 0.0; }
 double get_native_pixsize(void) { return (vlbmap) ? vlbmap->xinc * RTOMAS : 0.0; }
 
+const char* get_native_telescope_name(int isub, int itel) {
+    if (vlbob == NULL) return "INCONNU";
+    if (isub < 0 || isub >= vlbob->nsub) return "INCONNU";
+    Subarray *sub = &vlbob->sub[isub];
+    if (itel < 0 || itel >= sub->nstat) return "INCONNU";
+    return sub->tel[itel].name;
+}
+
 int native_observe(const char* filepath) {
-    obs_end(); /* Nettoie la RAM avant de charger */
+    obs_end();
     vlbob = new_Observation((char*)filepath, 0.0, 0, 1, NULL, NO_POL, fix_visibility_weights);
     if(vlbob == NULL) return -1;
     vlbspec = new_Specattr(vlbob);
     if(!vlbspec) { obs_end(); return -1; }
-    invpar = invdef; respar = resdef; slfpar = slfdef; /* Reset des paramètres par défaut */
+    invpar = invdef; respar = resdef; slfpar = slfdef;
     return 0;
 }
 
@@ -7814,8 +7822,6 @@ int native_select(const char* pol, int if_beg, int if_end, int ch_beg, int ch_en
     Stokes stokes = Stokes_id((char*)pol);
     if (stokes == NO_POL) return -1;
     if (vlbmap) vlbmap->domap = vlbmap->dobeam = MAP_IS_STALE;
-    
-    /* 0 = False pour multi_model_mode par défaut */
     if (ob_select(vlbob, 0, NULL, stokes)) return -1; 
     return 0;
 }
@@ -7832,10 +7838,10 @@ int native_uvweight(float uvbin, float errpow, int dorad) {
 int native_uvtaper(float gauval, float gaurad_wav) {
     if (vlbob == NULL) return -1;
     invpar.gauval = gauval;
-    invpar.gaurad = uvtowav(gaurad_wav); /*expliquer pq*/
+    invpar.gaurad = uvtowav(gaurad_wav);
     if(invpar.gauval<=0.0f || invpar.gauval>=0.99f || invpar.gaurad<=0.0f) {
-      invpar.gauval = 0.0f;
-      invpar.gaurad = 0.0f;
+        invpar.gauval = 0.0f;
+        invpar.gaurad = 0.0f;
     }
     if (vlbmap) vlbmap->domap = vlbmap->dobeam = MAP_IS_STALE;
     return 0;
@@ -7851,10 +7857,8 @@ int native_mapsize(int nx, float cellsize) {
 
 int native_invert(void) {
     if(vlbmap == NULL || vlbob == NULL) return -1;
-    
     if(uvinvert(vlbob, vlbmap, invpar.uvmin, invpar.uvmax, invpar.gauval,
                 invpar.gaurad, invpar.dorad, invpar.errpow, invpar.uvbin)) return -1;
-                
     respar.e_bmin = vlbmap->e_bmin;
     respar.e_bmaj = vlbmap->e_bmaj;
     respar.e_bpa  = vlbmap->e_bpa * rtod;
@@ -7863,19 +7867,12 @@ int native_invert(void) {
 
 int native_wfits(const char *filename) {
     if(!vlbob) return -1;
-    
-    /* On appelle la fonction officielle :
-       - vlbob : notre observation en RAM
-       - filename : le nom du fichier de sortie
-       - 0 : l'argument 'doshift'. On met 0 pour ne pas 
-             modifier le centre de phase par défaut.
-    */
     return uvf_write(vlbob, filename, 0);
 }
 
-/* ================================================================= */
-/* EXTRACTION DES DONNÉES UV (ZÉRO-COPIE)                            */
-/* ================================================================= */
+/* Signatures officielles de l'éditeur Difmap (depuis obedit.c) */
+int ed_integ(Observation *ob, Subarray *sub, int ut, int cif, int doflag, int selbase, int selstat, int selchan, int selif, int index);
+int ed_flush(Observation *ob);
 
 /* Buffers statiques pour l'exportation */
 static int uv_buffer_size = 0;
@@ -7884,12 +7881,28 @@ static float *flat_v = NULL;
 static float *flat_amp = NULL;
 static float *flat_wgt = NULL;
 
-/* Getters pour Cython */
+/* Métadonnées d'identification */
+static int *flat_tel_a = NULL;
+static int *flat_tel_b = NULL;
+static double *flat_time = NULL; 
+static int *flat_subarray = NULL;
+static int *flat_if = NULL;
+static Visibility **flat_vis_ptrs = NULL;
+
+/* NOUVEAUX BUFFERS INTERNES : Clés pour le moteur d'édition de Difmap */
+static int *flat_ut = NULL;     
+static int *flat_ibase = NULL;  
+
+int* get_native_if(void) { return flat_if; }
 int get_native_uv_count(void) { return uv_buffer_size; }
 float* get_native_u(void) { return flat_u; }
 float* get_native_v(void) { return flat_v; }
 float* get_native_vis_amp(void) { return flat_amp; }
 float* get_native_vis_wgt(void) { return flat_wgt; }
+int* get_native_tel_a(void) { return flat_tel_a; }
+int* get_native_tel_b(void) { return flat_tel_b; }
+double* get_native_time(void) { return flat_time; }
+int* get_native_subarray(void) { return flat_subarray; }
 
 int l_extract_uv(void) {
     int isub, itime, ibase, cif;
@@ -7897,7 +7910,7 @@ int l_extract_uv(void) {
 
     if(vlbob == NULL) return -1;
 
-    /* 1. PREMIER PASSAGE : COMPTAGE */
+    /* 1. COMPTAGE */
     for(cif=0; (cif=nextIF(vlbob, cif, 1, 1)) >= 0; cif++) {
         if(getIF(vlbob, cif)) continue; 
         for(isub=0; isub < vlbob->nsub; isub++) {
@@ -7920,15 +7933,24 @@ int l_extract_uv(void) {
         flat_v = (float*)realloc(flat_v, count * sizeof(float));
         flat_amp = (float*)realloc(flat_amp, count * sizeof(float));
         flat_wgt = (float*)realloc(flat_wgt, count * sizeof(float));
+        
+        flat_tel_a = (int*)realloc(flat_tel_a, count * sizeof(int));
+        flat_tel_b = (int*)realloc(flat_tel_b, count * sizeof(int));
+        flat_time = (double*)realloc(flat_time, count * sizeof(double));
+        flat_subarray = (int*)realloc(flat_subarray, count * sizeof(int));
+        flat_if = (int*)realloc(flat_if, count * sizeof(int));
+        flat_vis_ptrs = (Visibility**)realloc(flat_vis_ptrs, count * sizeof(Visibility*));
+
+        flat_ut = (int*)realloc(flat_ut, count * sizeof(int));
+        flat_ibase = (int*)realloc(flat_ibase, count * sizeof(int));
     }
+    
     uv_buffer_size = count;
 
-    /* 3. DEUXIÈME PASSAGE : REMPLISSAGE ET CONVERSION PHYSIQUE */
+    /* 3. REMPLISSAGE */
     int index = 0;
     for(cif=0; (cif=nextIF(vlbob, cif, 1, 1)) >= 0; cif++) {
         getIF(vlbob, cif);
-        
-        /* On récupère la fréquence de l'IF dans ob->ifs */
         double if_freq = vlbob->ifs[cif].freq; 
 
         for(isub=0; isub < vlbob->nsub; isub++) {
@@ -7937,12 +7959,24 @@ int l_extract_uv(void) {
                 Integration *integ = &sub->integ[itime];
                 for(ibase=0; ibase < sub->nbase; ibase++) {
                     Visibility *vis = &integ->vis[ibase];
+                    
                     if(vis->bad == 0 && vis->wt > 0.0) {
-                        /* Conversion des secondes-lumière en longueurs d'onde */
                         flat_u[index] = vis->u * if_freq;
                         flat_v[index] = vis->v * if_freq;
                         flat_amp[index] = vis->amp;
                         flat_wgt[index] = vis->wt;
+                        
+                        Baseline *b = &sub->base[ibase];
+                        flat_tel_a[index] = b->tel_a;
+                        flat_tel_b[index] = b->tel_b;
+                        flat_time[index] = integ->ut;
+                        flat_subarray[index] = isub + 1;
+                        flat_if[index] = cif + 1;
+                        flat_vis_ptrs[index] = vis;
+
+                        flat_ut[index] = itime;
+                        flat_ibase[index] = ibase;
+
                         index++;
                     }
                 }
@@ -7950,5 +7984,53 @@ int l_extract_uv(void) {
         }
     }
     return 0;
+} 
+
+int flag_native_data(int *indices, int num_indices) {
+    if (flat_vis_ptrs == NULL || vlbob == NULL) return -1;
+
+    for (int i = 0; i < num_indices; i++) {
+        int idx = indices[i];
+        if (idx >= 0 && idx < uv_buffer_size) {
+            int ut = flat_ut[idx];
+            int ibase = flat_ibase[idx];
+            int isub = flat_subarray[idx] - 1;
+            int cif = flat_if[idx] - 1;
+            Subarray *sub = &vlbob->sub[isub];
+
+            /* Appel officiel au moteur d'édition de Difmap */
+            /* 1=flag, 1=selbase, 0=selstat, 1=selchan, 1=selif */
+            ed_integ(vlbob, sub, ut, cif, 1, 1, 0, 1, 1, ibase);
+        }
+    }
+    ed_flush(vlbob);
+    return 0;
 }
 
+int unflag_native_data(int *indices, int num_indices) {
+    if (flat_vis_ptrs == NULL || vlbob == NULL) return -1;
+
+    for (int i = 0; i < num_indices; i++) {
+        int idx = indices[i];
+        if (idx >= 0 && idx < uv_buffer_size) {
+            int ut = flat_ut[idx];
+            int ibase = flat_ibase[idx];
+            int isub = flat_subarray[idx] - 1;
+            int cif = flat_if[idx] - 1;
+            Subarray *sub = &vlbob->sub[isub];
+
+            /* 0=unflag */
+            ed_integ(vlbob, sub, ut, cif, 0, 1, 0, 1, 1, ibase);
+        }
+    }
+    ed_flush(vlbob);
+    return 0;
+}
+
+int save_native_wobs(const char* filepath) {
+    if (vlbob == NULL) return -1;
+    if (uvf_write(vlbob, filepath, 0) != 0) {
+        return -1;
+    }
+    return 0;
+}

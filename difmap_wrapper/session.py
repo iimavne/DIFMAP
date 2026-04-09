@@ -1,8 +1,9 @@
 # difmap_wrapper/session.py
 import difmap_native
-from difmap_wrapper.imaging import DifmapImager
-from difmap_wrapper.observation import Observation
+from .imaging import DifmapImager
+from .observation import Observation
 from .exceptions import DifmapStateError, DifmapError
+from .visualizer import Visualizer
 
 class DifmapSession:
     """
@@ -22,11 +23,14 @@ class DifmapSession:
     
     
     def __init__(self):
+        from .visualizer import Visualizer  # Import local pour éviter circular import
+        
         self.uv_loaded = False
         self._native = difmap_native
         # On instancie les sous-objets en leur passant la session
         self.obs = Observation(self)
-        self.imager = DifmapImager()
+        self.imager = DifmapImager(self)
+        self.vis = Visualizer(self)
 
     def __enter__(self):
         return self

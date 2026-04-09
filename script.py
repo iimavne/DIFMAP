@@ -1,19 +1,19 @@
-from difmap_wrapper.observation import Observation
 from difmap_wrapper.session import DifmapSession
-from difmap_wrapper.imaging import DifmapImager
 
-with DifmapSession() as session:
-    session.observe("tests/test_data/0003-066_X.SPLIT.1")
-    obs = Observation(session)
-    img = DifmapImager()
+def main():
+    print("Démarrage de la session Difmap...")
+    session = DifmapSession()
     
-    obs.select()
+    # 1. Chargement des données
+    fichier_fits = "testok.fits"  # Remplace par le chemin de ton fichier FITS de test
+    session.observe(fichier_fits)
+    session.obs.select("I")
+    print("Données chargées en RAM.")
+
+    # 2. Test du UVPlot Interactif
+    print("\n--- TEST UVPLOT ---")
+    session.vis.uvplot(title="Test UVPlot Interactif", interactive=True)
     
-    # --- LA MAGIE EST ICI ---
-    obs.radplot()                # Vérifier les données avant l'image
-    img.uvweight(bin_size=2.0)   # Modifier le poids des antennes !
-    # ------------------------
-    
-    img.mapsize(512, 0.1)
-    img.invert()
-    img.mapplot(img.get_map_package(cellsize=0.1))
+
+if __name__ == "__main__":
+    main()

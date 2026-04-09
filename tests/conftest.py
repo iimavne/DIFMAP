@@ -1,5 +1,28 @@
 import pytest
 import os
+import sys
+
+# Ajouter builddir au sys.path pour que difmap_native soit trouvable
+# Cela doit être fait avant que pytest collecte les tests
+builddir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "builddir")
+if os.path.exists(builddir) and builddir not in sys.path:
+    sys.path.insert(0, builddir)
+
+# Vérifier que difmap_native peut être importé
+try:
+    import difmap_native
+    print(f"✓ difmap_native loaded from: {difmap_native.__file__ if hasattr(difmap_native, '__file__') else 'built-in'}")
+except ImportError as e:
+    print(f"✗ Failed to import difmap_native: {e}")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_paths():
+    """Fixture autouse pour s'assurer que les paths sont correctement configurés."""
+    builddir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "builddir")
+    if os.path.exists(builddir) and builddir not in sys.path:
+        sys.path.insert(0, builddir)
+
 
 @pytest.fixture(scope="session")
 def dossier_data():
