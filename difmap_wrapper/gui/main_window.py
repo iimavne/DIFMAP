@@ -190,45 +190,44 @@ class MainWindow(QMainWindow):
     # ==========================================
     def _on_tab_changed(self, index):
         """
-        State Machine : Grise ou active les composants UI en fonction de l'onglet visible.
-        index 0 = UVPlot, index 1 = Radplot, index 2 = Dirty Map
+        Gestionnaire d'état unique : active/désactive l'UI selon l'onglet.
+        Index 0: UV, Index 1: Radplot, Index 2: Dirty Map
         """
-        ctrl = self.control_panel
-        tb = self.toolbar
-
-        # 1. On réactive TOUT par défaut (état de base = UVPlot)
-        ctrl.group_telescope.setEnabled(True)
-        ctrl.group_flagging.setEnabled(True)
-        ctrl.group_display.setEnabled(True)
-        ctrl.chk_conjugate.setEnabled(True)
+        ctrl, tb = self.control_panel, self.toolbar
+        is_map = (index == 2)
+        is_radplot = (index == 1)
         
-        tb.action_home.setEnabled(True)
-        tb.action_pan.setEnabled(True)
-        tb.action_zoom.setEnabled(True)
-        tb.action_cut.setEnabled(True)
-        tb.action_undo.setEnabled(True)
-        tb.action_refresh.setEnabled(True)
+        # 1. GESTION DES GROUPES (Panneau de gauche)
+        # On désactive presque tout si on est sur la Dirty Map
+        ctrl.group_telescope.setEnabled(not is_map)
+        ctrl.group_flagging.setEnabled(not is_map)
+        ctrl.group_display.setEnabled(not is_map)
+        
+        # Cas spécifique : on grise "Conjugate" sur le Radplot ou la Map
+        ctrl.chk_conjugate.setEnabled(not is_map and not is_radplot)
+        if is_radplot:
+            ctrl.chk_conjugate.setChecked(False)
 
-        # 2. Règles spécifiques au RADPLOT
-        if index == 1: 
-            # Les points conjugués n'existent pas sur un Radplot (Rayon absolu)
-            ctrl.chk_conjugate.setEnabled(False)
-            ctrl.chk_conjugate.setChecked(False) # On décoche par sécurité
-
-        # 3. Règles spécifiques à la DIRTY MAP
-        elif index == 2: 
-            # Une image n'a ni visibilités, ni télescopes, ni flagging.
-            ctrl.group_telescope.setEnabled(False)
-            ctrl.group_flagging.setEnabled(False)
-            ctrl.group_display.setEnabled(False)
+        # 2. GESTION DE LA TOOLBAR
+        # On désactive les outils d'édition sur la Dirty Map
+        tb.action_home.setEnabled(not is_map)
+        tb.action_pan.setEnabled(not is_map)
+        tb.action_zoom.setEnabled(not is_map)
+        tb.action_cut.setEnabled(not is_map)
+        tb.action_undo.setEnabled(not is_map)
+        tb.action_refresh.setEnabled(not is_map)
+        
+        # 3. SYNCHRONISATION DU MODE ACTIF
+        # Si on change d'onglet, l'outil sélectionné (ex: Pan) doit rester actif
+        active_editor = self._get_active_editor()
+        if active_editor:
+            if tb.action_pan.isChecked(): active_editor.mode = "PAN"
+            elif tb.action_zoom.isChecked(): active_editor.mode = "ZOOM"
+            elif tb.action_cut.isChecked(): active_editor.mode = "CUT"
+            else: active_editor.mode = None
             
-            # Les outils d'édition Matplotlib de la barre supérieure ne s'appliquent pas à la carte
-            tb.action_home.setEnabled(False)
-            tb.action_pan.setEnabled(False)
-            tb.action_zoom.setEnabled(False)
-            tb.action_cut.setEnabled(False)
-            tb.action_undo.setEnabled(False)
-            tb.action_refresh.setEnabled(False)
+            # On réactive l'outil de dessin Matplotlib si nécessaire
+            active_editor.rs.set_active(active_editor.mode in ["ZOOM", "CUT"])
             
     def _create_menu_bar(self):
         menubar = self.menuBar()
@@ -315,7 +314,6 @@ class MainWindow(QMainWindow):
                 # Applique un taper symétrique (X et Y identiques)
                 self.session.imager.uvtaper(taper_val, taper_val)
             else:
-                # Si 0, on demande au moteur C de désactiver le taper
                 self.session.imager.uvtaper(0.0, 0.0)
             
             # 3. Calcul de l'inversion de Fourier
@@ -358,25 +356,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self._log_event(f"Fail: {e}", level='error')
 
-    def _on_tab_changed(self, index):
-        ctrl, tb = self.control_panel, self.toolbar
-        is_map = (index == 2)
-        
-        ctrl.group_telescope.setEnabled(not is_map)
-        ctrl.group_flagging.setEnabled(not is_map)
-        ctrl.group_display.setEnabled(not is_map)
-        
-        # Synchronisation forcée du mode (on évite le toggle accidentel)
-        active_editor = self._get_active_editor()
-        if active_editor:
-            if tb.action_pan.isChecked(): active_editor.mode = "PAN"
-            elif tb.action_zoom.isChecked(): active_editor.mode = "ZOOM"
-            elif tb.action_cut.isChecked(): active_editor.mode = "CUT"
-            else: active_editor.mode = None
-            
-            # Mise à jour de l'outil de dessin
-            active_editor.rs.set_active(active_editor.mode in ["ZOOM", "CUT"])
-            
+
     def closeEvent(self, event):
         self.log_console.log("Shutting down C-Engine...")
         self.session.cleanup()
