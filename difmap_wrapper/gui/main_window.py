@@ -1,0 +1,396 @@
+# difmap_wrapper/gui/main_window.py
+from PyQt6.QtWidgets import QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox
+from PyQt6.QtCore import Qt
+from difmap_wrapper import DifmapSession
+import difmap_native
+
+from difmap_wrapper.gui.styles.design_system import DesignSystem
+
+from .plot_widget import UVPlotWidget
+from .components.improved_log_console import ImprovedLogConsole
+from .components.control_panel import ControlPanel
+from .components.main_toolbar import MainToolbar
+from .map_widget import MapPlotWidget
+from .radplot_widget import RadPlotWidget
+from .routing.signal_router import SignalRouter 
+
+class MainWindow(QMainWindow):
+    def __init__(self, fichier_initial=None):
+        super().__init__()
+        self.setWindowTitle("DIFMAP Modern")
+        self.resize(1400, 850)
+        
+        # Style global de la fenêtre
+        self.setStyleSheet(DesignSystem.get_full_app_style())
+        
+        # 1. INITIALISATION DU MOTEUR C
+        self.session = DifmapSession()
+        
+        # 2. INSTANCIATION DES COMPOSANTS UI
+        self.log_console = ImprovedLogConsole(parent=self)
+        self.control_panel = ControlPanel(parent=self)
+        self.toolbar = MainToolbar(parent=self)
+        self.toolbar.add_standard_actions(self)
+        self.addToolBar(self.toolbar)
+
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.control_panel)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.log_console)
+
+        self._create_menu_bar()
+
+        # 3. ZONE CENTRALE (Onglets)
+        # CRÉATION de l'objet d'abord
+        self.tabs = QTabWidget()
+        
+        # APPLICATION du style ensuite
+        # APPLICATION du style ensuite
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane { border: 1px solid #cccccc...
+            # (Supprime toutes ces lignes de QSS en dur)
+        """)
+        self.setCentralWidget(self.tabs)
+
+        # On prépare les conteneurs du plot
+        self.plot_widget = None
+        self.map_widget = MapPlotWidget(self)
+        
+        # On passe sync_callback et info_callback normalement
+        self.radplot_widget = RadPlotWidget(
+            parent=self,
+            info_callback=self._log_event,  # <-- ON NE GARDE QUE CELUI-CI
+            sync_callback=self._sync_all_plots
+        )
+        
+        # On initialise les 3 onglets dans le bon ordre (0, 1, 2)
+        self.tabs.addTab(QWidget(), "UV Coverage")               # Index 0
+        self.tabs.addTab(self.radplot_widget, "Radplot")         # Index 1
+        self.tabs.addTab(self.map_widget, "Dirty Map")           # Index 2
+        
+        # 4. CÂBLAGE DES SIGNAUX
+        self._connect_signals()
+
+        # 5. CHARGEMENT INITIAL
+        if fichier_initial:
+            self._load_file_logic(fichier_initial)
+        
+        # 6. GESTIONNAIRE D'ÉTAT (L'appel manuel doit être ici, à la toute fin !)
+        self._on_tab_changed(0)
+        
+        self.log_console.log("DIFMAP Modern initialized. Ready to observe.")
+
+    # ==========================================
+    # LOGIQUE DE CHARGEMENT
+    # ==========================================
+    def _load_file_logic(self, filepath):
+        """Logique technique pour charger un fichier dans le moteur et l'UI."""
+        try:
+            self.log_console.log(f"Loading: {filepath}...")
+            
+            # Charger dans le moteur C
+            self.session.observe(filepath)
+            self.session.obs.select(pol="RR")
+            
+            # Récupérer les nouvelles données
+            self.data = difmap_native.get_uv_data()
+            
+            # Rafraîchir tous les plots
+            self._reload_all_plots()
+            
+            self.log_console.log(f"Successfully loaded {len(self.data['u'])} visibilities.")
+            self.setWindowTitle(f"DIFMAP Modern - {filepath.split('/')[-1]}")
+            
+        except Exception as e:
+            self.log_console.log(f"Error loading file: {e}")
+            QMessageBox.critical(self, "Load Error", f"Could not load FITS file:\n{e}")
+    
+    def _reload_all_plots(self):
+        """Rafraîchit tous les plots (UV, Radplot) avec les données actuelles."""
+        # Mise à jour de l'interface graphique
+        self.tabs.removeTab(0)
+        
+        # Créer le nouveau widget de plot avec les nouvelles données
+        self.plot_widget = UVPlotWidget(
+            observation=self.session.obs, 
+            data=self.data,
+            info_callback=self._log_event,  # <-- ON NE GARDE QUE CELUI-CI
+            save_callback=self._handle_save_dialog,
+            sync_callback=self._sync_all_plots
+        )
+        self.tabs.insertTab(0, self.plot_widget, "UV Coverage")
+        self.tabs.setCurrentIndex(0)
+                    
+        masque_initial = self.plot_widget.editor.masque_flagges
+        historique_initial = self.plot_widget.editor.historique_coupes
+        
+        self.radplot_widget.plot_data(
+            data=self.data, 
+            shared_mask=masque_initial, 
+            shared_history=historique_initial,
+            observation=self.session.obs
+        )
+
+    # ==========================================
+    # CÂBLAGE (ROUTING)
+    # ==========================================
+    def _get_active_editor(self):
+        """Retourne l'éditeur de l'onglet actuellement visible."""
+        if self.tabs.currentIndex() == 0 and self.plot_widget:
+            return getattr(self.plot_widget, 'editor', None)
+        elif self.tabs.currentIndex() == 1 and self.radplot_widget:
+            return getattr(self.radplot_widget, 'editor', None)
+        return None
+
+    def _connect_signals(self):
+        """Connecte tous les signaux via le routeur centralisé."""
+        router = SignalRouter(self)
+        router.route_toolbar_action('action_pan', 'action_toggle_pan', [None])
+        
+        # Enregistre les actions : toolbar, boutons, checkboxes, sliders
+        router.route_toolbar_action('action_home', 'action_home')
+        router.route_toolbar_action('action_zoom', 'action_toggle_zoom', [None])
+        router.route_toolbar_action('action_cut', 'action_toggle_cut', [None])
+        router.route_toolbar_action('action_undo', 'action_undo', [None])
+        router.route_toolbar_action('action_save', 'action_save', [None])
+        
+        # Le refresh est une action de la window, pas de l'éditeur
+        self.toolbar.action_refresh.triggered.connect(self._sync_all_plots)
+        self.toolbar.action_load.triggered.connect(self._on_load_triggered)
+        
+        # TELESCOPE FOCUS
+        router.route_button_both('btn_next_sub', 'action_next_subarray', [None])
+        router.route_button_both('btn_prev_sub', 'action_prev_subarray', [None])
+        router.route_button_both('btn_next_ant', 'action_next_telescope', [None])
+        router.route_button_both('btn_prev_ant', 'action_prev_telescope', [None])
+        
+        # SEARCH
+        def search_callback():
+            target = self.control_panel.input_search_tel.text()
+            if target:
+                for widget in [self.plot_widget, self.radplot_widget]:
+                    if widget and hasattr(widget, 'editor') and widget.editor:
+                        editor = widget.editor
+                        if hasattr(editor, 'action_specific_telescope'):
+                            editor.action_specific_telescope(None, target)
+        
+        self.control_panel.btn_search_tel.clicked.connect(search_callback)
+        
+        # FLAGGING & DISPLAY
+        router.route_checkbox_both('chk_all_channels', 'set_flag_all_channels')
+        router.route_checkbox_both('chk_conjugate', 'set_conjugate_visible')
+        router.route_checkbox_both('chk_crosshair', 'set_crosshair_visible')
+        router.route_slider_both('slider_size', 'update_marker_size')
+        
+        # IMAGING & DATA
+        self.control_panel.btn_compute.clicked.connect(self._compute_dirty_map)
+        self.control_panel.combo_pol.currentTextChanged.connect(self._change_polarization)
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+
+    # ==========================================
+    # MENU ET DIALOGUES
+    # ==========================================
+    def _on_tab_changed(self, index):
+        """
+        State Machine : Grise ou active les composants UI en fonction de l'onglet visible.
+        index 0 = UVPlot, index 1 = Radplot, index 2 = Dirty Map
+        """
+        ctrl = self.control_panel
+        tb = self.toolbar
+
+        # 1. On réactive TOUT par défaut (état de base = UVPlot)
+        ctrl.group_telescope.setEnabled(True)
+        ctrl.group_flagging.setEnabled(True)
+        ctrl.group_display.setEnabled(True)
+        ctrl.chk_conjugate.setEnabled(True)
+        
+        tb.action_home.setEnabled(True)
+        tb.action_pan.setEnabled(True)
+        tb.action_zoom.setEnabled(True)
+        tb.action_cut.setEnabled(True)
+        tb.action_undo.setEnabled(True)
+        tb.action_refresh.setEnabled(True)
+
+        # 2. Règles spécifiques au RADPLOT
+        if index == 1: 
+            # Les points conjugués n'existent pas sur un Radplot (Rayon absolu)
+            ctrl.chk_conjugate.setEnabled(False)
+            ctrl.chk_conjugate.setChecked(False) # On décoche par sécurité
+
+        # 3. Règles spécifiques à la DIRTY MAP
+        elif index == 2: 
+            # Une image n'a ni visibilités, ni télescopes, ni flagging.
+            ctrl.group_telescope.setEnabled(False)
+            ctrl.group_flagging.setEnabled(False)
+            ctrl.group_display.setEnabled(False)
+            
+            # Les outils d'édition Matplotlib de la barre supérieure ne s'appliquent pas à la carte
+            tb.action_home.setEnabled(False)
+            tb.action_pan.setEnabled(False)
+            tb.action_zoom.setEnabled(False)
+            tb.action_cut.setEnabled(False)
+            tb.action_undo.setEnabled(False)
+            tb.action_refresh.setEnabled(False)
+            
+    def _create_menu_bar(self):
+        menubar = self.menuBar()
+        file_menu = menubar.addMenu("File")
+        
+        action_load = file_menu.addAction("Load FITS...")
+        action_load.triggered.connect(self._on_load_triggered)
+        
+        action_save = file_menu.addAction("Save as wobs...")
+        action_save.triggered.connect(lambda: self.plot_widget.editor.action_save(None) if self.plot_widget else None)
+        
+        file_menu.addSeparator()
+        action_exit = file_menu.addAction("Exit (X)")
+        action_exit.triggered.connect(self.close)
+
+        help_menu = menubar.addMenu("Help")
+        help_menu.addAction("Keyboard Shortcuts (H)").triggered.connect(self._show_help_dialog)
+
+    def _on_load_triggered(self):
+        """Slot appelé quand on clique sur Load FITS."""
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Open FITS Observation", "", "FITS files (*.fits *.1 *.SPLIT);;All files (*)"
+        )
+        if filepath:
+            self._load_file_logic(filepath)
+
+    def _handle_save_dialog(self, initial_path):
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Save visibilities", initial_path, "FITS (*.fits)"
+        )
+        return filename
+
+    def _show_help_dialog(self):
+        help_text = """
+        <h3>DIFMAP SmartEdit - Shortcuts</h3>
+        <table border="0" cellpadding="4" cellspacing="0">
+            <tr><td width="50"><b>S</b></td><td>Inspect Visibilities (Hover mouse)</td></tr>
+            <tr><td><b>Z</b></td><td>Toggle Zoom mode (Left click/Drag to select)</td></tr>
+            <tr><td><b>C</b></td><td>Toggle Cut/Flag mode (Left click to select area)</td></tr>
+            <tr><td><b>U</b></td><td>Undo last flagging operation</td></tr>
+            <tr><td><b>L</b></td><td>Refresh / Redraw plot</td></tr>
+            <tr><td><b>N / P</b></td><td>Next / Previous Subarray</td></tr>
+            <tr><td><b>n / p</b></td><td>Next / Previous Antenna in current Subarray</td></tr>
+            <tr><td><b>W</b></td><td>Toggle Channel Flagging scope</td></tr>
+            <tr><td><b>+</b></td><td>Toggle Crosshair cursor</td></tr>
+            <tr><td><b>.</b></td><td>Toggle Marker size</td></tr>
+            <tr><td><b>%</b></td><td>Toggle Conjugate points (-U, -V)</td></tr>
+        </table>
+        <br><hr>
+        <i>Note: Most of these actions are also accessible via the UI panels.</i>
+        """
+        QMessageBox.about(self, "Help", help_text)
+
+    # ==========================================
+    # MÉTHODES MÉTIER (À CONNECTER PLUS TARD)
+    # ==========================================
+    def _compute_dirty_map(self):
+        try:
+            # 1. Récupération des paramètres de l'UI
+            mapsize = int(self.control_panel.input_mapsize.text())
+            cellsize = float(self.control_panel.input_cellsize.text())
+            weight = self.control_panel.combo_weight.currentText().lower()
+            
+            # Récupération sécurisée du Taper
+            taper_str = self.control_panel.input_taper.text().strip()
+            taper_val = float(taper_str) if taper_str else 0.0
+
+            self.log_console.log(f"Computing Dirty Map (Size: {mapsize}, Cell: {cellsize}, Weight: {weight}, Taper: {taper_val})...")
+            
+            # 2. Configuration du moteur d'imagerie
+            self.session.imager.mapsize(mapsize, cellsize)
+            
+            # --- LE TRADUCTEUR DE POIDS (Weighting) ---
+            if weight == "natural":
+                self.session.imager.uvweight(bin_size=0.0, err_power=-1.0)
+            elif weight == "uniform":
+                self.session.imager.uvweight(bin_size=2.0, err_power=0.0)
+            elif weight == "briggs":
+                # Combinaison classique pour un compromis Résolution/Bruit
+                self.session.imager.uvweight(bin_size=2.0, err_power=-1.0) 
+            
+            # --- L'APPLICATION DU TAPER ---
+            if taper_val > 0.0:
+                # Applique un taper symétrique (X et Y identiques)
+                self.session.imager.uvtaper(taper_val, taper_val)
+            else:
+                # Si 0, on demande au moteur C de désactiver le taper
+                self.session.imager.uvtaper(0.0, 0.0)
+            
+            # 3. Calcul de l'inversion de Fourier
+            self.session.imager.invert()
+            
+            # 4. Récupération des données 2D
+            map_data = difmap_native.get_map() 
+            
+            # 5. Affichage graphique
+            self.map_widget.plot_map(map_data, cellsize)
+            
+            # Bascule automatiquement sur le 3ème onglet
+            self.tabs.setCurrentIndex(2)
+            self.log_console.log("Dirty Map computed successfully.")
+            
+        except Exception as e:
+            err_msg = f"Failed to compute map: {e}"
+            self.log_console.log(err_msg)
+            QMessageBox.critical(self, "Imaging Error", err_msg)
+            
+    def _change_polarization(self, pol_text):
+        try:
+            pol = "I" if "Stokes I" in pol_text else pol_text.split(" ")[0]
+            self.session.obs.select(pol=pol)
+            self.data = difmap_native.get_uv_data()
+            
+            if not self.data or len(self.data.get('u', [])) == 0:
+                self._log_event(f"No data for {pol}", level='warning')
+                return
+
+            # Mise à jour du titre
+            base_title = self.windowTitle().split(" [")[0]
+            self.setWindowTitle(f"{base_title} [{pol}]")
+            
+            # ON RECHARGE LES PLOTS MAIS PAS LES SIGNAUX !
+            if self.plot_widget:
+                self._reload_all_plots()
+            
+            self._log_event(f"Switched to {pol}", level='success')
+        except Exception as e:
+            self._log_event(f"Fail: {e}", level='error')
+
+    def _on_tab_changed(self, index):
+        ctrl, tb = self.control_panel, self.toolbar
+        is_map = (index == 2)
+        
+        ctrl.group_telescope.setEnabled(not is_map)
+        ctrl.group_flagging.setEnabled(not is_map)
+        ctrl.group_display.setEnabled(not is_map)
+        
+        # Synchronisation forcée du mode (on évite le toggle accidentel)
+        active_editor = self._get_active_editor()
+        if active_editor:
+            if tb.action_pan.isChecked(): active_editor.mode = "PAN"
+            elif tb.action_zoom.isChecked(): active_editor.mode = "ZOOM"
+            elif tb.action_cut.isChecked(): active_editor.mode = "CUT"
+            else: active_editor.mode = None
+            
+            # Mise à jour de l'outil de dessin
+            active_editor.rs.set_active(active_editor.mode in ["ZOOM", "CUT"])
+            
+    def closeEvent(self, event):
+        self.log_console.log("Shutting down C-Engine...")
+        self.session.cleanup()
+        event.accept()
+
+
+    def _sync_all_plots(self):
+        """Les deux graphiques partagent la même mémoire. On demande juste un rafraîchissement visuel."""
+        if self.plot_widget and self.plot_widget.editor:
+            self.plot_widget.editor._update_colors()
+        if self.radplot_widget and self.radplot_widget.editor:
+            self.radplot_widget.editor._update_colors()
+            
+    def _log_event(self, msg, level='info'):
+        """Routeur intelligent : dirige le message vers le bon niveau de la console."""
+        log_method = getattr(self.log_console, f"log_{level}", self.log_console.log_info)
+        log_method(msg)

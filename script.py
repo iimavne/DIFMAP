@@ -5,9 +5,9 @@ def main():
     session = DifmapSession()
     
     # 1. Chargement des données
-    fichier_fits = "testok.fits"  # Remplace par le chemin de ton fichier FITS de test
+    fichier_fits = "tests/test_data/0028-137_X.SPLIT.1"  # Remplace par le chemin de ton fichier FITS de test
     session.observe(fichier_fits)
-    session.obs.select("I")
+    session.obs.select("RR")
     print("Données chargées en RAM.")
 
     # 2. Test du UVPlot Interactif

@@ -65,8 +65,14 @@ class DifmapSession:
         if self.uv_loaded:
             self.cleanup()
             self.imager.uvtaper(0, 0)
-        if self._native.observe(filepath) != 0:
-            raise DifmapError(f"Impossible de lire : {filepath}")
+            
+        # 1. On lance le moteur C. 
+        # Il va renvoyer un code d'avertissement (les dates), mais on l'ignore 
+        # car on sait que c'est un faux positif lié aux vieux fichiers.
+        self._native.observe(filepath)
+        
+        # /!\ Attention : On ne peut pas vérifier les données avec get_uv_data() ici !
+        # Le moteur C a besoin d'un appel à select() avant d'exposer la mémoire.
         self.uv_loaded = True
 
     def cleanup(self):

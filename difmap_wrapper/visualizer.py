@@ -2,8 +2,7 @@ import difmap_native
 from matplotlib import pyplot as plt
 import numpy as np
 
-from difmap_wrapper.uv_editor import UVPlotEditor
-
+from .editors.uv_editor import UVPlotEditor
 
 class Visualizer():
     """

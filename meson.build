@@ -154,9 +154,11 @@ difmap_sources = [
 # ==============================================================================
 # 1. INSTALLATION DU WRAPPER PYTHON (Couche de haut niveau)
 # ==============================================================================
-# Copie les fichiers purement Python du module orienté objet vers le 
-# répertoire d'installation (site-packages). Cela permet à l'utilisateur 
-# de faire `import difmap_wrapper` proprement.
+# Racine du package
+# ==============================================================================
+# 1. INSTALLATION DU WRAPPER PYTHON (Couche de haut niveau)
+# ==============================================================================
+# Racine du package
 py3.install_sources(
     'difmap_wrapper/__init__.py',
     'difmap_wrapper/session.py',
@@ -165,11 +167,76 @@ py3.install_sources(
     'difmap_wrapper/observation.py',
     'difmap_wrapper/visualizer.py',
     'difmap_wrapper/standardizer.py',
-    'difmap_wrapper/base.py',
-    'difmap_wrapper/uv_editor.py',
+    'difmap_wrapper/app.py',
     subdir: 'difmap_wrapper'
 )
 
+# Sous-module : Éditeurs interactifs
+py3.install_sources(
+    'difmap_wrapper/editors/__init__.py',
+    'difmap_wrapper/editors/base.py',
+    'difmap_wrapper/editors/uv_editor.py',
+    'difmap_wrapper/editors/rad_editor.py',
+    subdir: 'difmap_wrapper/editors'
+)
+
+# Sous-module : Interface Graphique (PyQt6)
+py3.install_sources(
+    'difmap_wrapper/gui/__init__.py',
+    'difmap_wrapper/gui/main_window.py',
+    'difmap_wrapper/gui/plot_widget.py',
+    'difmap_wrapper/gui/map_widget.py',
+    'difmap_wrapper/gui/radplot_widget.py',
+    'difmap_wrapper/gui/constants.py',
+    subdir: 'difmap_wrapper/gui'
+)
+
+# Sous-module : Composants UI
+py3.install_sources(
+    'difmap_wrapper/gui/components/__init__.py',
+    'difmap_wrapper/gui/components/main_toolbar.py',
+    'difmap_wrapper/gui/components/control_panel.py',
+    'difmap_wrapper/gui/components/log_console.py',
+    'difmap_wrapper/gui/components/improved_log_console.py',
+    'difmap_wrapper/gui/components/styled_buttons.py',
+    subdir: 'difmap_wrapper/gui/components'
+)
+
+# NOUVEAU - Sous-module : Styles
+py3.install_sources(
+    'difmap_wrapper/gui/styles/__init__.py',
+    'difmap_wrapper/gui/styles/design_system.py',
+    'difmap_wrapper/gui/styles/themes.py',
+    subdir: 'difmap_wrapper/gui/styles'
+)
+
+# NOUVEAU - Sous-module : Routing
+py3.install_sources(
+    'difmap_wrapper/gui/routing/__init__.py',
+    'difmap_wrapper/gui/routing/signal_router.py',
+    subdir: 'difmap_wrapper/gui/routing'
+)
+
+# NOUVEAU - Sous-module : Utilities
+py3.install_sources(
+    'difmap_wrapper/gui/utils/__init__.py',
+    'difmap_wrapper/gui/utils/matplotlib_styles.py',
+    subdir: 'difmap_wrapper/gui/utils'
+)
+
+# NOUVEAU - Sous-module : Validation
+py3.install_sources(
+    'difmap_wrapper/gui/validation/__init__.py',
+    'difmap_wrapper/gui/validation/input_validator.py',
+    subdir: 'difmap_wrapper/gui/validation'
+)
+
+# NOUVEAU - Sous-module : Widgets de Base
+py3.install_sources(
+    'difmap_wrapper/gui/widgets/__init__.py',
+    'difmap_wrapper/gui/widgets/base_plot_widget.py',
+    subdir: 'difmap_wrapper/gui/widgets'
+)
 # ==============================================================================
 # 2. PIPELINE DE TRANSPILATION CYTHON -> C
 # ==============================================================================
