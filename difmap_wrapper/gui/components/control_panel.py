@@ -98,15 +98,35 @@ class ControlPanel(QDockWidget):
         self.layout.addWidget(self.group_flagging)
 
     def _build_display_options(self):
-        """Remplace les raccourcis ., +, %"""
         self.group_display = QGroupBox("4. DISPLAY OPTIONS")
         layout = QVBoxLayout(self.group_display)
         
+        
+        layout.addWidget(QLabel("Radplot Mode:"))
+        self.combo_rad_mode = QComboBox()
+        self.combo_rad_mode.addItems(["1 - Amplitude Only", "2 - Phase Only", "3 - Amplitude & Phase"])
+        layout.addWidget(self.combo_rad_mode)
+        
+        # Ligne de séparation esthétique
+        line = QWidget()
+        line.setFixedHeight(1)
+        line.setStyleSheet("background-color: #dee2e6; margin: 5px 0;")
+        layout.addWidget(line)
+
         self.chk_conjugate = QCheckBox("Show Conjugate Points (-U, -V) [%]")
         layout.addWidget(self.chk_conjugate)
+        
+        self.chk_model = QCheckBox("Show Model [M]")
+        layout.addWidget(self.chk_model)
+
+        self.chk_residuals = QCheckBox("Show Residuals (Data - Model) [-]")
+        layout.addWidget(self.chk_residuals)
 
         self.chk_crosshair = QCheckBox("Full-screen Crosshair [+]")
         layout.addWidget(self.chk_crosshair)
+        
+        self.chk_errors = QCheckBox("Show Error Plot [E]")
+        layout.addWidget(self.chk_errors)
 
         layout.addWidget(QLabel("Marker Size [.]"))
         self.slider_size = QSlider(Qt.Orientation.Horizontal)

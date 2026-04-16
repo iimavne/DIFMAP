@@ -42,12 +42,6 @@ class MainWindow(QMainWindow):
         # CRÉATION de l'objet d'abord
         self.tabs = QTabWidget()
         
-        # APPLICATION du style ensuite
-        # APPLICATION du style ensuite
-        self.tabs.setStyleSheet("""
-            QTabWidget::pane { border: 1px solid #cccccc...
-            # (Supprime toutes ces lignes de QSS en dur)
-        """)
         self.setCentralWidget(self.tabs)
 
         # On prépare les conteneurs du plot
@@ -57,7 +51,7 @@ class MainWindow(QMainWindow):
         # On passe sync_callback et info_callback normalement
         self.radplot_widget = RadPlotWidget(
             parent=self,
-            info_callback=self._log_event,  # <-- ON NE GARDE QUE CELUI-CI
+            info_callback=self._log_event,  
             sync_callback=self._sync_all_plots
         )
         
@@ -104,30 +98,49 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Load Error", f"Could not load FITS file:\n{e}")
     
     def _reload_all_plots(self):
-        """Rafraîchit tous les plots (UV, Radplot) avec les données actuelles."""
-        # Mise à jour de l'interface graphique
+        """Reconstruit intégralement les graphiques pour éviter les conflits d'événements souris."""
+        # 1. On mémorise l'onglet en cours pour ne pas perturber l'astronome
+        current_idx = self.tabs.currentIndex()
+        if current_idx not in [0, 1]: 
+            current_idx = 0
+            
+        # 2. On supprime les DEUX anciens onglets (Radplot en premier, puis UV)
+        self.tabs.removeTab(1)
         self.tabs.removeTab(0)
         
-        # Créer le nouveau widget de plot avec les nouvelles données
+        # 3. Création du NOUVEAU widget UV (Totalement vierge)
         self.plot_widget = UVPlotWidget(
             observation=self.session.obs, 
             data=self.data,
-            info_callback=self._log_event,  # <-- ON NE GARDE QUE CELUI-CI
+            info_callback=self._log_event,
             save_callback=self._handle_save_dialog,
             sync_callback=self._sync_all_plots
         )
-        self.tabs.insertTab(0, self.plot_widget, "UV Coverage")
-        self.tabs.setCurrentIndex(0)
-                    
-        masque_initial = self.plot_widget.editor.masque_flagges
-        historique_initial = self.plot_widget.editor.historique_coupes
         
+        # 4. Création du NOUVEAU widget Radplot (Totalement vierge)
+        self.radplot_widget = RadPlotWidget(
+            parent=self,
+            info_callback=self._log_event,
+            sync_callback=self._sync_all_plots
+        )
+        
+        # 5. On les réinsère dans la fenêtre
+        self.tabs.insertTab(0, self.plot_widget, "UV Coverage")
+        self.tabs.insertTab(1, self.radplot_widget, "Radplot")
+        
+        # 6. On injecte les données et les masques dans le Radplot
         self.radplot_widget.plot_data(
             data=self.data, 
-            shared_mask=masque_initial, 
-            shared_history=historique_initial,
+            shared_mask=self.plot_widget.editor.masque_flagges, 
+            shared_history=self.plot_widget.editor.historique_coupes,
             observation=self.session.obs
         )
+        
+        # 7. On restaure l'affichage et les outils (Pan, Zoom, etc.)
+        self.tabs.setCurrentIndex(current_idx)
+        self._on_tab_changed(current_idx)
+
+
 
     # ==========================================
     # CÂBLAGE (ROUTING)
@@ -141,28 +154,50 @@ class MainWindow(QMainWindow):
         return None
 
     def _connect_signals(self):
-        """Connecte tous les signaux via le routeur centralisé."""
+        """Connecte tous les signaux avec un câblage direct pour la barre d'outils."""
         router = SignalRouter(self)
-        router.route_toolbar_action('action_pan', 'action_toggle_pan', [None])
         
-        # Enregistre les actions : toolbar, boutons, checkboxes, sliders
-        router.route_toolbar_action('action_home', 'action_home')
-        router.route_toolbar_action('action_zoom', 'action_toggle_zoom', [None])
-        router.route_toolbar_action('action_cut', 'action_toggle_cut', [None])
-        router.route_toolbar_action('action_undo', 'action_undo', [None])
-        router.route_toolbar_action('action_save', 'action_save', [None])
+        # 1. ACTIONS INSTANTANÉES DE LA TOOLBAR (Câblage direct et robuste)
+        self.toolbar.action_home.triggered.connect(
+            lambda: self._get_active_editor().action_home() if self._get_active_editor() else None
+        )
+        self.toolbar.action_undo.triggered.connect(
+            lambda: self._get_active_editor().action_undo() if self._get_active_editor() else None
+        )
         
-        # Le refresh est une action de la window, pas de l'éditeur
+        def handle_save():
+            editor = self._get_active_editor()
+            if editor:
+                # On force l'injection du dialogue PyQt dans l'éditeur actif
+                editor.save_callback = self._handle_save_dialog
+                editor.action_save()
+                
+        self.toolbar.action_save.triggered.connect(handle_save)
+
         self.toolbar.action_refresh.triggered.connect(self._sync_all_plots)
         self.toolbar.action_load.triggered.connect(self._on_load_triggered)
+        # 2. MENU DÉROULANT DES OUTILS INTELLIGENT
+        def tool_changed(text):
+            editor = self._get_active_editor()
+            if not editor: return
+            
+            if "Pan" in text: editor._set_mode("PAN")
+            elif "Zoom X" in text: editor._set_mode("ZOOM_X")
+            elif "Zoom" in text: editor._set_mode("ZOOM")
+            elif "Cut" in text: editor._set_mode("CUT")
+            elif "Stats (Scalar)" in text: editor._set_mode("STATS")
+            elif "Stats (Vector)" in text: editor._set_mode("STATS_V")
+            else: editor._set_mode(None)
+
+        self.toolbar.combo_tools.currentTextChanged.connect(tool_changed)
         
-        # TELESCOPE FOCUS
+        # 3. PANNEAU DE CONTRÔLE (Télescopes)
         router.route_button_both('btn_next_sub', 'action_next_subarray', [None])
         router.route_button_both('btn_prev_sub', 'action_prev_subarray', [None])
         router.route_button_both('btn_next_ant', 'action_next_telescope', [None])
         router.route_button_both('btn_prev_ant', 'action_prev_telescope', [None])
-        
-        # SEARCH
+  
+        # 4. RECHERCHE DE TÉLESCOPE
         def search_callback():
             target = self.control_panel.input_search_tel.text()
             if target:
@@ -174,17 +209,22 @@ class MainWindow(QMainWindow):
         
         self.control_panel.btn_search_tel.clicked.connect(search_callback)
         
-        # FLAGGING & DISPLAY
+        # 5. CASES À COCHER & SLIDERS
         router.route_checkbox_both('chk_all_channels', 'set_flag_all_channels')
         router.route_checkbox_both('chk_conjugate', 'set_conjugate_visible')
         router.route_checkbox_both('chk_crosshair', 'set_crosshair_visible')
         router.route_slider_both('slider_size', 'update_marker_size')
+        router.route_checkbox_both('chk_model', 'set_model_visible') 
+        router.route_checkbox_both('chk_residuals', 'set_residuals_visible')
+        router.route_checkbox_both('chk_errors', 'set_show_errors')
         
-        # IMAGING & DATA
+        # 6. IMAGERIE & ONGLETS
         self.control_panel.btn_compute.clicked.connect(self._compute_dirty_map)
         self.control_panel.combo_pol.currentTextChanged.connect(self._change_polarization)
         self.tabs.currentChanged.connect(self._on_tab_changed)
-
+        self.control_panel.combo_rad_mode.currentIndexChanged.connect(
+            lambda idx: self.radplot_widget.set_display_mode(idx) if self.radplot_widget else None
+        )
     # ==========================================
     # MENU ET DIALOGUES
     # ==========================================
@@ -198,36 +238,58 @@ class MainWindow(QMainWindow):
         is_radplot = (index == 1)
         
         # 1. GESTION DES GROUPES (Panneau de gauche)
-        # On désactive presque tout si on est sur la Dirty Map
         ctrl.group_telescope.setEnabled(not is_map)
         ctrl.group_flagging.setEnabled(not is_map)
         ctrl.group_display.setEnabled(not is_map)
         
-        # Cas spécifique : on grise "Conjugate" sur le Radplot ou la Map
+        ctrl.combo_rad_mode.setEnabled(is_radplot)
+        
         ctrl.chk_conjugate.setEnabled(not is_map and not is_radplot)
         if is_radplot:
             ctrl.chk_conjugate.setChecked(False)
+            
+        ctrl.chk_model.setEnabled(is_radplot)
+        ctrl.chk_residuals.setEnabled(is_radplot)
+        ctrl.chk_errors.setEnabled(is_radplot)
+        
+        if not is_radplot:
+            ctrl.chk_model.setChecked(False)
+            ctrl.chk_residuals.setChecked(False)
 
-        # 2. GESTION DE LA TOOLBAR
-        # On désactive les outils d'édition sur la Dirty Map
+        # 2. GESTION DE LA TOOLBAR INTELLIGENTE
         tb.action_home.setEnabled(not is_map)
-        tb.action_pan.setEnabled(not is_map)
-        tb.action_zoom.setEnabled(not is_map)
-        tb.action_cut.setEnabled(not is_map)
         tb.action_undo.setEnabled(not is_map)
         tb.action_refresh.setEnabled(not is_map)
         
-        # 3. SYNCHRONISATION DU MODE ACTIF
-        # Si on change d'onglet, l'outil sélectionné (ex: Pan) doit rester actif
-        active_editor = self._get_active_editor()
-        if active_editor:
-            if tb.action_pan.isChecked(): active_editor.mode = "PAN"
-            elif tb.action_zoom.isChecked(): active_editor.mode = "ZOOM"
-            elif tb.action_cut.isChecked(): active_editor.mode = "CUT"
-            else: active_editor.mode = None
-            
-            # On réactive l'outil de dessin Matplotlib si nécessaire
-            active_editor.rs.set_active(active_editor.mode in ["ZOOM", "CUT"])
+        combo = tb.combo_tools
+        combo.setEnabled(not is_map)
+
+        if not is_map:
+            # On mémorise l'outil en cours pour ne pas perturber l'utilisateur
+            current_tool = combo.currentText()
+
+            # On reconstruit le menu déroulant selon l'onglet
+            combo.blockSignals(True)
+            combo.clear()
+            items = ["None (Inspect)", "Pan (Move)", "Zoom Box", "Cut Box"]
+
+            if is_radplot:
+                # On ajoute les outils exclusifs au Radplot !
+                items.insert(3, "Zoom X (UV Band)")
+                items.extend(["Stats (Scalar)", "Stats (Vector)"])
+
+            combo.addItems(items)
+
+            # On restaure l'outil (s'il existe dans la nouvelle liste)
+            if current_tool in items:
+                combo.setCurrentText(current_tool)
+            else:
+                combo.setCurrentIndex(0) # Retour sur "Inspect" par défaut
+
+            combo.blockSignals(False)
+
+            # On force l'éditeur à prendre l'outil sélectionné
+            self.toolbar.combo_tools.currentTextChanged.emit(combo.currentText())
             
     def _create_menu_bar(self):
         menubar = self.menuBar()
@@ -336,6 +398,7 @@ class MainWindow(QMainWindow):
             
     def _change_polarization(self, pol_text):
         try:
+            # 1. Moteur C : On change la pol et on récupère la RAM
             pol = "I" if "Stokes I" in pol_text else pol_text.split(" ")[0]
             self.session.obs.select(pol=pol)
             self.data = difmap_native.get_uv_data()
@@ -344,11 +407,11 @@ class MainWindow(QMainWindow):
                 self._log_event(f"No data for {pol}", level='warning')
                 return
 
-            # Mise à jour du titre
+            # 2. On met à jour le titre de la fenêtre avec la nouvelle polarisation
             base_title = self.windowTitle().split(" [")[0]
             self.setWindowTitle(f"{base_title} [{pol}]")
             
-            # ON RECHARGE LES PLOTS MAIS PAS LES SIGNAUX !
+            # 3. On recrée tous les graphiques de zéro
             if self.plot_widget:
                 self._reload_all_plots()
             
@@ -356,15 +419,51 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self._log_event(f"Fail: {e}", level='error')
 
-
     def closeEvent(self, event):
         self.log_console.log("Shutting down C-Engine...")
         self.session.cleanup()
         event.accept()
 
 
-    def _sync_all_plots(self):
-        """Les deux graphiques partagent la même mémoire. On demande juste un rafraîchissement visuel."""
+    def _sync_all_plots(self, state_dict=None):
+        """
+        Synchronise tous les plots et optionnellement met à jour l'UI.
+        
+        Parameters
+        ----------
+        state_dict : dict, optional
+            Si fourni, contient l'état de l'éditeur depuis un raccourci clavier.
+            Ex: {'show_errors': True, 'show_model': False, 'display_mode': 3}
+        """
+        # 1. Si on reçoit un état depuis un raccourci clavier, mettre à jour l'UI
+        if state_dict:
+            ctrl = self.control_panel
+            # Block signals to prevent triggering callbacks while updating
+            was_blocked_errors = ctrl.chk_errors.blockSignals(True)
+            was_blocked_model = ctrl.chk_model.blockSignals(True)
+            was_blocked_residuals = ctrl.chk_residuals.blockSignals(True)
+            was_blocked_combo = ctrl.combo_rad_mode.blockSignals(True)
+            
+            try:
+                # Update checkboxes based on editor state
+                if 'show_errors' in state_dict:
+                    ctrl.chk_errors.setChecked(state_dict['show_errors'])
+                if 'show_model' in state_dict:
+                    ctrl.chk_model.setChecked(state_dict['show_model'])
+                if 'show_residuals' in state_dict:
+                    ctrl.chk_residuals.setChecked(state_dict['show_residuals'])
+                if 'display_mode' in state_dict:
+                    # display_mode: 1->index 0, 2->index 1, 3->index 2
+                    mode_idx = max(0, min(2, state_dict['display_mode'] - 1))
+                    ctrl.combo_rad_mode.setCurrentIndex(mode_idx)
+            finally:
+                # Restore signal blocking state
+                ctrl.chk_errors.blockSignals(was_blocked_errors)
+                ctrl.chk_model.blockSignals(was_blocked_model)
+                ctrl.chk_residuals.blockSignals(was_blocked_residuals)
+                ctrl.combo_rad_mode.blockSignals(was_blocked_combo)
+        
+        # 2. Rafraîchissement visuel normal
         if self.plot_widget and self.plot_widget.editor:
             self.plot_widget.editor._update_colors()
         if self.radplot_widget and self.radplot_widget.editor:

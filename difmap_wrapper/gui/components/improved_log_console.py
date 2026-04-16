@@ -30,7 +30,8 @@ class ImprovedLogConsole(QDockWidget):
         'warning': '#d97706',   # Orange
         'error': '#dc3545',     # Rouge
         'debug': '#495057',
-        'inspect': '#0284c7',   # Joli bleu clair pour le "Quick Inspect"
+        'inspect': '#0284c7', 
+        'stats': '#8b5cf6',
     }
     def __init__(self, title="SYSTEM LOG", parent=None):
         super().__init__(title, parent)
@@ -87,6 +88,10 @@ class ImprovedLogConsole(QDockWidget):
         """Log générique (équivalent à info)"""
         self.log_info(message)
 
+    def log_stats(self, message):
+        """Log des statistiques mathématiques (violet)"""
+        self._append_styled(message, 'stats')
+        
     def _append_styled(self, message, level='info'):
         """Ajoute un message avec formatage spécifique au niveau et alignement multi-lignes"""
         icon = self.ICONS.get(level, '')

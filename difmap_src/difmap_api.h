@@ -20,6 +20,9 @@ float* get_native_u(void);
 float* get_native_v(void);
 float* get_native_vis_amp(void);
 float* get_native_vis_wgt(void);
+float* get_native_mod_amp(void);
+float* get_native_mod_phs(void);
+
 
 /* Commandes (Actions) */
 int native_observe(const char* filepath);

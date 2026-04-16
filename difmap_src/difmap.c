@@ -7880,6 +7880,8 @@ static float *flat_u = NULL;
 static float *flat_v = NULL;
 static float *flat_amp = NULL;
 static float *flat_wgt = NULL;
+static float *flat_modamp = NULL; 
+static float *flat_modphs = NULL;
 
 /* Métadonnées d'identification */
 static int *flat_tel_a = NULL;
@@ -7888,6 +7890,7 @@ static double *flat_time = NULL;
 static int *flat_subarray = NULL;
 static int *flat_if = NULL;
 static Visibility **flat_vis_ptrs = NULL;
+static float* vis_phs = NULL;
 
 /* NOUVEAUX BUFFERS INTERNES : Clés pour le moteur d'édition de Difmap */
 static int *flat_ut = NULL;     
@@ -7903,12 +7906,22 @@ int* get_native_tel_a(void) { return flat_tel_a; }
 int* get_native_tel_b(void) { return flat_tel_b; }
 double* get_native_time(void) { return flat_time; }
 int* get_native_subarray(void) { return flat_subarray; }
+float* get_native_vis_phs(void) {return vis_phs;}
+float* get_native_mod_amp(void) { return flat_modamp; } 
+float* get_native_mod_phs(void) { return flat_modphs; }
+
 
 int l_extract_uv(void) {
     int isub, itime, ibase, cif;
     int count = 0;
 
     if(vlbob == NULL) return -1;
+    
+    if(vlbob->model->ncmp + vlbob->newmod->ncmp + vlbob->cmodel->ncmp + vlbob->cnewmod->ncmp > 0) {
+        Moddif md;
+        /* La fonction moddif calcule et injecte modamp et modphs dans la RAM */
+        moddif(vlbob, &md, 0.0f, 0.0f, 1); /* 1 correspond à MD_VIS_FIT */
+    }
 
     /* 1. COMPTAGE */
     for(cif=0; (cif=nextIF(vlbob, cif, 1, 1)) >= 0; cif++) {
@@ -7940,9 +7953,12 @@ int l_extract_uv(void) {
         flat_subarray = (int*)realloc(flat_subarray, count * sizeof(int));
         flat_if = (int*)realloc(flat_if, count * sizeof(int));
         flat_vis_ptrs = (Visibility**)realloc(flat_vis_ptrs, count * sizeof(Visibility*));
+        flat_modamp = (float*)realloc(flat_modamp, count * sizeof(float)); 
+        flat_modphs = (float*)realloc(flat_modphs, count * sizeof(float));
 
         flat_ut = (int*)realloc(flat_ut, count * sizeof(int));
         flat_ibase = (int*)realloc(flat_ibase, count * sizeof(int));
+        vis_phs = realloc(vis_phs, count * sizeof(float));
     }
     
     uv_buffer_size = count;
@@ -7965,6 +7981,9 @@ int l_extract_uv(void) {
                         flat_v[index] = vis->v * if_freq;
                         flat_amp[index] = vis->amp;
                         flat_wgt[index] = vis->wt;
+                        vis_phs[index] = vis->phs * (180.0 / 3.14159265358979323846);
+                        flat_modamp[index] = vis->modamp;
+                        flat_modphs[index] = vis->modphs * (180.0 / 3.14159265358979323846);
                         
                         Baseline *b = &sub->base[ibase];
                         flat_tel_a[index] = b->tel_a;

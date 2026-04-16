@@ -104,8 +104,9 @@ def get_telescope_name(int isub, int itel) -> str:
         return "INCONNU"
         
     return c_name.decode('utf-8', errors='replace')
+
 def get_uv_data() -> dict:
-    """Récupère u, v, amp, weight ET les métadonnées filtrés."""
+    """Récupère u, v, amp, weight ET les métadonnées filtrés, incluant le modèle."""
     if cdifmap.l_extract_uv() != 0:
         raise RuntimeError("Erreur lors de l'extraction des données UV.")
         
@@ -113,28 +114,37 @@ def get_uv_data() -> dict:
     if n <= 0:
         return {}
 
-    # Memoryviews directes sur la RAM du C (Coordonnées)
+    # Memoryviews directes sur la RAM du C
     cdef float[:] u = <float[:n]> cdifmap.get_native_u()
     cdef float[:] v = <float[:n]> cdifmap.get_native_v()
     cdef float[:] amp = <float[:n]> cdifmap.get_native_vis_amp()
     cdef float[:] wgt = <float[:n]> cdifmap.get_native_vis_wgt()
     
-    # NOUVEAU : Memoryviews pour les métadonnées
+    # --- LES DEUX LIGNES QUI MANQUAIENT POUR LE MODÈLE ---
+    cdef float[:] modamp = <float[:n]> cdifmap.get_native_mod_amp()
+    cdef float[:] modphs = <float[:n]> cdifmap.get_native_mod_phs()
+    # -----------------------------------------------------
+
     cdef int[:] tel_a = <int[:n]> cdifmap.get_native_tel_a()
     cdef int[:] tel_b = <int[:n]> cdifmap.get_native_tel_b()
     cdef double[:] time = <double[:n]> cdifmap.get_native_time()
     cdef int[:] subarray = <int[:n]> cdifmap.get_native_subarray()
     cdef int[:] if_no = <int[:n]> cdifmap.get_native_if()
+    cdef float[:] phs = <float[:n]> cdifmap.get_native_vis_phs()
     
     return {
         "u": np.array(u, copy=True), 
         "v": np.array(v, copy=True),
         "amp": np.array(amp, copy=True), 
         "weight": np.array(wgt, copy=True),
-        # On transfère tout dans le dict
+        # --- AJOUT DU MODÈLE DANS LE DICTIONNAIRE ---
+        "modamp": np.array(modamp, copy=True),
+        "modphs": np.array(modphs, copy=True),
+        # --------------------------------------------
         "tel_a": np.array(tel_a, copy=True),
         "tel_b": np.array(tel_b, copy=True),
         "time": np.array(time, copy=True),
+        "phase": np.array(phs, copy=True),
         "subarray": np.array(subarray, copy=True),
         "if_no": np.array(if_no, copy=True)
     }

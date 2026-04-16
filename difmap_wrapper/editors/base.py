@@ -1,7 +1,7 @@
 import re
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Cursor, RectangleSelector
+from matplotlib.widgets import Cursor, MultiCursor, RectangleSelector, SpanSelector
 
 class BasePlotEditor:
     """Éditeur de base universel pour les visibilités."""
@@ -45,8 +45,8 @@ class BasePlotEditor:
         self.pan_start = None   # Départ du glissement pour le mode Pan
         self.original_limits = (self.ax.get_xlim(), self.ax.get_ylim())
         self.current_size_idx = 0
-        self.marker_sizes = [1.0, 3.0, 5.0]
-
+        self.marker_sizes = [5.0, 10.0, 15.0]
+        
         # --- Outils Matplotlib ---
         self.rs = RectangleSelector(
             self.ax, self.on_select, useblit=True, button=[1],
@@ -54,12 +54,22 @@ class BasePlotEditor:
         )
         self.rs.set_active(False)
         
+        self.span_x = SpanSelector(
+            self.ax, self.on_span_select, 'horizontal', useblit=True,
+            props=dict(alpha=0.2, facecolor='blue')
+        )
+        self.span_x.set_active(False)
+        
+        self.axes_list = [self.ax] 
+        self.cursor = None
+        self.cursor_active = False
+        
         self.cursor_widget = Cursor(self.ax, useblit=True, color='gray', linewidth=0.8)
         self.cursor_widget.active = False
 
         # --- Raccourcis Clavier ---
         self.raccourcis_autorises = {
-            "r": self.action_home,
+            "r": self.action_home, "R": self.action_home,
             "x": self.action_quit, "X": self.action_quit,
             "q": self.action_quit, "Q": self.action_quit,
             "h": self.action_help, "H": self.action_help,
@@ -67,10 +77,13 @@ class BasePlotEditor:
             "z": self.action_toggle_zoom, "Z": self.action_toggle_zoom,
             "m": self.action_toggle_pan, "M": self.action_toggle_pan,
             "c": self.action_toggle_cut, "C": self.action_toggle_cut,
+            "d": self.action_cancel_cut, "D": self.action_cancel_cut,
+            "a": self.action_flag_nearest, "A": self.action_flag_nearest,
             ".": self.action_toggle_marker_size,
             "+": self.action_toggle_crosshair,
             "w": self.action_toggle_channels, "W": self.action_toggle_channels,
             "u": self.action_undo, "ctrl+z": self.action_undo,
+            "v": self.action_toggle_stats_vec, "V": self.action_toggle_stats_vec, 
             "ctrl+s": self.action_save,
             "n": self.action_next_telescope, "p": self.action_prev_telescope,
             "N": self.action_next_subarray, "P": self.action_prev_subarray,
@@ -88,8 +101,16 @@ class BasePlotEditor:
     # LOGIQUE DE LA SOURIS (Smart Click, Pan, Drag)
     # =======================================================
     def on_mouse_press(self, event):
-        if event.inaxes != self.ax or event.button != 1: return
+        # ✓ Accepte les clics sur TOUS les axes gérés par cet éditeur
+        if event.button != 1: return
+        if event.inaxes is None: return
+        if event.inaxes not in (getattr(self, 'axes_list', [self.ax]) if hasattr(self, 'axes_list') else [self.ax]): 
+            return
+        
         self.press_info = (event.x, event.y)
+        # Mémoriser l'axe d'origine pour les statistiques
+        if hasattr(self, '_last_pressed_axis'):
+            self._last_pressed_axis = event.inaxes
         
         if self.mode == "PAN":
             # On mémorise les PIXELS (event.x/y) et les LIMITES au moment précis du clic
@@ -130,7 +151,15 @@ class BasePlotEditor:
         self.press_info = None
         
     def on_select(self, eclick, erelease):
-        if self.mode not in ["ZOOM", "CUT"]: return
+        # CRUCIAL : STATS_V doit être dans cette liste sinon le clic est ignoré !
+        if self.mode not in ["ZOOM", "CUT", "STATS", "STATS_V", "ZOOM_X"]: return
+        
+        # --- VRAI BLINDAGE ANTI-CLIC (Basé sur les vrais pixels de l'écran) ---
+        dx_pix = abs(erelease.x - eclick.x)
+        dy_pix = abs(erelease.y - eclick.y)
+        
+        if dx_pix < 10 and dy_pix < 10:
+            return
         u1, v1 = eclick.xdata, eclick.ydata
         u2, v2 = erelease.xdata, erelease.ydata
         
@@ -141,6 +170,10 @@ class BasePlotEditor:
             if self.info_callback: self.info_callback("Zoom appliqué.", level='info')
         elif self.mode == "CUT":
             self.apply_cut(u1, v1, u2, v2)
+        elif self.mode == "STATS":
+            self.apply_stats(u1, v1, u2, v2)
+        elif self.mode == "STATS_V":
+            self.apply_stats_vec(u1, v1, u2, v2)
 
     def on_key_press(self, event):
         if event.key in self.raccourcis_autorises:
@@ -149,27 +182,52 @@ class BasePlotEditor:
     # =======================================================
     # GESTION DES MODES
     # =======================================================
-    def _set_mode(self, new_mode):
-        if self.mode == new_mode:
-            new_mode = None 
+    def on_span_select(self, vmin, vmax):
+        if self.mode == "ZOOM_X":
+            new_xlim = (vmin, vmax)
+            self.ax.set_xlim(new_xlim)
+            if hasattr(self, 'ax_phase') and self.ax_phase:
+                self.ax_phase.set_xlim(new_xlim)
+            self.fig.canvas.draw_idle()
             
+    def _set_mode(self, new_mode):
+        """Définit le mode et gère l'activation des widgets Matplotlib."""
         self.mode = new_mode
-        self.rs.set_active(self.mode in ["ZOOM", "CUT"])
         
-        etat = self.mode if self.mode else "Désactivé (Inspection Rapide)"
-        if hasattr(self, 'info_callback') and self.info_callback:
-            self.info_callback(f"Outil actif : {etat}", level='info')
+        # Désactiver tout par défaut
+        if hasattr(self, 'rs'): self.rs.set_active(False)
+        if hasattr(self, 'span_x'): self.span_x.set_active(False)
+        
+        # Activer selon le mode
+        if self.mode in ["ZOOM", "CUT", "STATS", "STATS_V"]:
+            self.rs.set_active(True)
+        elif self.mode == "ZOOM_X":
+            self.span_x.set_active(True)
+            
+        # Feedback visuel
+        etat = self.mode if self.mode else "Inspection"
+        if self.info_callback:
+            self.info_callback(f"Mode : {etat}", level='info')
+        
+        self.fig.canvas.draw_idle()
 
     def action_toggle_zoom(self, event=None): self._set_mode("ZOOM")
     def action_toggle_cut(self, event=None): self._set_mode("CUT")
+    def action_cancel_cut(self, event=None):
+        """Touche D : cancel/annuler la sélection actuelle de cut"""
+        if self.mode in ["CUT", "STATS", "STATS_V", "ZOOM"]:
+            self.mode = None
+            if hasattr(self, 'rs'): self.rs.set_active(False)
+            if hasattr(self, 'span_x'): self.span_x.set_active(False)
+            if self.info_callback: self.info_callback("Selection cancelled.", level='info')
     def action_toggle_pan(self, event=None): self._set_mode("PAN")
+    def action_toggle_stats(self, event=None): self._set_mode("STATS")
 
     def action_home(self, event=None):
         """Réinitialise la vue globale."""
         if self.original_limits:
             self.ax.set_xlim(self.original_limits[0])
             self.ax.set_ylim(self.original_limits[1])
-            self._set_mode(None) 
             self.fig.canvas.draw_idle()
             if self.info_callback:
                 self.info_callback("Vue réinitialisée à l'origine.", level='success')
@@ -180,9 +238,26 @@ class BasePlotEditor:
     def action_redisplay(self, event): 
         self.fig.canvas.draw_idle()
 
-    def action_toggle_crosshair(self, event):
-        self.cursor_widget.active = not self.cursor_widget.active
+    def action_toggle_crosshair(self, event=None):
+        self.cursor_active = not self.cursor_active
+        if self.cursor_active:
+            # On crée le curseur sur tous les axes liés à cet éditeur
+            self.cursor = MultiCursor(
+                self.fig.canvas, 
+                self.axes_list, 
+                color='red', 
+                lw=0.8, 
+                horiz=True, 
+                vert=True
+            )
+        else:
+            if self.cursor:
+                self.cursor.active = False
+                self.cursor = None
+        
         self.fig.canvas.draw_idle()
+        status = "Activé" if self.cursor_active else "Désactivé"
+        if self.info_callback: self.info_callback(f"Cross-hair : {status}", level='info')
 
     def action_toggle_channels(self, event): 
         self.flag_all_channels = not self.flag_all_channels
@@ -219,8 +294,9 @@ class BasePlotEditor:
             nom_final = self.save_callback(path_origine)
             if not nom_final: return 
         else:
-            nom_final = input("Nom du fichier de sauvegarde : ").strip()
-            if not nom_final: return
+            if self.info_callback: 
+                self.info_callback("Sauvegarde annulée : Dialog non connecté.", level='error')
+            return
 
         try:
             self.obs.save_wobs(nom_final)
@@ -290,6 +366,16 @@ class BasePlotEditor:
     def set_conjugate_visible(self, visible: bool): pass
     def _update_colors(self): pass
     def action_show_info(self, event): pass
+    def apply_stats(self, x1, y1, x2, y2): pass
+    def apply_stats_vec(self, x1, y1, x2, y2): pass
+    def action_toggle_zoom_x(self, event=None): self._set_mode("ZOOM_X")
+    def action_toggle_stats_vec(self, event=None): self._set_mode("STATS_V")
+    
+    def action_flag_nearest(self, event=None):
+        """Touche A : Flag le point ayant la plus petite distance au curseur"""
+        # Implémentation par défaut: à override dans les sous-classes
+        if self.info_callback:
+            self.info_callback("Flag nearest not yet specified for this plot.", level='info')
     
     def _flag_indices(self, indices):
         if len(indices) == 0: return

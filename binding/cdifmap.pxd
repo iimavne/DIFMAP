@@ -10,6 +10,7 @@ cdef extern from "difmap_api.h":
     double get_native_bmin()
     double get_native_bpa()
     double get_native_pixsize()
+    float* get_native_vis_phs()
 
     int l_extract_uv()
     int get_native_uv_count()
@@ -20,6 +21,8 @@ cdef extern from "difmap_api.h":
     int* get_native_tel_a()
     int* get_native_tel_b()
     double* get_native_time()
+    float* get_native_mod_amp()
+    float* get_native_mod_phs()
     int* get_native_subarray()
     const char* get_native_telescope_name(int isub, int itel)
     int* get_native_if()

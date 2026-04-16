@@ -44,13 +44,13 @@ class UVPlotEditor(BasePlotEditor):
         real_size = size ** 2
         self.scat_main.set_sizes([real_size])
         self.scat_conj.set_sizes([real_size])
-        self.fig.canvas.draw_idle() # <-- IL MANQUAIT ÇA POUR RAFRAÎCHIR L'IMAGE !
+        self.fig.canvas.draw_idle() 
 
     def set_conjugate_visible(self, visible: bool):
         """Affiche ou masque les points symétriques en suivant la Checkbox."""
         self.scat_conj.set_visible(visible)
         etat = "affichés" if visible else "masqués"
-        msg = f"Points conjugués {etat}." # <--- Balise supprimée
+        msg = f"Points conjugués {etat}." 
         if self.info_callback:
             self.info_callback(msg, level='info')
         self.fig.canvas.draw_idle()
@@ -61,6 +61,22 @@ class UVPlotEditor(BasePlotEditor):
         etat = "affichés" if not is_visible else "masqués"
         print(f"[VIEW] Points conjugues {etat}.")
         self.fig.canvas.draw_idle()
+
+    # Méthodes requises pour les checkboxes globales (même si pas implémentées pour UV)
+    def set_model_visible(self, visible: bool):
+        """No-op pour UV plot (pas de modèle affiché)."""
+        if self.info_callback:
+            self.info_callback("[INFO] Model display not available for UV plot", level='info')
+
+    def set_residuals_visible(self, visible: bool):
+        """No-op pour UV plot (pas de résidus affichés)."""
+        if self.info_callback:
+            self.info_callback("[INFO] Residuals display not available for UV plot", level='info')
+
+    def set_show_errors(self, visible: bool):
+        """No-op pour UV plot (pas d'erreurs affichées)."""
+        if self.info_callback:
+            self.info_callback("[INFO] Error plot not available for UV plot", level='info')
 
     def action_redisplay(self, event):
         print("[VIEW] Rafraichissement complet du graphique...")
@@ -85,7 +101,6 @@ class UVPlotEditor(BasePlotEditor):
             vrai_nom = self.noms_antennes.get(ant_cible, f"Ant {ant_cible}")
             m = (self.data["subarray"] == sub_actif) & ((self.data["tel_a"] == ant_cible) | (self.data["tel_b"] == ant_cible))
             
-            # Simple changement de couleur, la taille reste identique (s=1)
             couleurs[m] = DesignSystem.PLOT_FOCUS
             self.ax.set_title(f"FOCUS : {sub_actif}:{vrai_nom}", color=DesignSystem.PLOT_FOCUS, fontsize=10)
         else:
@@ -100,10 +115,14 @@ class UVPlotEditor(BasePlotEditor):
         self.scat_main.set_offsets(off_m)
         self.scat_conj.set_offsets(off_c)
         
-        # Application des couleurs homogènes
-        self.scat_main.set_color(couleurs)
-        self.scat_conj.set_color(couleurs)
+        self.scat_main.set_facecolors(couleurs)
+        self.scat_main.set_edgecolors('none')
+        self.scat_main.set_alpha(0.5)
         
+        self.scat_conj.set_facecolors(couleurs)
+        self.scat_conj.set_edgecolors('none')
+        self.scat_conj.set_alpha(0.5)
+  
         self.fig.canvas.draw_idle()
         
     def action_show_info(self, event):
