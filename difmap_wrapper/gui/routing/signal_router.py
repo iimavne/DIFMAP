@@ -147,12 +147,23 @@ class SignalRouter:
         
         slider = getattr(self.control_panel, slider_attr)
         
-        def callback(value):
-            for widget in [self.window.plot_widget, self.window.radplot_widget]:
-                if widget and hasattr(widget, 'editor') and widget.editor:
-                    editor = widget.editor
-                    if hasattr(editor, method_name):
-                        getattr(editor, method_name)(float(value))
+        # ✅ SPÉCIAL: Pour slider_size, on mappe les valeurs du slider (1-3) aux tailles réelles
+        if slider_attr == 'slider_size':
+            sizes = [2.5, 6.0, 15.0]  # Match marker_sizes in base.py (fin → moyen → gros)
+            def callback(value):
+                size_value = sizes[value - 1] if 1 <= value <= 3 else sizes[0]
+                for widget in [self.window.plot_widget, self.window.radplot_widget]:
+                    if widget and hasattr(widget, 'editor') and widget.editor:
+                        editor = widget.editor
+                        if hasattr(editor, method_name):
+                            getattr(editor, method_name)(size_value)
+        else:
+            def callback(value):
+                for widget in [self.window.plot_widget, self.window.radplot_widget]:
+                    if widget and hasattr(widget, 'editor') and widget.editor:
+                        editor = widget.editor
+                        if hasattr(editor, method_name):
+                            getattr(editor, method_name)(float(value))
         
         slider.valueChanged.connect(callback)
     
@@ -167,6 +178,7 @@ class SignalRouter:
         self.route_toolbar_action('action_pan', 'action_toggle_pan', [None]) 
         self.route_toolbar_action('action_zoom', 'action_toggle_zoom', [None])
         self.route_toolbar_action('action_cut', 'action_toggle_cut', [None])
+        
         
         # TELESCOPE FOCUS
         self.route_button_both('btn_next_sub', 'action_next_subarray', [None])

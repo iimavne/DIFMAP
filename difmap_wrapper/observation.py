@@ -137,3 +137,5 @@ class Observation:
         print(f"Sauvegarde en cours via Difmap...")
         self._native.save_wobs(filepath)
         return True
+    
+    

@@ -37,8 +37,8 @@ class BasePlotWidget(QWidget):
     >>>         # Code spécifique
     """
     
-    def __init__(self, parent=None, figsize=(8, 8), include_toolbar=False, 
-                 facecolor='white', layout_type='constrained'):
+    def __init__(self, parent=None, figsize=(8, 8), include_toolbar=False,
+                 facecolor='#141414', layout_type='constrained'):
         """
         Parameters
         ----------

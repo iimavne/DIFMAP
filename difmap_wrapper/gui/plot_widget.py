@@ -36,6 +36,10 @@ class UVPlotWidget(BasePlotWidget):
             sync_callback=sync_callback
         )
         
+        # ✅ CRUCIAL: Appliquer la taille initiale des points (comme dans RadPlotWidget)
+        # La taille commence à 2.5 (fine), puis grossit avec le slider/touche . : 2.5 → 6 → 15
+        self.editor.update_marker_size(self.editor.marker_sizes[self.editor.current_size_idx])
+        
     def _setup_axes(self):
         """Configure les axes spécifiques au plan UV."""
         MatplotlibStyler.setup_axes(

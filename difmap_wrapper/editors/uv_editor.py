@@ -40,10 +40,9 @@ class UVPlotEditor(BasePlotEditor):
 
     def update_marker_size(self, size):
         """Met à jour la taille des points en temps réel via le slider."""
-        # On met la taille au carré pour que le slider ait un vrai impact visuel (1 à 25)
-        real_size = size ** 2
-        self.scat_main.set_sizes([real_size])
-        self.scat_conj.set_sizes([real_size])
+        # ✅ Utiliser la taille directement (pas de ** 2)
+        self.scat_main.set_sizes([size])
+        self.scat_conj.set_sizes([size])
         self.fig.canvas.draw_idle() 
 
     def set_conjugate_visible(self, visible: bool):
@@ -60,6 +59,9 @@ class UVPlotEditor(BasePlotEditor):
         self.scat_conj.set_visible(not is_visible)
         etat = "affichés" if not is_visible else "masqués"
         print(f"[VIEW] Points conjugues {etat}.")
+        # ✅ Sync checkbox state back to UI
+        if self.sync_callback:
+            self.sync_callback({'show_conjugate': not is_visible})
         self.fig.canvas.draw_idle()
 
     # Méthodes requises pour les checkboxes globales (même si pas implémentées pour UV)
@@ -158,7 +160,7 @@ class UVPlotEditor(BasePlotEditor):
 
         # Création du bloc multilignes avec un alignement (:) parfait
         info_text = (
-            f"--- Quick Inspect (S) ---\n"
+            f"--- Quick Inspect (s) ---\n"
             f"Antennas : {sub}:{nom_a}-{nom_b}\n"
             f"Time UT  : {doy:03d}-{hh:02d}:{mm:02d}:{ss:02d}\n"
             f"Flux     : {flux:.4f} Jy\n"
@@ -169,6 +171,23 @@ class UVPlotEditor(BasePlotEditor):
         if self.info_callback:
             # On utilise le nouveau niveau 'inspect' pour la couleur bleue !
             self.info_callback(info_text, level='inspect')
+
+    def action_show_info_nearest(self, event=None):
+        """Keyboard shortcut 's' - show nearest point info"""
+        if event is None or not hasattr(event, 'xdata'):
+            # Create a synthetic event at plot center
+            if hasattr(self, 'ax') and self.ax:
+                xl, xr = self.ax.get_xlim()
+                yl, yr = self.ax.get_ylim()
+                class SyntheticEvent:
+                    def __init__(self, x, y, ax):
+                        self.xdata = x if x is not None else (xl + xr) / 2
+                        self.ydata = y if y is not None else (yl + yr) / 2
+                        self.inaxes = ax
+                event = SyntheticEvent(None, None, self.ax)
+            else:
+                return
+        self.action_show_info(event)
             
     def apply_external_cut(self, indices):
         """Reçoit une demande de flagging depuis un autre widget (ex: Radplot)."""

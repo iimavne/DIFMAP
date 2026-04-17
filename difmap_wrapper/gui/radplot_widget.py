@@ -85,18 +85,18 @@ class RadPlotWidget(BasePlotWidget):
         if self.ax: 
             if self.display_mode in [1, 3]:
                 scats["amp"] = self.ax.scatter(uv_radius, data['amp'], s=1, color=DesignSystem.PLOT_DATA, alpha=0.5, edgecolors='none', zorder=2)
-                scats["m_amp"] = self.ax.scatter(uv_radius, data.get('modamp', np.zeros_like(uv_radius)), s=1, color='red', alpha=0.8, edgecolors='none', zorder=3, visible=False)
+                scats["m_amp"] = self.ax.scatter(uv_radius, data.get('modamp', np.zeros_like(uv_radius)), s=1, color=DesignSystem.PLOT_MODEL, alpha=0.8, edgecolors='none', zorder=3, visible=False)
             elif self.display_mode == 2:
                 # Si on n'affiche que la phase, elle prend l'axe principal
                 scats["phs"] = self.ax.scatter(uv_radius, data['phase'], s=1, color=DesignSystem.PLOT_DATA, alpha=0.5, edgecolors='none', zorder=2)
-                scats["m_phs"] = self.ax.scatter(uv_radius, data.get('modphs', np.zeros_like(uv_radius)), s=1, color='red', alpha=0.8, edgecolors='none', zorder=3, visible=False)
+                scats["m_phs"] = self.ax.scatter(uv_radius, data.get('modphs', np.zeros_like(uv_radius)), s=1, color=DesignSystem.PLOT_MODEL, alpha=0.8, edgecolors='none', zorder=3, visible=False)
         
         if self.ax_phase and self.display_mode == 3:
             scats["phs"] = self.ax_phase.scatter(uv_radius, data['phase'], s=1, color=DesignSystem.PLOT_DATA, alpha=0.5, edgecolors='none', zorder=2)
-            scats["m_phs"] = self.ax_phase.scatter(uv_radius, data.get('modphs', np.zeros_like(uv_radius)), s=1, color='red', alpha=0.8, edgecolors='none', zorder=3, visible=False)
+            scats["m_phs"] = self.ax_phase.scatter(uv_radius, data.get('modphs', np.zeros_like(uv_radius)), s=1, color=DesignSystem.PLOT_MODEL, alpha=0.8, edgecolors='none', zorder=3, visible=False)
 
         if self.ax_err:
-            scats["err"] = self.ax_err.scatter(uv_radius, error_data, s=1, color='cyan', alpha=0.5, edgecolors='none', zorder=2)
+            scats["err"] = self.ax_err.scatter(uv_radius, error_data, s=1, color=DesignSystem.PLOT_ERROR, alpha=0.5, edgecolors='none', zorder=2)
             # Auto-scale error axis: errmin=0, errmax=1/sqrt(|wtmin|)
             valid_weights = weight[weight != 0]
             if len(valid_weights) > 0:

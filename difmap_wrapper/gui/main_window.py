@@ -1,6 +1,6 @@
 # difmap_wrapper/gui/main_window.py
 from PyQt6.QtWidgets import QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from difmap_wrapper import DifmapSession
 import difmap_native
 
@@ -62,7 +62,7 @@ class MainWindow(QMainWindow):
         
         # 4. CÂBLAGE DES SIGNAUX
         self._connect_signals()
-
+        
         # 5. CHARGEMENT INITIAL
         if fichier_initial:
             self._load_file_logic(fichier_initial)
@@ -82,15 +82,21 @@ class MainWindow(QMainWindow):
             
             # Charger dans le moteur C
             self.session.observe(filepath)
-            self.session.obs.select(pol="RR")
+            # ✅ Charger Stokes I par défaut (comme en difmap classique)
+            self.session.obs.select(pol="I")
             
             # Récupérer les nouvelles données
             self.data = difmap_native.get_uv_data()
             
+            # ✅ Mettre à jour le combo de polarisation
+            self.control_panel.combo_pol.blockSignals(True)
+            self.control_panel.combo_pol.setCurrentIndex(0)  # Stokes I est la première option
+            self.control_panel.combo_pol.blockSignals(False)
+            
             # Rafraîchir tous les plots
             self._reload_all_plots()
             
-            self.log_console.log(f"Successfully loaded {len(self.data['u'])} visibilities.")
+            self.log_console.log(f"Successfully loaded {len(self.data['u'])} visibilities (Stokes I).")
             self.setWindowTitle(f"DIFMAP Modern - {filepath.split('/')[-1]}")
             
         except Exception as e:
@@ -154,71 +160,90 @@ class MainWindow(QMainWindow):
         return None
 
     def _connect_signals(self):
-        """Connecte tous les signaux avec un câblage direct pour la barre d'outils."""
         router = SignalRouter(self)
-        
-        # 1. ACTIONS INSTANTANÉES DE LA TOOLBAR (Câblage direct et robuste)
-        self.toolbar.action_home.triggered.connect(
-            lambda: self._get_active_editor().action_home() if self._get_active_editor() else None
-        )
-        self.toolbar.action_undo.triggered.connect(
-            lambda: self._get_active_editor().action_undo() if self._get_active_editor() else None
-        )
-        
+        tb = self.toolbar
+
+        # ── 1. TOOLBAR — actions de fichier ──────────────────────
+        tb.action_load.triggered.connect(self._on_load_triggered)
+
         def handle_save():
             editor = self._get_active_editor()
             if editor:
-                # On force l'injection du dialogue PyQt dans l'éditeur actif
                 editor.save_callback = self._handle_save_dialog
                 editor.action_save()
-                
-        self.toolbar.action_save.triggered.connect(handle_save)
+        tb.action_save.triggered.connect(handle_save)
 
-        self.toolbar.action_refresh.triggered.connect(self._sync_all_plots)
-        self.toolbar.action_load.triggered.connect(self._on_load_triggered)
-        # 2. MENU DÉROULANT DES OUTILS INTELLIGENT
-        def tool_changed(text):
+        # ── 2. TOOLBAR — actions de vue ──────────────────────────
+        tb.action_home.triggered.connect(
+            lambda: self._get_active_editor().action_home()
+            if self._get_active_editor() else None
+        )
+        tb.action_undo.triggered.connect(
+            lambda: self._get_active_editor().action_undo()
+            if self._get_active_editor() else None
+        )
+        tb.action_refresh.triggered.connect(self._sync_all_plots)
+
+        # ── 3. TOOLBAR — menu déroulant d'outils ────────────
+        def _on_tool_changed(index):
+            if index < 0: return
+            mode = tb.combo_tools.itemData(index)
             editor = self._get_active_editor()
-            if not editor: return
-            
-            if "Pan" in text: editor._set_mode("PAN")
-            elif "Zoom X" in text: editor._set_mode("ZOOM_X")
-            elif "Zoom" in text: editor._set_mode("ZOOM")
-            elif "Cut" in text: editor._set_mode("CUT")
-            elif "Stats (Scalar)" in text: editor._set_mode("STATS")
-            elif "Stats (Vector)" in text: editor._set_mode("STATS_V")
-            else: editor._set_mode(None)
+            if editor:
+                editor._set_mode(mode)
+            # Redonner le focus au graphique pour que les raccourcis clavier continuent de fonctionner
+            if self._get_active_editor() and hasattr(self._get_active_editor(), 'fig'):
+                self._get_active_editor().fig.canvas.setFocus()
 
-        self.toolbar.combo_tools.currentTextChanged.connect(tool_changed)
-        
-        # 3. PANNEAU DE CONTRÔLE (Télescopes)
+        tb.combo_tools.currentIndexChanged.connect(_on_tool_changed)
+
+        # ── 4. TOOLBAR — quick inspect (S) ───────────────────────
+        def _quick_inspect():
+            editor = self._get_active_editor()
+            if editor and hasattr(editor, 'action_show_info_nearest'):
+                editor.action_show_info_nearest(None)
+        tb.action_inspect.triggered.connect(_quick_inspect)
+
+        # ── 5. TOOLBAR — toggle terminal ─────────────────────────
+        tb.action_terminal.triggered.connect(self._toggle_terminal)
+
+        # ── 6. PANNEAU — navigation télescopes ───────────────────
         router.route_button_both('btn_next_sub', 'action_next_subarray', [None])
         router.route_button_both('btn_prev_sub', 'action_prev_subarray', [None])
         router.route_button_both('btn_next_ant', 'action_next_telescope', [None])
         router.route_button_both('btn_prev_ant', 'action_prev_telescope', [None])
-  
-        # 4. RECHERCHE DE TÉLESCOPE
+
         def search_callback():
             target = self.control_panel.input_search_tel.text()
             if target:
+                premier_log_fait = False
                 for widget in [self.plot_widget, self.radplot_widget]:
                     if widget and hasattr(widget, 'editor') and widget.editor:
                         editor = widget.editor
                         if hasattr(editor, 'action_specific_telescope'):
+                            # Astuce : on "mute" les logs du 2ème éditeur pour éviter les doublons
+                            callback_sauvegarde = editor.info_callback
+                            if premier_log_fait:
+                                editor.info_callback = None
+                                
                             editor.action_specific_telescope(None, target)
-        
+                            
+                            # On restaure le micro
+                            editor.info_callback = callback_sauvegarde
+                            premier_log_fait = True
+
         self.control_panel.btn_search_tel.clicked.connect(search_callback)
-        
-        # 5. CASES À COCHER & SLIDERS
+        self.control_panel.input_search_tel.returnPressed.connect(search_callback)
+        # ── 7. PANNEAU — cases à cocher & sliders ────────────────
         router.route_checkbox_both('chk_all_channels', 'set_flag_all_channels')
         router.route_checkbox_both('chk_conjugate', 'set_conjugate_visible')
         router.route_checkbox_both('chk_crosshair', 'set_crosshair_visible')
         router.route_slider_both('slider_size', 'update_marker_size')
-        router.route_checkbox_both('chk_model', 'set_model_visible') 
+        router.route_checkbox_both('chk_model', 'set_model_visible')
         router.route_checkbox_both('chk_residuals', 'set_residuals_visible')
         router.route_checkbox_both('chk_errors', 'set_show_errors')
-        
-        # 6. IMAGERIE & ONGLETS
+
+        # ── 8. IMAGERIE & ONGLETS ─────────────────────────────────
         self.control_panel.btn_compute.clicked.connect(self._compute_dirty_map)
         self.control_panel.combo_pol.currentTextChanged.connect(self._change_polarization)
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -230,66 +255,87 @@ class MainWindow(QMainWindow):
     # ==========================================
     def _on_tab_changed(self, index):
         """
-        Gestionnaire d'état unique : active/désactive l'UI selon l'onglet.
-        Index 0: UV, Index 1: Radplot, Index 2: Dirty Map
+        Gestionnaire d'état unique adaptatif.
+        Cache les menus ou options qui ne servent à rien sur l'onglet actif.
         """
+        if index == 0 and self.plot_widget and hasattr(self.plot_widget, 'fig'):
+            self.plot_widget.fig.canvas.setFocus()
+        elif index == 1 and self.radplot_widget and hasattr(self.radplot_widget, 'fig'):
+            self.radplot_widget.fig.canvas.setFocus()
+
         ctrl, tb = self.control_panel, self.toolbar
-        is_map = (index == 2)
+        has_data   = self.plot_widget is not None
+        is_map     = (index == 2)
         is_radplot = (index == 1)
+        is_uv      = (index == 0)
+
+        # ── 1. PANNEAU GAUCHE (Visibilité Contextuelle) ──────────────────────
+        ctrl.group_data_selection.setEnabled(has_data)
         
-        # 1. GESTION DES GROUPES (Panneau de gauche)
-        ctrl.group_telescope.setEnabled(not is_map)
-        ctrl.group_flagging.setEnabled(not is_map)
-        ctrl.group_display.setEnabled(not is_map)
-        
-        ctrl.combo_rad_mode.setEnabled(is_radplot)
-        
-        ctrl.chk_conjugate.setEnabled(not is_map and not is_radplot)
+        # On cache entièrement les groupes si ce n'est pas le bon contexte ou si 0 données
+        ctrl.group_telescope.setVisible(has_data and not is_map)
+        ctrl.group_flagging.setVisible(has_data and not is_map)
+        ctrl.group_display.setVisible(has_data and not is_map)
+        ctrl.group_imaging.setVisible(has_data)
+
+        # On cache finement les options DANS le menu "DISPLAY OPTIONS"
+        if hasattr(ctrl, 'lbl_rad_mode'):
+            # Options exclusives au Radplot
+            ctrl.lbl_rad_mode.setVisible(has_data and is_radplot)
+            ctrl.combo_rad_mode.setVisible(has_data and is_radplot)
+            ctrl.sep_display.setVisible(has_data and is_radplot)
+            ctrl.chk_model.setVisible(has_data and is_radplot)
+            ctrl.chk_residuals.setVisible(has_data and is_radplot)
+            ctrl.chk_errors.setVisible(has_data and is_radplot)
+            
+            # Option exclusive à la Couverture UV
+            ctrl.chk_conjugate.setVisible(has_data and is_uv)
+
+        # Synchronisation logique des checks si on change d'onglet
         if is_radplot:
             ctrl.chk_conjugate.setChecked(False)
-            
-        ctrl.chk_model.setEnabled(is_radplot)
-        ctrl.chk_residuals.setEnabled(is_radplot)
-        ctrl.chk_errors.setEnabled(is_radplot)
-        
         if not is_radplot:
             ctrl.chk_model.setChecked(False)
             ctrl.chk_residuals.setChecked(False)
+            ctrl.chk_errors.setChecked(False)
 
-        # 2. GESTION DE LA TOOLBAR INTELLIGENTE
-        tb.action_home.setEnabled(not is_map)
-        tb.action_undo.setEnabled(not is_map)
-        tb.action_refresh.setEnabled(not is_map)
+        # ── 2. TOOLBAR ─────────────────────────────────────────────
+        # ── 2. TOOLBAR (Visibilité Contextuelle) ───────────────────
+        tb.action_save.setVisible(has_data)
+        tb.action_home.setVisible(has_data and not is_map)
+        tb.action_undo.setVisible(has_data and not is_map)
+        tb.action_refresh.setVisible(has_data and not is_map)
+        tb.action_inspect.setVisible(has_data and not is_map)
         
-        combo = tb.combo_tools
-        combo.setEnabled(not is_map)
+        # On affiche le menu déroulant uniquement s'il y a des données et qu'on n'est pas sur la Map
+        tb.lbl_tools.setVisible(has_data and not is_map)
+        tb.combo_tools.setVisible(has_data and not is_map)
 
-        if not is_map:
-            # On mémorise l'outil en cours pour ne pas perturber l'utilisateur
-            current_tool = combo.currentText()
-
-            # On reconstruit le menu déroulant selon l'onglet
-            combo.blockSignals(True)
-            combo.clear()
-            items = ["None (Inspect)", "Pan (Move)", "Zoom Box", "Cut Box"]
-
+        # Peupler dynamiquement le menu déroulant des outils selon l'onglet
+        if has_data and not is_map:
+            current_mode = tb.combo_tools.currentData()
+            
+            tb.combo_tools.blockSignals(True)
+            tb.combo_tools.clear()
+            tb.combo_tools.addItem("None (Inspect)", None)
+            tb.combo_tools.addItem("Pan (Move)", "PAN")
+            tb.combo_tools.addItem("Zoom Box", "ZOOM")
+            tb.combo_tools.addItem("Cut Box", "CUT")
+            
+            # Outils spécifiques uniquement pour le Radplot !
             if is_radplot:
-                # On ajoute les outils exclusifs au Radplot !
-                items.insert(3, "Zoom X (UV Band)")
-                items.extend(["Stats (Scalar)", "Stats (Vector)"])
+                tb.combo_tools.addItem("Zoom X (UV Band)", "ZOOM_X")
+                tb.combo_tools.addItem("Stats (Scalar)", "STATS")
+                tb.combo_tools.addItem("Stats (Vector)", "STATS_V")
 
-            combo.addItems(items)
+            # Restaurer l'outil précédent s'il existe toujours, sinon Select (0)
+            idx = tb.combo_tools.findData(current_mode)
+            tb.combo_tools.setCurrentIndex(idx if idx >= 0 else 0)
+            tb.combo_tools.blockSignals(False)
 
-            # On restaure l'outil (s'il existe dans la nouvelle liste)
-            if current_tool in items:
-                combo.setCurrentText(current_tool)
-            else:
-                combo.setCurrentIndex(0) # Retour sur "Inspect" par défaut
-
-            combo.blockSignals(False)
-
-            # On force l'éditeur à prendre l'outil sélectionné
-            self.toolbar.combo_tools.currentTextChanged.emit(combo.currentText())
+            editor = self._get_active_editor()
+            if editor:
+                editor._set_mode(tb.combo_tools.currentData())
             
     def _create_menu_bar(self):
         menubar = self.menuBar()
@@ -323,25 +369,81 @@ class MainWindow(QMainWindow):
         return filename
 
     def _show_help_dialog(self):
-        help_text = """
-        <h3>DIFMAP SmartEdit - Shortcuts</h3>
-        <table border="0" cellpadding="4" cellspacing="0">
-            <tr><td width="50"><b>S</b></td><td>Inspect Visibilities (Hover mouse)</td></tr>
-            <tr><td><b>Z</b></td><td>Toggle Zoom mode (Left click/Drag to select)</td></tr>
-            <tr><td><b>C</b></td><td>Toggle Cut/Flag mode (Left click to select area)</td></tr>
-            <tr><td><b>U</b></td><td>Undo last flagging operation</td></tr>
-            <tr><td><b>L</b></td><td>Refresh / Redraw plot</td></tr>
-            <tr><td><b>N / P</b></td><td>Next / Previous Subarray</td></tr>
-            <tr><td><b>n / p</b></td><td>Next / Previous Antenna in current Subarray</td></tr>
-            <tr><td><b>W</b></td><td>Toggle Channel Flagging scope</td></tr>
-            <tr><td><b>+</b></td><td>Toggle Crosshair cursor</td></tr>
-            <tr><td><b>.</b></td><td>Toggle Marker size</td></tr>
-            <tr><td><b>%</b></td><td>Toggle Conjugate points (-U, -V)</td></tr>
-        </table>
+        TBG = "#2a2a2a"
+        help_text = f"""
+        <style>
+          body  {{ background:#1e1e1e; color:#d0d0d0; font-family:sans-serif; }}
+          h3    {{ color:#d4a835; }}
+          h4    {{ color:#d4a835; margin-top:12px; margin-bottom:4px; }}
+          b     {{ color:#e8e8e8; }}
+          table {{ background:{TBG}; border-radius:4px; width:100%; }}
+          td    {{ padding:3px 6px; color:#c0c0c0; }}
+          hr    {{ border-color:#3c3c3c; }}
+          i     {{ color:#606060; }}
+        </style>
+        <h3>DIFMAP Modern — Keyboard Shortcuts</h3>
+        <p>Press <b>H</b> at any time in a plot to open this dialog.</p>
+
+        <h4>Navigation & Display</h4>
+        <table><tr><td width="90"><b>X / Q</b></td><td>Close plot</td></tr>
+        <tr><td><b>R / L</b></td><td>Reset / Refresh view</td></tr>
+        <tr><td><b>H</b></td><td>This help dialog</td></tr></table>
+
+        <h4>Telescope Focus</h4>
+        <table><tr><td width="90"><b>n / p</b></td><td>Next / Prev antenna</td></tr>
+        <tr><td><b>N / P</b></td><td>Next / Prev subarray</td></tr>
+        <tr><td><b>T</b></td><td>Search telescope by name/ID</td></tr></table>
+
+        <h4>Editing & Flagging</h4>
+        <table><tr><td width="90"><b>A</b></td><td>Flag nearest point</td></tr>
+        <tr><td><b>C</b></td><td>Flag rectangular area</td></tr>
+        <tr><td><b>Z</b></td><td>Zoom to area</td></tr>
+        <tr><td><b>W</b></td><td>Toggle flag-all-channels</td></tr>
+        <tr><td><b>U</b></td><td>Undo last flag</td></tr>
+        <tr><td><b>Ctrl+S</b></td><td>Save as FITS</td></tr></table>
+
+        <h4>Radplot View</h4>
+        <table><tr><td width="90"><b>1 / 2 / 3</b></td><td>Amplitude / Phase / Both</td></tr>
+        <tr><td><b>M</b></td><td>Model overlay</td></tr>
+        <tr><td><b>-</b></td><td>Residuals (Data − Model)</td></tr>
+        <tr><td><b>E</b></td><td>Error plot (1/√w)</td></tr>
+        <tr><td><b>U</b></td><td>Zoom UV-radius range</td></tr>
+        <tr><td><b>S / V</b></td><td>Scalar / Vector statistics</td></tr></table>
+
+        <h4>UV-plane View</h4>
+        <table><tr><td width="90"><b>%</b></td><td>Toggle conjugate points</td></tr>
+        <tr><td><b>Z</b></td><td>Zoom to area</td></tr>
+        <tr><td><b>S</b></td><td>Show nearest point info</td></tr></table>
+
+        <h4>Style</h4>
+        <table><tr><td width="90"><b>+</b></td><td>Toggle crosshair</td></tr>
+        <tr><td><b>.</b></td><td>Cycle marker size</td></tr>
+        <tr><td><b>M (Pan)</b></td><td>Pan mode</td></tr></table>
+
         <br><hr>
-        <i>Note: Most of these actions are also accessible via the UI panels.</i>
+        <i>Most actions are also accessible via the toolbar and left panel.</i>
         """
-        QMessageBox.about(self, "Help", help_text)
+        from PyQt6.QtWidgets import QTextBrowser, QDialog, QVBoxLayout
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Keyboard Shortcuts")
+        dialog.resize(520, 620)
+
+        text_browser = QTextBrowser()
+        text_browser.setStyleSheet(f"""
+            QTextBrowser {{
+                background-color: #1e1e1e;
+                color: #d0d0d0;
+                border: 1px solid #3c3c3c;
+                border-radius: 4px;
+                font-size: 12px;
+            }}
+        """)
+        text_browser.setHtml(help_text)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.addWidget(text_browser)
+        dialog.exec()
 
     # ==========================================
     # MÉTHODES MÉTIER (À CONNECTER PLUS TARD)
@@ -419,7 +521,28 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self._log_event(f"Fail: {e}", level='error')
 
+    def _toggle_terminal(self):
+        """Affiche/cache le dock terminal."""
+        self.log_console.setVisible(not self.log_console.isVisible())
+
+    def _has_unsaved_changes(self):
+        """Vérifie si des flags non sauvegardés existent."""
+        if self.plot_widget and self.plot_widget.editor:
+            return bool(self.plot_widget.editor.masque_flagges.any())
+        return False
+
     def closeEvent(self, event):
+        if self._has_unsaved_changes():
+            reply = QMessageBox.question(
+                self, "Quitter DIFMAP Modern",
+                "Des modifications de flagging n'ont pas été sauvegardées.\n"
+                "Êtes-vous sûr de vouloir quitter ?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                event.ignore()
+                return
         self.log_console.log("Shutting down C-Engine...")
         self.session.cleanup()
         event.accept()
@@ -433,7 +556,7 @@ class MainWindow(QMainWindow):
         ----------
         state_dict : dict, optional
             Si fourni, contient l'état de l'éditeur depuis un raccourci clavier.
-            Ex: {'show_errors': True, 'show_model': False, 'display_mode': 3}
+            Ex: {'show_errors': True, 'show_model': False, 'display_mode': 3, 'crosshair': True, 'show_conjugate': False}
         """
         # 1. Si on reçoit un état depuis un raccourci clavier, mettre à jour l'UI
         if state_dict:
@@ -443,6 +566,8 @@ class MainWindow(QMainWindow):
             was_blocked_model = ctrl.chk_model.blockSignals(True)
             was_blocked_residuals = ctrl.chk_residuals.blockSignals(True)
             was_blocked_combo = ctrl.combo_rad_mode.blockSignals(True)
+            was_blocked_crosshair = ctrl.chk_crosshair.blockSignals(True)
+            was_blocked_conjugate = ctrl.chk_conjugate.blockSignals(True)
             
             try:
                 # Update checkboxes based on editor state
@@ -456,14 +581,44 @@ class MainWindow(QMainWindow):
                     # display_mode: 1->index 0, 2->index 1, 3->index 2
                     mode_idx = max(0, min(2, state_dict['display_mode'] - 1))
                     ctrl.combo_rad_mode.setCurrentIndex(mode_idx)
+                if 'crosshair' in state_dict:
+                    ctrl.chk_crosshair.setChecked(state_dict['crosshair'])
+                if 'show_conjugate' in state_dict:
+                    ctrl.chk_conjugate.setChecked(state_dict['show_conjugate'])
+                if 'show_conjugate' in state_dict:
+                    ctrl.chk_conjugate.setChecked(state_dict['show_conjugate'])
+                if 'marker_size' in state_dict:
+                    was_blocked_size = ctrl.slider_size.blockSignals(True)
+                    ctrl.slider_size.setValue(state_dict['marker_size'])
+                    ctrl.slider_size.blockSignals(was_blocked_size)
+                if 'focus_search' in state_dict:
+                    ctrl.input_search_tel.setFocus()
+                if 'show_help' in state_dict:
+                    # QTimer évite un conflit d'événements en ouvrant la fenêtre juste APRES la touche
+                    QTimer.singleShot(0, self._show_help_dialog)
             finally:
                 # Restore signal blocking state
                 ctrl.chk_errors.blockSignals(was_blocked_errors)
                 ctrl.chk_model.blockSignals(was_blocked_model)
                 ctrl.chk_residuals.blockSignals(was_blocked_residuals)
                 ctrl.combo_rad_mode.blockSignals(was_blocked_combo)
+                ctrl.chk_crosshair.blockSignals(was_blocked_crosshair)
+                ctrl.chk_conjugate.blockSignals(was_blocked_conjugate)
         
-        # 2. Rafraîchissement visuel normal
+        # 2. Sync bouton outil toolbar ← raccourci clavier
+        # 2. Sync bouton outil toolbar ← raccourci clavier
+        if state_dict and 'tool_mode' in state_dict:
+            mode = state_dict['tool_mode']
+            tb = self.toolbar
+            tb.action_select.setChecked(mode is None)
+            tb.action_cut.setChecked(mode == "CUT")
+            tb.action_zoom.setChecked(mode == "ZOOM")
+            tb.action_pan.setChecked(mode == "PAN")
+            if hasattr(tb, 'action_zoom_x'): tb.action_zoom_x.setChecked(mode == "ZOOM_X")
+            if hasattr(tb, 'action_stats'): tb.action_stats.setChecked(mode == "STATS")
+            if hasattr(tb, 'action_stats_vec'): tb.action_stats_vec.setChecked(mode == "STATS_V")
+
+        # 3. Rafraîchissement visuel normal
         if self.plot_widget and self.plot_widget.editor:
             self.plot_widget.editor._update_colors()
         if self.radplot_widget and self.radplot_widget.editor:

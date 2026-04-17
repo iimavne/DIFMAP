@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Cursor, MultiCursor, RectangleSelector, SpanSelector
 
+from difmap_wrapper.gui.styles.design_system import DesignSystem
+
 class BasePlotEditor:
     """Éditeur de base universel pour les visibilités."""
 
@@ -45,7 +47,8 @@ class BasePlotEditor:
         self.pan_start = None   # Départ du glissement pour le mode Pan
         self.original_limits = (self.ax.get_xlim(), self.ax.get_ylim())
         self.current_size_idx = 0
-        self.marker_sizes = [5.0, 10.0, 15.0]
+        # ✅ Tailles fines au départ, progression douce: petit(2.5) → moyen(6) → gros(15)
+        self.marker_sizes = [2.5, 6.0, 15.0]
         
         # --- Outils Matplotlib ---
         self.rs = RectangleSelector(
@@ -56,7 +59,7 @@ class BasePlotEditor:
         
         self.span_x = SpanSelector(
             self.ax, self.on_span_select, 'horizontal', useblit=True,
-            props=dict(alpha=0.2, facecolor='blue')
+            props=dict(alpha=0.2, facecolor=DesignSystem.PLOT_FOCUS)
         )
         self.span_x.set_active(False)
         
@@ -83,12 +86,14 @@ class BasePlotEditor:
             "+": self.action_toggle_crosshair,
             "w": self.action_toggle_channels, "W": self.action_toggle_channels,
             "u": self.action_undo, "ctrl+z": self.action_undo,
-            "v": self.action_toggle_stats_vec, "V": self.action_toggle_stats_vec, 
+            # ✅ DIFMAP CORRECT: 's' shows nearest point info, 'S' shows stats in area
+            "s": self.action_show_info_nearest,
+            "S": self.action_toggle_stats,
+            "v": self.action_toggle_stats_vec, "V": self.action_toggle_stats_vec,
             "ctrl+s": self.action_save,
             "n": self.action_next_telescope, "p": self.action_prev_telescope,
             "N": self.action_next_subarray, "P": self.action_prev_subarray,
             "t": self.action_specific_telescope, "T": self.action_specific_telescope,
-            "s": self.action_show_info, "S": self.action_show_info,
         }
 
         # Connexion des événements
@@ -224,13 +229,16 @@ class BasePlotEditor:
     def action_toggle_stats(self, event=None): self._set_mode("STATS")
 
     def action_home(self, event=None):
-        """Réinitialise la vue globale."""
+        """Réinitialise la vue globale + réinitialise le focus antenne."""
         if self.original_limits:
             self.ax.set_xlim(self.original_limits[0])
             self.ax.set_ylim(self.original_limits[1])
+            # ✅ NOUVEAU: Réinitialiser aussi le focus antenne (tous les points reviennent au bleu)
+            self.index_antenne_actuelle = -1
+            self._update_colors()  # Redessiner les points en bleu
             self.fig.canvas.draw_idle()
             if self.info_callback:
-                self.info_callback("Vue réinitialisée à l'origine.", level='success')
+                self.info_callback("Vue réinitialisée. Focus antenne reset.", level='success')
 
     # =======================================================
     # ACTIONS SECONDAIRES ET COSMÉTIQUES
@@ -245,10 +253,10 @@ class BasePlotEditor:
             self.cursor = MultiCursor(
                 self.fig.canvas, 
                 self.axes_list, 
-                color='red', 
+                color=DesignSystem.PLOT_FOCUS, 
                 lw=0.8, 
-                horiz=True, 
-                vert=True
+                horizOn=True, 
+                vertOn=True
             )
         else:
             if self.cursor:
@@ -258,6 +266,10 @@ class BasePlotEditor:
         self.fig.canvas.draw_idle()
         status = "Activé" if self.cursor_active else "Désactivé"
         if self.info_callback: self.info_callback(f"Cross-hair : {status}", level='info')
+        
+        # ✅ Sync checkbox state back to UI
+        if self.sync_callback:
+            self.sync_callback({'crosshair': self.cursor_active})
 
     def action_toggle_channels(self, event): 
         self.flag_all_channels = not self.flag_all_channels
@@ -266,7 +278,8 @@ class BasePlotEditor:
 
     def action_toggle_marker_size(self, event):
         self.current_size_idx = (self.current_size_idx + 1) % len(self.marker_sizes)
-        self.update_marker_size(self.marker_sizes[self.current_size_idx]) 
+        self.update_marker_size(self.marker_sizes[self.current_size_idx])
+        if self.sync_callback: self.sync_callback({'marker_size': self.current_size_idx + 1})
 
     def set_crosshair_visible(self, visible: bool):
         self.cursor_widget.active = visible
@@ -338,25 +351,59 @@ class BasePlotEditor:
         self._update_colors()
 
     def action_specific_telescope(self, event=None, target_name=None):
+        # 1. Si on appuie sur 'T' dans le graphique, on met le focus sur la barre UI
+        if event is not None and target_name is None:
+            if self.sync_callback: self.sync_callback({'focus_search': True})
+            return
+
         recherche = str(target_name).strip().upper() if target_name else ""
         if not recherche: return
 
+        sub_target = None
+        
+        # 2. Gérer le format "1:KP"
+        if ":" in recherche:
+            parts = recherche.split(":")
+            sub_target = parts[0]
+            recherche = parts[1]
+        # 3. Gérer le format collé "1KP"
+        elif len(recherche) > 1 and recherche[0].isdigit() and recherche[1].isalpha():
+            import re
+            m = re.match(r"^(\d+)([A-Z0-9]+)$", recherche)
+            if m:
+                sub_target = m.group(1)
+                recherche = m.group(2)
+
         found = False
         for s_idx, sub_id in enumerate(self.liste_subarrays):
+            if sub_target and str(sub_id) != sub_target: continue
+            
             for a_idx, ant_id in enumerate(self.antennes_par_subarray[sub_id]):
-                if recherche in (self.noms_antennes.get(ant_id, "").upper(), str(ant_id)):
+                nom_ant = self.noms_antennes.get(ant_id, "").upper()
+                
+                # Match exact ou partiel
+                if recherche == nom_ant or recherche == str(ant_id) or recherche in nom_ant:
                     self.index_subarray_actuel, self.index_antenne_actuelle = s_idx, a_idx
-                    found = True; break
+                    found = True
+                    break
             if found: break
 
         if found:
             sub_id = self.liste_subarrays[self.index_subarray_actuel]
-            nom = self.noms_antennes.get(self.antennes_par_subarray[sub_id][self.index_antenne_actuelle])
+            nom = self.noms_antennes.get(self.antennes_par_subarray[sub_id][self.index_antenne_actuelle], "?")
             if self.info_callback: self.info_callback(f"Focus sur {sub_id}:{nom}.", level='info')
             self._update_colors()
-
+        else:
+            if self.info_callback: self.info_callback(f"Télescope '{target_name}' introuvable.", level='warning')
+            
     def action_help(self, event):
-        if self.info_callback: self.info_callback("Consultez le menu Help pour les raccourcis.", level='info')
+        if self.sync_callback:
+            self.sync_callback({'show_help': True})
+
+    def action_show_info_nearest(self, event=None):
+        """Alias pour 's' - show info of nearest point (equivalent to un-named click)"""
+        # Cette méthode doit être implémentée par les subclasses
+        pass
 
     # =======================================================
     # MÉTHODES VIRTUELLES ET UTILITAIRES
@@ -366,6 +413,7 @@ class BasePlotEditor:
     def set_conjugate_visible(self, visible: bool): pass
     def _update_colors(self): pass
     def action_show_info(self, event): pass
+    def action_toggle_stats(self, event=None): self._set_mode("STATS")
     def apply_stats(self, x1, y1, x2, y2): pass
     def apply_stats_vec(self, x1, y1, x2, y2): pass
     def action_toggle_zoom_x(self, event=None): self._set_mode("ZOOM_X")

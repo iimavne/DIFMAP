@@ -25,13 +25,13 @@ class ImprovedLogConsole(QDockWidget):
     }
     
     COLORS = {
-        'info': '#0056b3',
-        'success': '#155724',
-        'warning': '#d97706',   # Orange
-        'error': '#dc3545',     # Rouge
-        'debug': '#495057',
-        'inspect': '#0284c7', 
-        'stats': '#8b5cf6',
+        'info':    '#6890B8',   # bleu-gris (fond sombre)
+        'success': '#4CAF50',   # vert
+        'warning': '#E6A817',   # ambre
+        'error':   '#EF5350',   # rouge vif
+        'debug':   '#607080',   # gris
+        'inspect': '#26C6DA',   # teal
+        'stats':   '#AB8FE0',   # violet doux
     }
     def __init__(self, title="SYSTEM LOG", parent=None):
         super().__init__(title, parent)
@@ -42,19 +42,14 @@ class ImprovedLogConsole(QDockWidget):
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
         
-        # Style moderne et ULTRA LISIBLE
         self.text_edit.setStyleSheet(f"""
             QTextEdit {{
-                background-color: {DesignSystem.SURFACE}; /* Fond légèrement gris pour le contraste */
-                color: {DesignSystem.TEXT};
+                background-color: {DesignSystem.TERMINAL_BG};
+                color: {DesignSystem.TERMINAL_TEXT};
                 font-family: {DesignSystem.FONT_MONO};
-                font-size: 13px; /* <-- TAILLE AUGMENTÉE POUR UNE LECTURE CONFORTABLE */
-                border: 1px solid {DesignSystem.BORDER};
-                border-radius: {DesignSystem.RADIUS_MD};
-                padding: {DesignSystem.SPACING_MD};
-            }}
-            QTextEdit:focus {{
-                border: 2px solid {DesignSystem.PRIMARY};
+                font-size: 12px;
+                border: none;
+                padding: 8px;
             }}
         """)
         

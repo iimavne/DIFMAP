@@ -204,6 +204,7 @@ class RadPlotEditor(BasePlotEditor):
 
     def _update_colors(self):
         couleurs = np.full(len(self.data["u"]), self.base_color, dtype=object)
+        # ✅ Utiliser la taille directement (pas de ** 2)
         base_size = self.marker_sizes[self.current_size_idx]
         tailles = np.full(len(self.data["u"]), base_size, dtype=float)
         
@@ -292,6 +293,7 @@ class RadPlotEditor(BasePlotEditor):
             self._flag_indices(indices_a_supprimer)
 
     def action_show_info(self, event):
+        """Show info of nearest point (pressed 's' on a mouse click)"""
         if event.xdata is None or event.ydata is None or event.inaxes is None: return
         x_s, y_s = event.xdata, event.ydata
         
@@ -318,7 +320,7 @@ class RadPlotEditor(BasePlotEditor):
         lbl_p = "Res Phs" if self.show_residuals else "Phase"
 
         msg = (
-            f"--- Quick Inspect (S) ---\n"
+            f"--- Quick Inspect (s) ---\n"
             f"Antennas : {sub}:{nom_a}-{nom_b}\n"
             f"Radius   : {self.uv_radius[idx]:.2f} Mλ\n"
             f"{lbl_a:<8} : {d_amp[idx]:.4f} Jy\n"
@@ -326,6 +328,27 @@ class RadPlotEditor(BasePlotEditor):
             f"-------------------------"
         )
         if self.info_callback: self.info_callback(msg, level='inspect')
+
+    def action_show_info_nearest(self, event=None):
+        """Keyboard shortcut 's' - show nearest point info"""
+        # Create a synthetic click event on the current plot center if no event provided
+        # This allows 's' key to work even without a specific mouse position
+        if event is None or not hasattr(event, 'xdata'):
+            # Find center of current plot
+            if hasattr(self, 'ax') and self.ax:
+                xl, xr = self.ax.get_xlim()
+                yl, yr = self.ax.get_ylim()
+                # Create a synthetic event with center coords
+                class SyntheticEvent:
+                    def __init__(self, x, y, ax):
+                        self.xdata = (xl + xr) / 2 if x is None else x
+                        self.ydata = (yl + yr) / 2 if y is None else y
+                        self.inaxes = ax
+                event = SyntheticEvent(None, None, self.ax)
+            else:
+                return
+        
+        self.action_show_info(event)
     
     def apply_stats(self, x1, y1, x2, y2):
         xmin, xmax = min(x1, x2), max(x1, x2)
