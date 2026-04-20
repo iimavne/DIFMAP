@@ -47,7 +47,7 @@ class BasePlotEditor:
         self.pan_start = None   # Départ du glissement pour le mode Pan
         self.original_limits = (self.ax.get_xlim(), self.ax.get_ylim())
         self.current_size_idx = 0
-        # ✅ Tailles fines au départ, progression douce: petit(2.5) → moyen(6) → gros(15)
+        # Tailles fines au départ, progression douce: petit(2.5) → moyen(6) → gros(15)
         self.marker_sizes = [2.5, 6.0, 15.0]
         
         # --- Outils Matplotlib ---
@@ -86,7 +86,6 @@ class BasePlotEditor:
             "+": self.action_toggle_crosshair,
             "w": self.action_toggle_channels, "W": self.action_toggle_channels,
             "u": self.action_undo, "ctrl+z": self.action_undo,
-            # ✅ DIFMAP CORRECT: 's' shows nearest point info, 'S' shows stats in area
             "s": self.action_show_info_nearest,
             "S": self.action_toggle_stats,
             "v": self.action_toggle_stats_vec, "V": self.action_toggle_stats_vec,
@@ -106,7 +105,7 @@ class BasePlotEditor:
     # LOGIQUE DE LA SOURIS (Smart Click, Pan, Drag)
     # =======================================================
     def on_mouse_press(self, event):
-        # ✓ Accepte les clics sur TOUS les axes gérés par cet éditeur
+        # Accepte les clics sur TOUS les axes gérés par cet éditeur
         if event.button != 1: return
         if event.inaxes is None: return
         if event.inaxes not in (getattr(self, 'axes_list', [self.ax]) if hasattr(self, 'axes_list') else [self.ax]): 
