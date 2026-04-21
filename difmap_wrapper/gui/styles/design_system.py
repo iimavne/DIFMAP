@@ -86,6 +86,14 @@ class DesignSystem:
 
     @staticmethod
     def get_button_primary():
+        """
+        Feuille QSS pour les boutons d'action principale.
+
+        Returns
+        -------
+        str
+            Style QSS (fond bleu astral, états hover / pressed / disabled).
+        """
         D = DesignSystem
         return f"""
             QPushButton {{
@@ -108,6 +116,14 @@ class DesignSystem:
 
     @staticmethod
     def get_button_secondary():
+        """
+        Feuille QSS pour les boutons secondaires.
+
+        Returns
+        -------
+        str
+            Style QSS (fond gris clair, bordure subtile, hover avec accent primaire).
+        """
         D = DesignSystem
         return f"""
             QPushButton {{
@@ -130,6 +146,14 @@ class DesignSystem:
 
     @staticmethod
     def get_button_danger():
+        """
+        Feuille QSS pour les boutons d'action destructrice.
+
+        Returns
+        -------
+        str
+            Style QSS (fond rouge pâle, texte rouge vif).
+        """
         return """
             QPushButton {
                 background-color: #FDECEA; color: #C62828;
@@ -140,6 +164,14 @@ class DesignSystem:
 
     @staticmethod
     def get_button_success():
+        """
+        Feuille QSS pour les boutons d'action positive (confirmation, sauvegarde).
+
+        Returns
+        -------
+        str
+            Style QSS (fond vert pâle, texte vert).
+        """
         return """
             QPushButton {
                 background-color: #E8F5E9; color: #2E7D32;
@@ -150,6 +182,14 @@ class DesignSystem:
 
     @staticmethod
     def get_tab_style():
+        """
+        Feuille QSS pour les onglets (``QTabBar`` et ``QTabWidget``).
+
+        Returns
+        -------
+        str
+            Style QSS avec onglet actif souligné en bleu astral et fond blanc.
+        """
         D = DesignSystem
         return f"""
             QTabBar::tab {{
@@ -180,6 +220,14 @@ class DesignSystem:
 
     @staticmethod
     def get_toolbar_style():
+        """
+        Feuille QSS pour la barre d'outils (``QToolBar`` et ``QToolButton``).
+
+        Returns
+        -------
+        str
+            Style QSS (fond blanc, hover gris clair, état actif fond bleu astral).
+        """
         D = DesignSystem
         return f"""
             QToolBar {{
@@ -229,6 +277,14 @@ class DesignSystem:
 
     @staticmethod
     def get_scrollbar_style():
+        """
+        Feuille QSS pour la scrollbar verticale.
+
+        Returns
+        -------
+        str
+            Style QSS (barre fine bleu astral, handle avec hover en accent).
+        """
         D = DesignSystem
         return f"""
             QScrollBar:vertical {{
@@ -247,6 +303,17 @@ class DesignSystem:
 
     @staticmethod
     def get_full_app_style():
+        """
+        Feuille QSS globale de l'application.
+
+        Agrège les styles onglets, toolbar, scrollbar, menus et dock widgets
+        en une seule chaîne applicable directement à ``QMainWindow``.
+
+        Returns
+        -------
+        str
+            Feuille de style QSS complète pour l'ensemble de l'application.
+        """
         D = DesignSystem
         return f"""
             QMainWindow, QWidget {{

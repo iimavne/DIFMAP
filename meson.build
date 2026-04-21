@@ -168,6 +168,9 @@ py3.install_sources(
     'difmap_wrapper/visualizer.py',
     'difmap_wrapper/standardizer.py',
     'difmap_wrapper/app.py',
+    'difmap_wrapper/enums.py',
+    'difmap_wrapper/command_parser.py',
+    'difmap_wrapper/manager.py',
     subdir: 'difmap_wrapper'
 )
 
@@ -188,6 +191,7 @@ py3.install_sources(
     'difmap_wrapper/gui/map_widget.py',
     'difmap_wrapper/gui/radplot_widget.py',
     'difmap_wrapper/gui/constants.py',
+    'difmap_wrapper/gui/log_handler.py',
     subdir: 'difmap_wrapper/gui'
 )
 

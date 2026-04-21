@@ -35,14 +35,15 @@ class TestVisualizerInitialization:
         assert hasattr(session.vis, 'mapplot')
         assert hasattr(session.vis, 'plot_image')
     
-    def test_visualizer_different_per_session(self):
-        """Vérifie que chaque session a son propre Visualizer."""
+    def test_visualizer_appartient_a_sa_session(self):
+        """Vérifie que le Visualizer référence bien la session parente."""
         session1 = DifmapSession()
-        session2 = DifmapSession()
-        
-        assert session1.vis is not session2.vis
         assert session1.vis._session is session1
+        session1.cleanup()
+
+        session2 = DifmapSession()
         assert session2.vis._session is session2
+        session2.cleanup()
 
 
 # =====================================================================

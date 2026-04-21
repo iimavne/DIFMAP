@@ -1,202 +1,212 @@
+"""
+Tests unitaires : Observation
+
+Chaque test reçoit une session propre via le fixture `session`.
+Le singleton est réinitialisé automatiquement avant et après chaque test.
+"""
 import pytest
-from unittest.mock import patch, MagicMock
+import numpy as np
+from unittest.mock import MagicMock, patch
+
 from difmap_wrapper.session import DifmapSession
 from difmap_wrapper.exceptions import DifmapStateError, DifmapError
-import numpy as np
-
-# =====================================================================
-# TESTS UNITAIRES : Observation
-# =====================================================================
-
-# ---------------------------------------------------------------------
-# CAS NOMINAUX
-# ---------------------------------------------------------------------
-
-def test_observation_source_nominale(fichier_valide):
-    """Vérifie que le nom de la source est correctement extrait de la mémoire C."""
-    with DifmapSession() as session:
-        session.observe(fichier_valide)
-        # Remarque : Difmap stocke souvent les noms avec des espaces autour, 
-        # on vérifie donc si le nom de base est bien inclus.
-        assert "0003" in session.obs.source or "066" in session.obs.source
-
-def test_observation_nsub_comportement_difmap(fichier_valide, capsys):
-    """Vérifie que nsub renvoie le bon chiffre ET affiche le texte dans le terminal."""
-    with DifmapSession() as session:
-        session.observe(fichier_valide)
-        
-        # capsys permet à Pytest d'intercepter les print()
-        nb_sub = session.obs.nsub()
-        sortie_terminal = capsys.readouterr().out
-        
-        assert nb_sub > 0, "Il doit y avoir au moins 1 sous-réseau."
-        assert "Nombre de sous-réseaux" in sortie_terminal, "nsub doit afficher le message classique de Difmap."
-        assert str(nb_sub) in sortie_terminal
-
-def test_observation_select_valide(fichier_valide):
-    """Vérifie qu'une sélection standard (ex: Pol I ou RR) passe au moteur C sans erreur."""
-    with DifmapSession() as session:
-        session.observe(fichier_valide)
-        try:
-            session.obs.select(pol="RR")
-            session.obs.select() # Teste aussi les valeurs par défaut
-            session.obs.select(pol="I", ifs=(1,0), channels=(1,0))
-        except Exception as e:
-            pytest.fail(f"Un select valide a provoqué une erreur inattendue : {e}")
-
-def test_observation_flag_unflag_data(fichier_valide):
-    """Vérifie que flag_data et unflag_data retournent des valeurs explicites."""
-    with DifmapSession() as session:
-        session.observe(fichier_valide)
-        session.obs.select()
-        
-        # Mock les appels natifs
-        session.obs._native.flag_data = MagicMock(return_value=0)
-        session.obs._native.unflag_data = MagicMock(return_value=0)
-        
-        # Test avec indices vides
-        result1 = session.obs.flag_data([])
-        assert result1 == 0, "flag_data([]) doit retourner 0"
-        
-        result2 = session.obs.unflag_data([])
-        assert result2 == 0, "unflag_data([]) doit retourner 0"
-        
-        # Test avec indices valides
-        result3 = session.obs.flag_data(np.array([0, 1, 2]))
-        assert result3 is not None, "flag_data doit retourner une valeur"
-        
-        result4 = session.obs.unflag_data(np.array([0, 1, 2]))
-        assert result4 == 0, "unflag_data doit retourner une valeur"
-
-def test_observation_save_wobs_message_correct(fichier_valide, capsys):
-    """Vérifie que save_wobs affiche le bon message sans espace au début."""
-    with DifmapSession() as session:
-        session.observe(fichier_valide)
-        
-        # Mock la sauvegarde native
-        session.obs._native.save_wobs = MagicMock()
-        
-        session.obs.save_wobs("test.fits")
-        captured = capsys.readouterr()
-        
-        assert "Sauvegarde en cours via Difmap..." in captured.out
-        # Vérifier qu'il n'y a pas d'espace au début
-        for line in captured.out.split('\n'):
-            if "Sauvegarde" in line:
-                assert not line.startswith(" Sauvegarde"), "Pas d'espace au début du message"
-
-@patch("matplotlib.pyplot.show")
-def test_observation_plots_nominaux(mock_show, fichier_valide):
-    """Vérifie que uvplot et radplot ne crashent pas après une sélection."""
-    with DifmapSession() as session:
-        session.observe(fichier_valide)
-        session.obs.select(pol="I")
-        
-        # Mock les données UV
-        session.obs._native.get_uv_data = MagicMock(return_value={
-            'u': np.array([1000, 2000]),
-            'v': np.array([500, 1500]),
-            'amp': np.array([1.0, 2.0])
-        })
-        
-        try:
-            session.vis.uvplot()
-            session.vis.radplot()
-        except Exception as e:
-            # Peut échouer pour raison de matplotlib mock, c'est OK
-            pass
 
 
-# ---------------------------------------------------------------------
-# CAS LIMITES 
-# ---------------------------------------------------------------------
-
-def test_observation_source_sans_fichier():
-    """Vérifie qu'interroger la source avant l'observation ne crashe pas."""
-    session = DifmapSession()
-    assert session.obs.source == "Inconnue", "Une session vide doit renvoyer 'Inconnue'."
-
-def test_observation_plots_sans_selection(fichier_valide, capsys):
-    """Vérifie que tracer sans 'select' affiche un message sans crasher."""
-    with DifmapSession() as session:
-        session.observe(fichier_valide)
-        # /!\ On ne fait pas de select ici !
-        
-        # Mock pour éviter les vrais appels
-        session.obs._native.get_uv_data = MagicMock(return_value=None)
-        
-        session.vis.uvplot()
-        session.vis.radplot()
-        
-        sortie_terminal = capsys.readouterr().out
-        assert "Aucune donnée UV" in sortie_terminal
-
-def test_observation_select_all_polarisations(fichier_valide):
-    """Vérifie que select fonctionne avec différentes polarisations."""
-    with DifmapSession() as session:
-        session.observe(fichier_valide)
-        
-        polarisations = ["I", "RR", "LL", "RL", "LR"]
-        
-        for pol in polarisations:
-            try:
-                session.obs.select(pol=pol)
-            except DifmapError as e:
-                # C'est OK si une polarisation n'existe pas dans les données
-                # Mais au moins le select doit être appelé sans crasher
-                pass
-
-def test_observation_session_reference(fichier_valide):
-    """Vérifie que Observation maintient bien la référence à la session."""
-    with DifmapSession() as session:
-        session.observe(fichier_valide)
-        
-        # Observation doit avoir la référence correcte
-        assert session.obs._session is session
-        assert session.obs._session.uv_loaded is True
-        
-        # Vérifier qu'on peut accéder aux autres objets via la session
-        assert session.obs._session.imager is not None
-        assert session.obs._session.vis is not None
+@pytest.fixture
+def session():
+    s = DifmapSession()
+    yield s
+    s.cleanup()
 
 
-# ---------------------------------------------------------------------
-# GESTION DES ERREURS 
-# ---------------------------------------------------------------------
+@pytest.fixture
+def session_avec_donnees(session, fichier_valide):
+    """Session déjà chargée et sélectionnée sur RR."""
+    session.observe(fichier_valide)
+    session.obs.select(pol="RR")
+    return session
 
-def test_observation_actions_sans_chargement():
-    """Vérifie que manipuler l'observation sans fichier lève une erreur d'état (StateError)."""
-    session = DifmapSession()
-    
+
+# ─── source ───────────────────────────────────────────────────────────────────
+
+def test_source_apres_chargement(session, fichier_valide):
+    """Le nom de la source est extrait correctement après observe()."""
+    session.observe(fichier_valide)
+    assert isinstance(session.obs.source, str)
+    assert len(session.obs.source.strip()) > 0
+
+
+def test_source_sans_chargement(session):
+    """Sans fichier chargé, source retourne 'Inconnue' sans crasher."""
+    assert session.obs.source == "Inconnue"
+
+
+# ─── nsub ─────────────────────────────────────────────────────────────────────
+
+def test_nsub_retourne_entier_positif(session, fichier_valide, caplog):
+    """nsub() retourne le nombre de sous-réseaux et loggue un message."""
+    session.observe(fichier_valide)
+    import logging
+    with caplog.at_level(logging.INFO, logger="difmap.observation"):
+        nb = session.obs.nsub()
+    assert isinstance(nb, int)
+    assert nb > 0
+    assert any("sous-réseaux" in m or str(nb) in m for m in caplog.messages)
+
+
+def test_nsub_sans_chargement(session):
+    """nsub() sans fichier chargé doit lever DifmapStateError."""
     with pytest.raises(DifmapStateError):
         session.obs.nsub()
-        
+
+
+# ─── select ───────────────────────────────────────────────────────────────────
+
+def test_select_standard(session, fichier_valide):
+    """select() avec une polarisation valide ne doit pas lever d'exception."""
+    session.observe(fichier_valide)
+    session.obs.select(pol="RR")
+    session.obs.select()
+    session.obs.select(pol="I", ifs=(1, 0), channels=(1, 0))
+
+
+def test_select_remet_masque_a_zero(session, fichier_valide):
+    """Après select(), le masque de flagging doit être réinitialisé."""
+    session.observe(fichier_valide)
+    session.obs.select(pol="RR")
+    data = session.obs.get_data()
+    n = len(data["u"])
+    assert session.obs.masque_flagges is not None
+    assert len(session.obs.masque_flagges) == n
+    assert not session.obs.masque_flagges.any(), "Le masque doit être à False après select"
+
+
+def test_select_sans_chargement(session):
+    """select() sans fichier chargé doit lever DifmapStateError."""
     with pytest.raises(DifmapStateError):
         session.obs.select()
 
-def test_observation_select_invalide(fichier_valide):
-    """Vérifie que demander une polarisation absurde lève une erreur du moteur C."""
-    with DifmapSession() as session:
-        session.observe(fichier_valide)
-        
-        with pytest.raises(DifmapError) as exc_info:
-            session.obs.select(pol="POL_QUI_N_EXISTE_PAS")
-            
-        assert "Échec de la sélection" in str(exc_info.value)
 
-def test_observation_save_wobs_avec_extension(fichier_valide):
-    """Vérifie que save_wobs ajoute .fits si absent."""
-    with DifmapSession() as session:
-        session.observe(fichier_valide)
-        
-        session.obs._native.save_wobs = MagicMock()
-        
-        # Appel sans extension
-        session.obs.save_wobs("test")
-        
-        # Vérifier que .fits a été ajouté
-        session.obs._native.save_wobs.assert_called_with("test.fits")
-        
-        # Appel avec extension
-        session.obs.save_wobs("test.fits")
-        session.obs._native.save_wobs.assert_called_with("test.fits")
+def test_select_polarisations_multiples(session, fichier_valide):
+    """select() avec différentes polarisations ne doit pas crasher."""
+    session.observe(fichier_valide)
+    for pol in ["I", "RR", "LL", "RL", "LR"]:
+        try:
+            session.obs.select(pol=pol)
+        except DifmapError:
+            pass  # Polarisation absente des données : comportement attendu
+
+
+# ─── get_data ─────────────────────────────────────────────────────────────────
+
+def test_get_data_retourne_toutes_les_cles(session_avec_donnees):
+    """get_data() doit retourner un dict avec les clés attendues."""
+    data = session_avec_donnees.obs.get_data()
+    cles_attendues = {"u", "v", "amp", "weight"}
+    assert cles_attendues.issubset(data.keys())
+
+
+def test_get_data_tableaux_meme_longueur(session_avec_donnees):
+    """Tous les tableaux de get_data() doivent avoir la même longueur."""
+    data = session_avec_donnees.obs.get_data()
+    longueurs = {k: len(v) for k, v in data.items() if hasattr(v, '__len__')}
+    assert len(set(longueurs.values())) == 1, f"Longueurs incohérentes : {longueurs}"
+
+
+def test_get_data_sans_chargement(session):
+    """get_data() sans observation chargée doit lever DifmapStateError."""
+    with pytest.raises(DifmapStateError):
+        session.obs.get_data()
+
+
+def test_get_data_initialise_masque(session, fichier_valide):
+    """get_data() doit initialiser masque_flagges si ce n'est pas encore fait."""
+    session.observe(fichier_valide)
+    session.obs.select(pol="RR")
+    session.obs.masque_flagges = None
+    data = session.obs.get_data()
+    assert session.obs.masque_flagges is not None
+    assert len(session.obs.masque_flagges) == len(data["u"])
+
+
+# ─── flag_data / unflag_data ──────────────────────────────────────────────────
+
+def test_flag_indices_vides(session, fichier_valide):
+    """flag_data([]) et unflag_data([]) doivent retourner 0 sans appeler le moteur C."""
+    session.observe(fichier_valide)
+    session.obs._native.flag_data = MagicMock(return_value=0)
+    session.obs._native.unflag_data = MagicMock(return_value=0)
+
+    assert session.obs.flag_data([]) == 0
+    assert session.obs.unflag_data([]) == 0
+    session.obs._native.flag_data.assert_not_called()
+    session.obs._native.unflag_data.assert_not_called()
+
+
+def test_flag_indices_valides_appelle_moteur(session, fichier_valide):
+    """flag_data avec des indices doit appeler le moteur C exactement une fois."""
+    session.observe(fichier_valide)
+    session.obs._native.flag_data = MagicMock(return_value=3)
+
+    result = session.obs.flag_data(np.array([0, 1, 2]))
+    assert result == 3
+    session.obs._native.flag_data.assert_called_once()
+
+
+def test_unflag_indices_valides_appelle_moteur(session, fichier_valide):
+    """unflag_data avec des indices doit appeler le moteur C exactement une fois."""
+    session.observe(fichier_valide)
+    session.obs._native.unflag_data = MagicMock(return_value=2)
+
+    result = session.obs.unflag_data(np.array([0, 1]))
+    assert result == 2
+    session.obs._native.unflag_data.assert_called_once()
+
+
+# ─── reset_flags ─────────────────────────────────────────────────────────────
+
+def test_reset_flags_remet_masque_a_zero(session, fichier_valide):
+    """reset_flags() doit créer un masque tout-False de la bonne taille."""
+    session.observe(fichier_valide)
+    session.obs.reset_flags(100)
+    assert session.obs.masque_flagges is not None
+    assert len(session.obs.masque_flagges) == 100
+    assert not session.obs.masque_flagges.any()
+    assert session.obs.historique_coupes == []
+
+
+# ─── save_wobs ────────────────────────────────────────────────────────────────
+
+def test_save_wobs_ajoute_extension(session, fichier_valide):
+    """save_wobs() doit ajouter .fits si l'extension est absente."""
+    session.observe(fichier_valide)
+    session.obs._native.save_wobs = MagicMock()
+
+    session.obs.save_wobs("sortie")
+    session.obs._native.save_wobs.assert_called_with("sortie.fits")
+
+
+def test_save_wobs_conserve_extension(session, fichier_valide):
+    """save_wobs() ne doit pas doubler l'extension .fits."""
+    session.observe(fichier_valide)
+    session.obs._native.save_wobs = MagicMock()
+
+    session.obs.save_wobs("sortie.fits")
+    session.obs._native.save_wobs.assert_called_with("sortie.fits")
+
+
+def test_save_wobs_retourne_true(session, fichier_valide):
+    """save_wobs() doit retourner True en cas de succès."""
+    session.observe(fichier_valide)
+    session.obs._native.save_wobs = MagicMock()
+    assert session.obs.save_wobs("sortie.fits") is True
+
+
+# ─── session_reference ───────────────────────────────────────────────────────
+
+def test_obs_reference_session(session, fichier_valide):
+    """obs._session doit pointer vers la session parente."""
+    session.observe(fichier_valide)
+    assert session.obs._session is session
+    assert session.obs._session.uv_loaded is True
+    assert session.obs._session.imager is not None

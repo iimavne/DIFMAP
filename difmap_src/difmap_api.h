@@ -36,4 +36,6 @@ int native_mapsize(int nx, float cellsize);
 int native_invert(void);
 int native_wfits(const char* filename);
 
+const char* get_observation_polarization(void);
+
 #endif

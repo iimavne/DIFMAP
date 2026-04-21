@@ -1,35 +1,75 @@
 # difmap_wrapper/session.py
 import difmap_native
+
 from .imaging import DifmapImager
 from .observation import Observation
 from .exceptions import DifmapStateError, DifmapError
-from .visualizer import Visualizer
 
-class DifmapSession:
+
+class _SingletonMeta(type):
+    """Empêche la création de deux sessions simultanées (le moteur C est global)."""
+    _instance = None
+
+    def __call__(cls, *args, **kwargs):
+        if cls._instance is not None:
+            raise DifmapStateError(
+                "Une instance DifmapSession est déjà active dans ce processus. "
+                "Le moteur C utilise des variables globales : deux sessions "
+                "simultanées causeraient une corruption mémoire (segfault).\n"
+                "→ Réutilisez l'instance existante, ou appelez session.cleanup() "
+                "avant d'en créer une nouvelle."
+            )
+        instance = super().__call__(*args, **kwargs)
+        cls._instance = instance
+        return instance
+
+
+class DifmapSession(metaclass=_SingletonMeta):
     """
-    Façade principale pour piloter l'environnement Difmap en toute sécurité.
-    
-    Cette classe gère le cycle de vie des données (chargement, nettoyage) 
-    et fait le pont avec le moteur C sous-jacent. Elle est conçue pour être 
-    utilisée comme un Context Manager afin de garantir l'absence de fuites mémoire.
+    Point d'entrée principal pour analyser des données radio-interférométriques.
+
+    Charge des fichiers de visibilités FITS/UVFITS et donne accès aux données
+    brutes, à l'imagerie et aux graphiques. Une seule instance peut être active
+    à la fois (le moteur C utilise une mémoire globale).
+
+    S'utilise de préférence comme gestionnaire de contexte pour garantir
+    la libération des ressources.
+
+    Attributes
+    ----------
+    obs : Observation
+        Données UV, sélection de polarisation, flagging.
+    imager : DifmapImager
+        Imagerie : grille, pondération, transformée de Fourier.
+    vis : Visualizer
+        Graphiques statiques (couverture UV, radplot, carte).
 
     Examples
     --------
-    >>> from difmap_wrapper.session import DifmapSession
+    Chargement et accès aux données avec gestionnaire de contexte :
+
     >>> with DifmapSession() as session:
-    >>>     session.observe("data/0003-066.fits")
-    >>>     # Traitement des données ici...
+    ...     session.observe("data/source.uvfits")
+    ...     session.obs.select(pol="RR")
+    ...     data = session.obs.get_data()
+    ...     print(data["amp"].mean())
+    0.312
+
+    Utilisation sans `with` — cleanup manuel obligatoire :
+
+    >>> session = DifmapSession()
+    >>> session.observe("data/source.uvfits")
+    >>> # ... travail ...
+    >>> session.cleanup()
     """
-    
-    
+
     def __init__(self):
-        from .visualizer import Visualizer  # Import local pour éviter circular import
-        
         self.uv_loaded = False
         self._native = difmap_native
-        # On instancie les sous-objets en leur passant la session
         self.obs = Observation(self)
         self.imager = DifmapImager(self)
+
+        from .visualizer import Visualizer
         self.vis = Visualizer(self)
 
     def __enter__(self):
@@ -38,57 +78,58 @@ class DifmapSession:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.cleanup()
 
-    def observe(self, filepath: str):
+    def observe(self, filepath: str) -> None:
         """
-    Charge un fichier FITS contenant des visibilités dans la mémoire du moteur C.
+        Charge un fichier de visibilités en mémoire.
 
-    Si une observation est déjà chargée, cette méthode nettoie la mémoire 
-    et réinitialise les filtres (comme le taper) avant de charger le nouveau fichier.
+        Si une observation était déjà active, elle est remplacée proprement.
+        Après cet appel, ``session.obs.select()`` doit être appelé pour
+        choisir la polarisation et activer les données.
 
-    Parameters
-    ----------
-    filepath : str
-        Le chemin absolu ou relatif vers le fichier FITS (ex: '.SPLIT.1' ou '.fits').
+        Parameters
+        ----------
+        filepath : str
+            Chemin vers le fichier FITS ou UVFITS.
+            Exemple : ``"data/source.uvfits"``.
 
-    Raises
-    ------
-    DifmapError
-        Si le fichier est introuvable, corrompu, ou illisible par le moteur C.
+        Raises
+        ------
+        DifmapError
+            Si le fichier est introuvable, corrompu ou dans un format
+            non reconnu.
 
-    Examples
-    --------
-    >>> with DifmapSession() as session:
-    >>>     session.observe("data/0003-066.fits")
-    >>>     print(session.uv_loaded)
-    True
-    """
+        Examples
+        --------
+        >>> session.observe("data/source.uvfits")
+        >>> print(session.obs.source)
+        'J0003-066'
+        """
+        import os
+        if not os.path.isfile(filepath):
+            raise DifmapError(f"Fichier introuvable : {filepath}")
         if self.uv_loaded:
-            self.cleanup()
+            self._native_cleanup()
             self.imager.uvtaper(0, 0)
-            
-        # 1. On lance le moteur C. 
-        # Il va renvoyer un code d'avertissement (les dates), mais on l'ignore 
-        # car on sait que c'est un faux positif lié aux vieux fichiers.
-        self._native.observe(filepath)
-        
-        # /!\ Attention : On ne peut pas vérifier les données avec get_uv_data() ici !
-        # Le moteur C a besoin d'un appel à select() avant d'exposer la mémoire.
+        ret = self._native.observe(filepath)
+        if ret != 0:
+            raise DifmapError(f"Échec du chargement : {filepath} (format non reconnu ou fichier corrompu)")
         self.uv_loaded = True
 
-    def cleanup(self):
-        """
-    Libère les ressources mémoire et réinitialise l'état de la session.
-
-    Cette méthode est appelée automatiquement à la sortie du bloc `with`. 
-    Il est rare de devoir l'appeler manuellement, sauf si la session est 
-    gérée hors d'un Context Manager.
-
-    Examples
-    --------
-    >>> session = DifmapSession()
-    >>> session.observe("data/0003-066.fits")
-    >>> session.cleanup()
-    >>> print(session.uv_loaded)
-    False
-    """
+    def _native_cleanup(self) -> None:
+        """Remet à zéro l'état interne sans libérer le slot singleton."""
         self.uv_loaded = False
+
+    def cleanup(self) -> None:
+        """
+        Libère les ressources et permet de créer une nouvelle session.
+
+        Appelé automatiquement à la sortie d'un bloc ``with``.
+        Après cet appel, une nouvelle ``DifmapSession()`` peut être instanciée.
+
+        Examples
+        --------
+        >>> session.cleanup()
+        >>> session2 = DifmapSession()   # OK, le slot est libéré
+        """
+        self.uv_loaded = False
+        type(self)._instance = None

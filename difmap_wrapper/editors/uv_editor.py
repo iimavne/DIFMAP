@@ -1,164 +1,334 @@
+# difmap_wrapper/editors/uv_editor.py
+import logging
 import numpy as np
 import matplotlib.pyplot as plt
+
+from PyQt6.QtCore import QTimer
 from .base import BasePlotEditor
 from difmap_wrapper.gui.styles.design_system import DesignSystem
 
+logger = logging.getLogger("difmap.uv_editor")
+
+
 class UVPlotEditor(BasePlotEditor):
     """
-    Éditeur spécifique aux Visibilités dans le plan U/V.
+    Éditeur interactif pour les visibilités dans le plan U/V.
     """
 
-    def __init__(self, observation, fig, ax, data, scat_main, scat_conj, base_color, info_callback=None, save_callback=None, sync_callback=None):
-        super().__init__(observation, fig, ax, data, info_callback, save_callback, sync_callback)
-        self.scat_main = scat_main
-        self.scat_conj = scat_conj
+    def __init__(self, observation, fig, ax, data, base_color,
+                 save_callback=None, sync_callback=None):
+        """
+        Parameters
+        ----------
+        observation : Observation
+            Objet portant le masque de flagging.
+        fig : matplotlib.figure.Figure
+            Figure Matplotlib partagée avec le widget.
+        ax : matplotlib.axes.Axes
+            Axe UV principal.
+        data : dict
+            Données UV brutes.
+        base_color : str
+            Couleur des points non-flaggués (ex. :attr:`DesignSystem.PLOT_DATA`).
+        save_callback : callable, optional
+            Fonction retournant le chemin de sauvegarde.
+        sync_callback : callable, optional
+            Fonction de synchronisation état → MainWindow.
+        """
         self.base_color = base_color
+        u = data['u'] / 1e6
+        v = data['v'] / 1e6
+        self.scat_main = ax.scatter(u,  v,  s=1, color=base_color, alpha=0.5, edgecolors='none')
+        self.scat_conj = ax.scatter(-u, -v, s=1, color=base_color, alpha=0.5, edgecolors='none')
+        self.scat_conj.set_visible(False)
 
-        # Ajout du raccourci purement UVPlot (Points conjugués)
+        super().__init__(observation, fig, ax, data, save_callback, sync_callback)
+
         self.raccourcis_autorises["%"] = self.action_toggle_conjugate
 
+    # =========================================================
+    # FLAGGING
+    # =========================================================
+
     def apply_cut(self, x1, y1, x2, y2):
-        """Flagge les points dans la boîte (u1,v1) à (u2,v2)."""
+        """
+        Flagge les visibilités dans la boîte (u1,v1)→(u2,v2), conjugués inclus.
+
+        Parameters
+        ----------
+        x1, y1 : float
+            Coin supérieur gauche de la boîte en Mλ.
+        x2, y2 : float
+            Coin inférieur droit de la boîte en Mλ.
+        """
         u_min, u_max = min(x1, x2), max(x1, x2)
         v_min, v_max = min(y1, y2), max(y1, y2)
-        
+
         u_data = self.data["u"] / 1e6
         v_data = self.data["v"] / 1e6
-        
-        # Trouver points dans la boîte - plein ET conjugués
+
         mask_main = (u_data >= u_min) & (u_data <= u_max) & (v_data >= v_min) & (v_data <= v_max)
         mask_conj = (-u_data >= u_min) & (-u_data <= u_max) & (-v_data >= v_min) & (-v_data <= v_max)
-        mask_box = mask_main | mask_conj
+        masque_final = (mask_main | mask_conj) & (~self.obs.masque_flagges)
+        indices = np.where(masque_final)[0]
+
+        if len(indices) > 0:
+            logger.info(
+                f"✂ {len(indices)} visibilités flaggées (UV plot).",
+                extra={'difmap_level': 'success'}
+            )
+            self._flag_indices(indices)
+
+    def _apply_interactive_flag(self, x1, y1, x2, y2, is_flag: bool):
+        """
+        Flagging interactif sur le plan UV avec détection du bouton de souris.
         
-        # Ne pas reflagge points déjà flaggés
-        masque_final = mask_box & (~self.masque_flagges)
-        indices_a_supprimer = np.where(masque_final)[0]
+        Gauche (is_flag=True) : FLAG
+        Droit (is_flag=False) : UNFLAG
         
-        if len(indices_a_supprimer) > 0:
-            print(f"[CUT] {len(indices_a_supprimer)} visibilités flaggées (UV plot)")
-            self._flag_indices(indices_a_supprimer)
+        Gère les conjugués correctement : un point et son symétrique (-u, -v) 
+        correspondent au même indice de visibilité.
+        """
+        u_min, u_max = min(x1, x2), max(x1, x2)
+        v_min, v_max = min(y1, y2), max(y1, y2)
+
+        u_data = self.data["u"] / 1e6
+        v_data = self.data["v"] / 1e6
+
+        # Points dans la boîte (y compris conjugués)
+        mask_main = (u_data >= u_min) & (u_data <= u_max) & (v_data >= v_min) & (v_data <= v_max)
+        mask_conj = (-u_data >= u_min) & (-u_data <= u_max) & (-v_data >= v_min) & (-v_data <= v_max)
+        masque_intersection = mask_main | mask_conj
+
+        if is_flag:
+            # FLAGUER : sélectionner les points non-flaguées
+            masque_final = masque_intersection & (~self.obs.masque_flagges)
+            indices = np.where(masque_final)[0]
+            if len(indices) > 0:
+                self._flag_indices(indices)
+                logger.info(f"🚩 {len(indices)} points FLAG (souris gauche)", 
+                           extra={'difmap_level': 'success'})
+        else:
+            # DÉ-FLAGUER : sélectionner les points flaguées
+            masque_final = masque_intersection & self.obs.masque_flagges
+            indices = np.where(masque_final)[0]
+            if len(indices) > 0:
+                self.obs.unflag_data(indices)
+                self.obs.masque_flagges[indices] = False
+                self.obs.historique_coupes.append(indices)
+                self._update_colors()
+                logger.info(f"🔓 {len(indices)} points UNFLAG (souris droit)", 
+                           extra={'difmap_level': 'success'})
+                if self.sync_callback:
+                    self.sync_callback()
+
+    def apply_external_cut(self, indices):
+        """
+        Reçoit une demande de flagging depuis un autre widget (ex. Radplot).
+
+        Filtre les indices déjà flaggués avant d'appeler ``_flag_indices()``.
+
+        Parameters
+        ----------
+        indices : array-like of int
+            Indices de visibilités à flagguer.
+        """
+        if len(indices) == 0:
+            return
+        indices_valides = [i for i in indices if not self.obs.masque_flagges[i]]
+        if not indices_valides:
+            return
+        indices_np = np.array(indices_valides, dtype=np.int32)
+        self.obs.flag_data(indices_np)
+        self.obs.masque_flagges[indices_np] = True
+        self.obs.historique_coupes.append(indices_np)
+        self._update_colors()
+        logger.info(
+            f"✂ {len(indices_np)} visibilités flaggées depuis le Radplot.",
+            extra={'difmap_level': 'success'}
+        )
+        if self.sync_callback:
+            self.sync_callback()
+
+    # =========================================================
+    # AFFICHAGE
+    # =========================================================
 
     def update_marker_size(self, size):
-        """Met à jour la taille des points en temps réel via le slider."""
-        # ✅ Utiliser la taille directement (pas de ** 2)
+        """
+        Met à jour la taille des marqueurs sur les deux scatters (main et conjugué).
+
+        Parameters
+        ----------
+        size : float
+            Taille en points² appliquée aux deux ``PathCollection``.
+        """
         self.scat_main.set_sizes([size])
         self.scat_conj.set_sizes([size])
-        self.fig.canvas.draw_idle() 
-
-    def set_conjugate_visible(self, visible: bool):
-        """Affiche ou masque les points symétriques en suivant la Checkbox."""
-        self.scat_conj.set_visible(visible)
-        etat = "affichés" if visible else "masqués"
-        msg = f"Points conjugués {etat}." 
-        if self.info_callback:
-            self.info_callback(msg, level='info')
         self.fig.canvas.draw_idle()
 
-    def action_toggle_conjugate(self, event):
+    def set_conjugate_visible(self, visible: bool):
+        """
+        Affiche ou masque les points conjugués (−u, −v). Appelé par la checkbox.
+
+        Parameters
+        ----------
+        visible : bool
+            ``True`` pour afficher ``scat_conj``.
+        """
+        self.scat_conj.set_visible(visible)
+        etat = "affichés" if visible else "masqués"
+        logger.info("Points conjugués %s.", etat)
+        self.fig.canvas.draw_idle()
+
+    def action_toggle_conjugate(self, _event=None):
+        """
+        Bascule la visibilité des points conjugués et notifie l'UI. Touche ``%``.
+
+        Parameters
+        ----------
+        _event : optional
+            Ignoré.
+        """
         is_visible = self.scat_conj.get_visible()
         self.scat_conj.set_visible(not is_visible)
         etat = "affichés" if not is_visible else "masqués"
-        print(f"[VIEW] Points conjugues {etat}.")
-        # ✅ Sync checkbox state back to UI
+        logger.info(f"Points conjugués {etat}.")
         if self.sync_callback:
             self.sync_callback({'show_conjugate': not is_visible})
         self.fig.canvas.draw_idle()
 
-    # Méthodes requises pour les checkboxes globales (même si pas implémentées pour UV)
-    def set_model_visible(self, visible: bool):
-        """No-op pour UV plot (pas de modèle affiché)."""
-        if self.info_callback:
-            self.info_callback("[INFO] Model display not available for UV plot", level='info')
+    def action_redisplay(self, _event=None):
+        """
+        Clignotement visuel pour confirmer le rafraîchissement. Touche ``L``.
 
-    def set_residuals_visible(self, visible: bool):
-        """No-op pour UV plot (pas de résidus affichés)."""
-        if self.info_callback:
-            self.info_callback("[INFO] Residuals display not available for UV plot", level='info')
+        Masque temporairement les scatter plots (50 ms) via ``QTimer``
+        pour éviter le blocage de l'interface avec ``plt.pause()``.
 
-    def set_show_errors(self, visible: bool):
-        """No-op pour UV plot (pas d'erreurs affichées)."""
-        if self.info_callback:
-            self.info_callback("[INFO] Error plot not available for UV plot", level='info')
-
-    def action_redisplay(self, event):
-        print("[VIEW] Rafraichissement complet du graphique...")
-        vis_m = self.scat_main.get_visible()
-        vis_c = self.scat_conj.get_visible()
+        Parameters
+        ----------
+        _event : optional
+            Ignoré.
+        """
+        vis_m, vis_c = self.scat_main.get_visible(), self.scat_conj.get_visible()
         self.scat_main.set_visible(False)
         self.scat_conj.set_visible(False)
+        self.fig.canvas.draw_idle()
         
-        self.fig.canvas.draw()
-        plt.pause(0.05) # Effet de clignotement pour prouver le refresh
-        
-        self.scat_main.set_visible(vis_m)
-        self.scat_conj.set_visible(vis_c)
-        self._update_colors()
+        # Remplacement de plt.pause() par une fonction asynchrone PyQt
+        def restore_visibility():
+            if not self.scat_main or not self.scat_conj: return
+            self.scat_main.set_visible(vis_m)
+            self.scat_conj.set_visible(vis_c)
+            self._update_colors()
+            
+        QTimer.singleShot(50, restore_visibility)
 
     def _update_colors(self):
-        couleurs = np.full(len(self.data["u"]), self.base_color, dtype=object)
-        sub_actif = self.liste_subarrays[self.index_subarray_actuel]
-        
+        """
+        Met à jour les couleurs, tailles et positions des scatter plots UV.
+
+        Applique le focus antenne (rouge sur les baselines de l'antenne cible),
+        masque les points flaggués via NaN et met à jour le titre de l'axe.
+        Utilise :meth:`BasePlotEditor._build_focus_colors` (M1).
+        """
+        couleurs, sub_actif = self._build_focus_colors()
+
         if self.index_antenne_actuelle >= 0:
             ant_cible = self.antennes_par_subarray[sub_actif][self.index_antenne_actuelle]
-            vrai_nom = self.noms_antennes.get(ant_cible, f"Ant {ant_cible}")
-            m = (self.data["subarray"] == sub_actif) & ((self.data["tel_a"] == ant_cible) | (self.data["tel_b"] == ant_cible))
-            
-            couleurs[m] = DesignSystem.PLOT_FOCUS
-            self.ax.set_title(f"FOCUS : {sub_actif}:{vrai_nom}", color=DesignSystem.PLOT_FOCUS, fontsize=10)
+            vrai_nom  = self.noms_antennes.get(ant_cible, f"Ant {ant_cible}")
+            self.ax.set_title(
+                f"FOCUS : {sub_actif}:{vrai_nom}",
+                color=DesignSystem.PLOT_FOCUS, fontsize=10
+            )
         else:
-            self.ax.set_title(f"EXPLORATION : SUBARRAY {sub_actif}", color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10)
+            self.ax.set_title(
+                f"EXPLORATION : SUBARRAY {sub_actif}",
+                color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10
+            )
 
-        # Cacher les flaggés
-        off_m = np.column_stack((self.data["u"] / 1e6, self.data["v"] / 1e6))
-        off_c = np.column_stack((-self.data["u"] / 1e6, -self.data["v"] / 1e6))
-        off_m[self.masque_flagges] = [np.nan, np.nan]
-        off_c[self.masque_flagges] = [np.nan, np.nan]
+        u = self.data["u"] / 1e6
+        v = self.data["v"] / 1e6
+        off_m = np.column_stack((u,  v))
+        off_c = np.column_stack((-u, -v))
+        off_m[self.obs.masque_flagges] = [np.nan, np.nan]
+        off_c[self.obs.masque_flagges] = [np.nan, np.nan]
 
         self.scat_main.set_offsets(off_m)
         self.scat_conj.set_offsets(off_c)
-        
         self.scat_main.set_facecolors(couleurs)
         self.scat_main.set_edgecolors('none')
         self.scat_main.set_alpha(0.5)
-        
         self.scat_conj.set_facecolors(couleurs)
         self.scat_conj.set_edgecolors('none')
         self.scat_conj.set_alpha(0.5)
-  
         self.fig.canvas.draw_idle()
-        
-    def action_show_info(self, event):
-        """Récupère l'information exacte (Touche S ou Clic Gauche)."""
-        if event.xdata is None or event.ydata is None: return
 
+    # =========================================================
+    #  Observer — rafraîchissement complet à la demande
+    # =========================================================
+
+    def refresh_data(self) -> None:
+        """
+        Surchargé pour mettre à jour les offsets des scatters après
+        un notify_data_changed() (calibration, gain apply, etc.).
+        """
+        self.data = self.obs.get_data()
+        self._refresh_telescope_names()
+        # Mise à jour des scatters en place (pas de recréation)
+        u = self.data['u'] / 1e6
+        v = self.data['v'] / 1e6
+        self.scat_main.set_offsets(np.column_stack([u, v]))
+        self.scat_conj.set_offsets(np.column_stack([-u, -v]))
+        self._update_colors()
+
+    # =========================================================
+    # INSPECTION
+    # =========================================================
+
+    def action_show_info(self, event, strict=True):
+        """
+        Affiche les informations de la visibilité la plus proche du clic.
+
+        Parameters
+        ----------
+        event : matplotlib.backend_bases.MouseEvent
+            Événement portant ``xdata`` et ``ydata`` en Mλ.
+        strict : bool, optional
+            Si ``True``, ignore les clics à plus de 1,5 % de la largeur de la vue.
+        """
+        if getattr(event, 'xdata', None) is None or getattr(event, 'ydata', None) is None:
+            return
         u_s, v_s = event.xdata, event.ydata
         u_d, v_d = self.data["u"] / 1e6, self.data["v"] / 1e6
-        tolerance_sq = ((self.ax.get_xlim()[1] - self.ax.get_xlim()[0]) * 0.015) ** 2
 
         dist_main = (u_d - u_s) ** 2 + (v_d - v_s) ** 2
         dist_conj = (-u_d - u_s) ** 2 + (-v_d - v_s) ** 2
-
         min_m, min_c = np.min(dist_main), np.min(dist_conj)
-        if min(min_m, min_c) > tolerance_sq: return
+        
+        if strict:
+            tolerance_sq = ((self.ax.get_xlim()[1] - self.ax.get_xlim()[0]) * 0.015) ** 2
+            if min(min_m, min_c) > tolerance_sq:
+                return
 
         idx = np.argmin(dist_main) if min_m < min_c else np.argmin(dist_conj)
-        if self.masque_flagges[idx]: return
+        if self.obs.masque_flagges[idx]:
+            return
 
-        # BLINDAGE ANTI-CRASH (utilisation de .get())
-        sub = self.data.get("subarray", [0]*len(u_d))[idx]
-        t_a = self.data.get("tel_a", [0]*len(u_d))[idx]
-        t_b = self.data.get("tel_b", [0]*len(u_d))[idx]
+        sub   = self.data.get("subarray", [0] * len(u_d))[idx]
+        t_a   = self.data.get("tel_a",    [0] * len(u_d))[idx]
+        t_b   = self.data.get("tel_b",    [0] * len(u_d))[idx]
         nom_a = self.noms_antennes.get(t_a, f"An{t_a}")
         nom_b = self.noms_antennes.get(t_b, f"An{t_b}")
-        
-        if_no = self.data.get("if_no", [1]*len(u_d))[idx]
+        if_no = self.data.get("if_no", [1] * len(u_d))[idx]
         ut_raw = self.data.get("time", np.zeros(len(u_d)))[idx]
-        flux = self.data.get("amp", np.zeros(len(u_d)))[idx]
+        flux   = self.data.get("amp",  np.zeros(len(u_d)))[idx]
 
         doy = int(ut_raw // 86400)
-        hh, mm, ss = int((ut_raw % 86400) // 3600), int((ut_raw % 3600) // 60), int(ut_raw % 60)
+        hh  = int((ut_raw % 86400) // 3600)
+        mm  = int((ut_raw % 3600)  // 60)
+        ss  = int(ut_raw % 60)
 
-        # Création du bloc multilignes avec un alignement (:) parfait
         info_text = (
             f"--- Quick Inspect (s) ---\n"
             f"Antennas : {sub}:{nom_a}-{nom_b}\n"
@@ -167,49 +337,45 @@ class UVPlotEditor(BasePlotEditor):
             f"IF Band  : {if_no}\n"
             f"-------------------------"
         )
-        
-        if self.info_callback:
-            # On utilise le nouveau niveau 'inspect' pour la couleur bleue !
-            self.info_callback(info_text, level='inspect')
+        logger.info(info_text, extra={'difmap_level': 'inspect'})
 
     def action_show_info_nearest(self, event=None):
-        """Keyboard shortcut 's' - show nearest point info"""
-        if event is None or not hasattr(event, 'xdata'):
-            # Create a synthetic event at plot center
-            if hasattr(self, 'ax') and self.ax:
+        """
+        Affiche les infos du point le plus proche du centre de la vue. Touche ``s``.
+
+        Si ``event`` ne porte pas de coordonnées, fabrique un événement synthétique
+        pointant vers le centre des limites actuelles de l'axe.
+
+        Parameters
+        ----------
+        event : optional
+            Événement clavier ou ``None``.
+        """
+        if getattr(event, 'xdata', None) is None:
+            if self.ax:
                 xl, xr = self.ax.get_xlim()
                 yl, yr = self.ax.get_ylim()
-                class SyntheticEvent:
-                    def __init__(self, x, y, ax):
-                        self.xdata = x if x is not None else (xl + xr) / 2
-                        self.ydata = y if y is not None else (yl + yr) / 2
-                        self.inaxes = ax
-                event = SyntheticEvent(None, None, self.ax)
+                class _Ev:
+                    xdata = (xl + xr) / 2
+                    ydata = (yl + yr) / 2
+                    inaxes = self.ax
+                event = _Ev()
             else:
                 return
-        self.action_show_info(event)
-            
-    def apply_external_cut(self, indices):
-        """Reçoit une demande de flagging depuis un autre widget (ex: Radplot)."""
-        if len(indices) == 0: return
-        
-        # Filtre pour ne pas re-flagger des points déjà supprimés
-        indices_valides = [i for i in indices if not self.masque_flagges[i]]
-        if not indices_valides: return
-        
-        indices_np = np.array(indices_valides, dtype=np.int32)
-        
-        # Le Cerveau fait le travail (Moteur C, Masque, et Historique d'Undo)
-        self.obs.flag_data(indices_np)
-        self.masque_flagges[indices_np] = True
-        self.historique_coupes.append(indices_np)
-        
-        # Met à jour l'écran 1 (Plan UV)
-        self._update_colors()
-        print(f"{len(indices_np)} visibilites flaggees depuis le Radplot.")
-        
-        # Met à jour l'écran 2 (Radplot) via l'alarme
-        if hasattr(self, 'sync_callback') and self.sync_callback:
-            self.sync_callback()
-            
-    
+        self.action_show_info(event, strict=False)
+
+    # =========================================================
+    # NO-OPS pour compatibilité avec le routing global
+    # =========================================================
+
+    def set_model_visible(self, _visible: bool):
+        """No-op : le modèle n'est pas disponible sur le plan UV."""
+        logger.info("[INFO] Model display not available for UV plot.")
+
+    def set_residuals_visible(self, _visible: bool):
+        """No-op : les résidus ne sont pas disponibles sur le plan UV."""
+        logger.info("[INFO] Residuals not available for UV plot.")
+
+    def set_show_errors(self, _visible: bool):
+        """No-op : le graphique d'erreurs n'est pas disponible sur le plan UV."""
+        logger.info("[INFO] Error plot not available for UV plot.")

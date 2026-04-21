@@ -182,3 +182,7 @@ def save_wobs(str filepath):
     if status != 0:
         raise RuntimeError(f"Erreur lors de la sauvegarde du fichier : {filepath}")
     return True
+
+def get_polarization():
+    """Renvoie le nom de la polarisation actuellement chargée en mémoire C."""
+    return cdifmap.get_observation_polarization().decode('utf-8')

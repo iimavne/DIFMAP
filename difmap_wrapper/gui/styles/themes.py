@@ -69,11 +69,36 @@ THEMES = {
 }
 
 def get_theme(name='light'):
-    """Récupère un thème par nom"""
+    """
+    Retourne un dictionnaire de thème par son nom.
+
+    Parameters
+    ----------
+    name : str, optional
+        Nom du thème : ``'light'`` ou ``'dark'``. Défaut : ``'light'``.
+
+    Returns
+    -------
+    dict
+        Dictionnaire de couleurs du thème demandé (``LIGHT_THEME`` par défaut).
+    """
     return THEMES.get(name, LIGHT_THEME)
 
 def generate_qss_from_theme(theme):
-    """Génère du QSS à partir d'un dictionnaire de thème"""
+    """
+    Génère une feuille de style QSS minimale à partir d'un dictionnaire de thème.
+
+    Parameters
+    ----------
+    theme : dict
+        Dictionnaire de couleurs (ex. ``LIGHT_THEME`` ou ``DARK_THEME``).
+
+    Returns
+    -------
+    str
+        Feuille QSS couvrant ``QWidget``, ``QLabel``, ``QPushButton``,
+        ``QLineEdit`` et ``QGroupBox``.
+    """
     return f"""
         QWidget {{
             background-color: {theme['background']};

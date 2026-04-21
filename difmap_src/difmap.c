@@ -8053,3 +8053,13 @@ int save_native_wobs(const char* filepath) {
     }
     return 0;
 }
+
+const char* get_observation_polarization() {
+    /* On utilise votre variable globale 'vlbob' qui contient l'observation active */
+    if (!vlbob) {
+        return "Unknown";
+    }
+
+    /* Renvoie le nom de la polarisation ("I", "RR", "LL", etc.) */
+    return Stokes_name(vlbob->stream.pol.type);
+}

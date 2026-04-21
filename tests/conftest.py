@@ -16,6 +16,15 @@ except ImportError as e:
     print(f"✗ Failed to import difmap_native: {e}")
 
 
+@pytest.fixture(autouse=True)
+def reset_singleton():
+    """Remet le singleton DifmapSession à zéro avant et après chaque test."""
+    from difmap_wrapper.session import DifmapSession
+    DifmapSession._instance = None
+    yield
+    DifmapSession._instance = None
+
+
 @pytest.fixture(scope="session", autouse=True)
 def setup_paths():
     """Fixture autouse pour s'assurer que les paths sont correctement configurés."""

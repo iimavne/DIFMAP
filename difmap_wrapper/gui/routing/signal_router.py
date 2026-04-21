@@ -85,7 +85,9 @@ class SignalRouter:
         >>> router.route_button_both('btn_next_sub', 'action_next_subarray', [None])
         """
         if not hasattr(self.control_panel, button_attr):
-            print(f"Warning: ControlPanel has no attribute {button_attr}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"ControlPanel has no attribute {button_attr}")
             return
         
         button = getattr(self.control_panel, button_attr)
@@ -97,6 +99,10 @@ class SignalRouter:
                     editor = widget.editor
                     if hasattr(editor, method_name):
                         getattr(editor, method_name)(*args)
+            # Redonner le focus au graphique
+            active_editor = self._get_active_editor()
+            if active_editor and hasattr(active_editor, 'fig') and hasattr(active_editor.fig, 'canvas'):
+                active_editor.fig.canvas.setFocus()
         
         button.clicked.connect(callback)
     
@@ -114,7 +120,9 @@ class SignalRouter:
         >>> router.route_checkbox_both('chk_all_channels', 'set_flag_all_channels')
         """
         if not hasattr(self.control_panel, checkbox_attr):
-            print(f"Warning: ControlPanel has no attribute {checkbox_attr}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"ControlPanel has no attribute {checkbox_attr}")
             return
         
         checkbox = getattr(self.control_panel, checkbox_attr)
@@ -125,6 +133,10 @@ class SignalRouter:
                     editor = widget.editor
                     if hasattr(editor, method_name):
                         getattr(editor, method_name)(checked)
+            # Redonner le focus au graphique
+            active_editor = self._get_active_editor()
+            if active_editor and hasattr(active_editor, 'fig') and hasattr(active_editor.fig, 'canvas'):
+                active_editor.fig.canvas.setFocus()
         
         checkbox.toggled.connect(callback)
     
@@ -142,7 +154,9 @@ class SignalRouter:
         >>> router.route_slider_both('slider_size', 'update_marker_size')
         """
         if not hasattr(self.control_panel, slider_attr):
-            print(f"Warning: ControlPanel has no attribute {slider_attr}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"ControlPanel has no attribute {slider_attr}")
             return
         
         slider = getattr(self.control_panel, slider_attr)
@@ -157,6 +171,10 @@ class SignalRouter:
                         editor = widget.editor
                         if hasattr(editor, method_name):
                             getattr(editor, method_name)(size_value)
+                # Redonner le focus au graphique
+                active_editor = self._get_active_editor()
+                if active_editor and hasattr(active_editor, 'fig') and hasattr(active_editor.fig, 'canvas'):
+                    active_editor.fig.canvas.setFocus()
         else:
             def callback(value):
                 for widget in [self.window.plot_widget, self.window.radplot_widget]:
@@ -164,6 +182,10 @@ class SignalRouter:
                         editor = widget.editor
                         if hasattr(editor, method_name):
                             getattr(editor, method_name)(float(value))
+                # Redonner le focus au graphique
+                active_editor = self._get_active_editor()
+                if active_editor and hasattr(active_editor, 'fig') and hasattr(active_editor.fig, 'canvas'):
+                    active_editor.fig.canvas.setFocus()
         
         slider.valueChanged.connect(callback)
     
@@ -201,7 +223,7 @@ class SignalRouter:
         # FLAGGING & DISPLAY
         self.route_checkbox_both('chk_all_channels', 'set_flag_all_channels')
         self.route_checkbox_both('chk_conjugate', 'set_conjugate_visible')
-        self.route_checkbox_both('chk_crosshair', 'set_crosshair_visible')
+        # self.route_checkbox_both('chk_crosshair', 'set_crosshair_visible')  # Double-exécution avec connecteur personnalisé MainWindow
         self.route_slider_both('slider_size', 'update_marker_size')
         
         # IMAGING & DATA

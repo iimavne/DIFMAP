@@ -1,7 +1,7 @@
 # difmap_wrapper/gui/components/control_panel.py
 from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QComboBox, QLineEdit, QCheckBox,
-                             QScrollArea, QSlider, QPushButton)
+                             QScrollArea, QSlider, QPushButton, QMessageBox) # <-- AJOUT ICI
 from PyQt6.QtCore import Qt
 from difmap_wrapper.gui.components.styled_buttons import PrimaryButton, SecondaryButton
 from difmap_wrapper.gui.styles.design_system import DesignSystem
@@ -85,8 +85,21 @@ QScrollArea {{ border: none; background-color: {D.ASTRAL_BG}; }}
 """
 
 class CollapsibleSection(QWidget):
-    """Un accordéon déroulant remplaçant le QGroupBox standard"""
+    """
+    Section accordéon déroulante remplaçant le ``QGroupBox`` standard.
+
+    Le bouton d'en-tête affiche une flèche indiquant l'état ouvert/fermé.
+    """
+
     def __init__(self, title, parent=None):
+        """
+        Parameters
+        ----------
+        title : str
+            Titre affiché dans le bouton d'en-tête.
+        parent : QWidget, optional
+            Widget parent Qt.
+        """
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -137,6 +150,7 @@ class CollapsibleSection(QWidget):
         self.layout.addWidget(self.content_area)
 
     def toggle(self):
+        """Bascule la visibilité de la zone de contenu et met à jour la flèche (▼/▶)."""
         is_checked = self.toggle_button.isChecked()
         self.content_area.setVisible(is_checked)
         arrow = "▼" if is_checked else "▶"
@@ -145,8 +159,26 @@ class CollapsibleSection(QWidget):
 
 
 class ControlPanel(QDockWidget):
-    def __init__(self, title="Controls", parent=None):
+    """
+    Panneau de contrôle gauche de DIFMAP Modern.
+
+    Regroupe cinq sections collapsibles : sélection de données, focus télescope,
+    options de flagging, options d'affichage et moteur d'imagerie.
+    """
+
+    def __init__(self, session, title="Controls", parent=None):
+        """
+        Parameters
+        ----------
+        session : DifmapSession
+            Session principale donnant accès à ``obs`` et ``imager``.
+        title : str, optional
+            Titre du dock widget affiché dans la barre de titre.
+        parent : QWidget, optional
+            Widget parent Qt.
+        """
         super().__init__(title, parent)
+        self.session = session # <-- SAUVEGARDE de la session
         self.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea)
         self.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
 
@@ -155,7 +187,7 @@ class ControlPanel(QDockWidget):
 
         self.container = QWidget()
         self.main_layout = QVBoxLayout(self.container)
-        self.main_layout.setSpacing(12) # Plus d'espace entre les accordéons
+        self.main_layout.setSpacing(12)
         self.main_layout.setContentsMargins(8, 8, 8, 8)
         self.container.setStyleSheet(_QSS)
 
@@ -176,15 +208,62 @@ class ControlPanel(QDockWidget):
         self.setWidget(scroll)
 
     def _build_data_selection(self):
+        """Construit la section « 1. DATA SELECTION » avec le sélecteur de polarisation."""
         self.group_data_selection = CollapsibleSection("1. DATA SELECTION")
         layout = self.group_data_selection.content_layout
         layout.addWidget(QLabel("Polarization:"))
-        self.combo_pol = QComboBox()
-        self.combo_pol.addItems(["Stokes I", "RR", "LL", "XX", "YY"])
+        
+        # On utilise bien combo_pol partout pour que MainWindow le trouve
+        self.combo_pol = QComboBox() 
+        self.combo_pol.addItems(["I", "RR", "LL", "RL", "LR"])
         layout.addWidget(self.combo_pol)
+        
         self.main_layout.addWidget(self.group_data_selection)
+        
+        self.combo_pol.currentTextChanged.connect(self.on_polarization_changed)
+        
+    def on_polarization_changed(self, requested_pol: str):
+        """
+        Gère le changement de polarisation demandé via le combo.
 
+        Si le moteur C ne dispose pas de la polarisation demandée, effectue
+        un fallback sur la polarisation disponible et informe l'utilisateur.
+
+        Parameters
+        ----------
+        requested_pol : str
+            Code de polarisation demandé (ex. ``'I'``, ``'RR'``, ``'LL'``).
+        """
+        try:
+            # 1. On passe l'ordre et on récupère la VRAIE polarisation
+            actual_pol = self.session.obs.select(pol=requested_pol)
+            
+            # 2. Si le moteur C a fait un "Fallback"
+            if actual_pol != requested_pol:
+                self.combo_pol.blockSignals(True)
+                self.combo_pol.setCurrentText(actual_pol)
+                self.combo_pol.blockSignals(False)
+                
+                QMessageBox.information(
+                    self, 
+                    "Polarisation indisponible", 
+                    f"La polarisation '{requested_pol}' n'existe pas.\n\n"
+                    f"Difmap a basculé sur '{actual_pol}'."
+                )
+            
+            # 3. On rafraîchit les graphiques
+            self.session.obs.notify_data_changed()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur de sélection", str(e))
+            
     def _build_telescope_focus(self):
+        """
+        Construit la section « 2. TELESCOPE FOCUS ».
+
+        Crée le champ de recherche de télescope et les boutons de navigation
+        antenne (n/p) et sous-réseau (N/P).
+        """
         self.group_telescope = CollapsibleSection("2. TELESCOPE FOCUS")
         layout = self.group_telescope.content_layout
 
@@ -212,6 +291,7 @@ class ControlPanel(QDockWidget):
         self.main_layout.addWidget(self.group_telescope)
 
     def _build_flagging_options(self):
+        """Construit la section « 3. FLAGGING » avec la checkbox "flag ALL channels"."""
         self.group_flagging = CollapsibleSection("3. FLAGGING")
         layout = self.group_flagging.content_layout
         self.chk_all_channels = QCheckBox("Flag ALL channels in IF  [W]")
@@ -219,6 +299,12 @@ class ControlPanel(QDockWidget):
         self.main_layout.addWidget(self.group_flagging)
 
     def _build_display_options(self):
+        """
+        Construit la section « 4. DISPLAY OPTIONS ».
+
+        Crée le sélecteur de mode Radplot, les checkboxes d'affichage
+        (modèle, résidus, crosshair, erreurs, conjuguées) et le slider de taille.
+        """
         self.group_display = CollapsibleSection("4. DISPLAY OPTIONS")
         layout = self.group_display.content_layout
 
@@ -258,6 +344,12 @@ class ControlPanel(QDockWidget):
         self.main_layout.addWidget(self.group_display)
 
     def _build_imaging(self):
+        """
+        Construit la section « 5. IMAGING ENGINE ».
+
+        Crée les champs mapsize, cellsize, la pondération UV, le taper gaussien
+        et le bouton « Compute Dirty Map ».
+        """
         self.group_imaging = CollapsibleSection("5. IMAGING ENGINE")
         layout = self.group_imaging.content_layout
 

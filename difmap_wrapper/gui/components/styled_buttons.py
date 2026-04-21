@@ -11,9 +11,19 @@ import qtawesome as qta
 
 
 class PrimaryButton(QPushButton):
-    """Bouton principal pour actions importantes"""
-    
+    """Bouton d'action principale (fond bleu astral)."""
+
     def __init__(self, text="", icon=None, parent=None):
+        """
+        Parameters
+        ----------
+        text : str, optional
+            Texte affiché sur le bouton.
+        icon : str, optional
+            Nom d'icône qtawesome (ex. ``'fa5s.folder-open'``).
+        parent : QWidget, optional
+            Widget parent Qt.
+        """
         super().__init__(text, parent)
         self.setStyleSheet(DesignSystem.get_button_primary())
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -22,9 +32,19 @@ class PrimaryButton(QPushButton):
 
 
 class SecondaryButton(QPushButton):
-    """Bouton secondaire pour actions normales"""
-    
+    """Bouton secondaire pour actions normales (fond gris clair)."""
+
     def __init__(self, text="", icon=None, parent=None):
+        """
+        Parameters
+        ----------
+        text : str, optional
+            Texte affiché sur le bouton.
+        icon : str, optional
+            Nom d'icône qtawesome (ex. ``'fa5s.search'``).
+        parent : QWidget, optional
+            Widget parent Qt.
+        """
         super().__init__(text, parent)
         self.setStyleSheet(DesignSystem.get_button_secondary())
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -33,9 +53,19 @@ class SecondaryButton(QPushButton):
 
 
 class DangerButton(QPushButton):
-    """Bouton danger pour actions destructrices"""
-    
+    """Bouton danger pour actions destructrices (fond rouge pâle)."""
+
     def __init__(self, text="", icon=None, parent=None):
+        """
+        Parameters
+        ----------
+        text : str, optional
+            Texte affiché sur le bouton.
+        icon : str, optional
+            Nom d'icône qtawesome (ex. ``'fa5s.trash'``).
+        parent : QWidget, optional
+            Widget parent Qt.
+        """
         super().__init__(text, parent)
         self.setStyleSheet(DesignSystem.get_button_danger())
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -44,9 +74,19 @@ class DangerButton(QPushButton):
 
 
 class SuccessButton(QPushButton):
-    """Bouton succès pour actions positives"""
-    
+    """Bouton succès pour actions positives (fond vert pâle)."""
+
     def __init__(self, text="", icon=None, parent=None):
+        """
+        Parameters
+        ----------
+        text : str, optional
+            Texte affiché sur le bouton.
+        icon : str, optional
+            Nom d'icône qtawesome (ex. ``'fa5s.check'``).
+        parent : QWidget, optional
+            Widget parent Qt.
+        """
         super().__init__(text, parent)
         self.setStyleSheet(DesignSystem.get_button_success())
         self.setCursor(Qt.CursorShape.PointingHandCursor)

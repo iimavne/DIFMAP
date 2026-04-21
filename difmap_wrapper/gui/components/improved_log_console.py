@@ -34,6 +34,14 @@ class ImprovedLogConsole(QDockWidget):
         'stats':   '#AB8FE0',   # violet doux
     }
     def __init__(self, title="SYSTEM LOG", parent=None):
+        """
+        Parameters
+        ----------
+        title : str, optional
+            Titre affiché dans la barre du dock widget.
+        parent : QWidget, optional
+            Widget parent Qt.
+        """
         super().__init__(title, parent)
         self.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
         self.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
@@ -56,39 +64,107 @@ class ImprovedLogConsole(QDockWidget):
         self.setWidget(self.text_edit)
 
     def log_info(self, message):
-        """Log d'information (bleu)"""
+        """
+        Affiche un message d'information (couleur bleu-gris).
+
+        Parameters
+        ----------
+        message : str
+            Texte à afficher dans la console.
+        """
         self._append_styled(message, 'info')
 
     def log_success(self, message):
-        """Log de succès (vert)"""
+        """
+        Affiche un message de succès (couleur verte).
+
+        Parameters
+        ----------
+        message : str
+            Texte à afficher dans la console.
+        """
         self._append_styled(message, 'success')
 
     def log_warning(self, message):
-        """Log d'alerte (orange foncé)"""
+        """
+        Affiche un avertissement (couleur ambre).
+
+        Parameters
+        ----------
+        message : str
+            Texte à afficher dans la console.
+        """
         self._append_styled(message, 'warning')
 
     def log_error(self, message):
-        """Log d'erreur (rouge)"""
+        """
+        Affiche un message d'erreur (couleur rouge vif).
+
+        Parameters
+        ----------
+        message : str
+            Texte à afficher dans la console.
+        """
         self._append_styled(message, 'error')
 
     def log_debug(self, message):
-        """Log de debug (gris)"""
+        """
+        Affiche un message de débogage (couleur gris sombre).
+
+        Parameters
+        ----------
+        message : str
+            Texte à afficher dans la console.
+        """
         self._append_styled(message, 'debug')
-    
+
     def log_inspect(self, message):
-        """Log d'inspection (bleu clair)"""
+        """
+        Affiche un message d'inspection de point (couleur teal).
+
+        Parameters
+        ----------
+        message : str
+            Texte à afficher dans la console.
+        """
         self._append_styled(message, 'inspect')
 
     def log(self, message):
-        """Log générique (équivalent à info)"""
+        """
+        Log générique — équivalent à :meth:`log_info`.
+
+        Parameters
+        ----------
+        message : str
+            Texte à afficher dans la console.
+        """
         self.log_info(message)
 
     def log_stats(self, message):
-        """Log des statistiques mathématiques (violet)"""
+        """
+        Affiche un message de statistiques (couleur violet doux).
+
+        Parameters
+        ----------
+        message : str
+            Texte à afficher dans la console.
+        """
         self._append_styled(message, 'stats')
         
     def _append_styled(self, message, level='info'):
-        """Ajoute un message avec formatage spécifique au niveau et alignement multi-lignes"""
+        """
+        Ajoute un message formaté avec horodatage, icône et couleur.
+
+        Gère automatiquement l'alignement des messages multi-lignes (``\\n``).
+
+        Parameters
+        ----------
+        message : str
+            Texte à afficher (peut contenir des sauts de ligne).
+        level : str, optional
+            Niveau de log : ``'info'``, ``'success'``, ``'warning'``, ``'error'``,
+            ``'debug'``, ``'inspect'`` ou ``'stats'``. Défaut : ``'info'``.
+        """
         icon = self.ICONS.get(level, '')
         color = self.COLORS.get(level, DesignSystem.TEXT)
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -123,15 +199,52 @@ class ImprovedLogConsole(QDockWidget):
         scrollbar = self.text_edit.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
 
+    # =========================================================
+    # Connexion au système de logging Python
+    # =========================================================
+
+    def connect_handler(self, handler) -> None:
+        """
+        Abonne cette console aux logs émis par DifmapLogHandler.
+
+        Paramètre
+        ---------
+        handler : DifmapLogHandler
+            Le handler dont le signal log_emitted sera connecté à _dispatch().
+
+        Exemple
+        -------
+        >>> from difmap_wrapper.gui.log_handler import DifmapLogHandler
+        >>> handler = DifmapLogHandler()
+        >>> logging.getLogger('difmap').addHandler(handler)
+        >>> console.connect_handler(handler)
+        """
+        handler.log_emitted.connect(self._dispatch)
+
+    def _dispatch(self, level: str, message: str) -> None:
+        """Slot Qt : reçoit (level, message) depuis DifmapLogHandler et affiche."""
+        self._append_styled(message, level)
+
+    # =========================================================
+    # Utilitaires
+    # =========================================================
+
     def clear_log(self):
-        """Efface la console"""
+        """Efface tout le contenu de la console."""
         self.text_edit.clear()
 
     def copy_all(self):
-        """Copie tout le contenu"""
+        """Copie tout le contenu de la console dans le presse-papiers."""
         self.text_edit.selectAll()
         self.text_edit.copy()
 
     def set_theme(self, theme_dict):
-        """Change le thème (optionnel)"""
+        """
+        Change le thème de la console (non implémenté, réservé à un usage futur).
+
+        Parameters
+        ----------
+        theme_dict : dict
+            Dictionnaire de couleurs du nouveau thème.
+        """
         pass

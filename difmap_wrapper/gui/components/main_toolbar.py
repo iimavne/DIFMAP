@@ -10,19 +10,61 @@ except ImportError:
     _HAS_QTA = False
 
 def _icon(name, color="#4A6A8A"):
+    """
+    Crée une icône QtAwesome si la bibliothèque est disponible.
+
+    Parameters
+    ----------
+    name : str
+        Nom de l'icône FontAwesome (ex. ``'fa5s.save'``).
+    color : str, optional
+        Couleur hexadécimale de l'icône.
+
+    Returns
+    -------
+    QIcon or None
+        Icône créée, ou ``None`` si ``qtawesome`` n'est pas installé.
+    """
     if _HAS_QTA:
         try: return qta.icon(name, color=color)
         except Exception: pass
     return None
 
 class MainToolbar(QToolBar):
+    """
+    Barre d'outils principale de DIFMAP Modern.
+
+    Contient les actions fichier (Load/Save), vue (Undo/Refresh/Reset),
+    le sélecteur d'outil actif, l'inspecteur et le bouton terminal.
+    """
+
     def __init__(self, title="Main Toolbar", parent=None):
+        """
+        Parameters
+        ----------
+        title : str, optional
+            Titre interne de la toolbar (utilisé par Qt).
+        parent : QWidget, optional
+            Widget parent Qt.
+        """
         super().__init__(title, parent)
         self.setMovable(False)
         self.setIconSize(QSize(18, 18))
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
 
     def add_standard_actions(self, window):
+        """
+        Crée et ajoute toutes les actions standard à la toolbar.
+
+        Attributs créés : ``action_load``, ``action_save``, ``action_undo``,
+        ``action_refresh``, ``action_home``, ``lbl_tools``, ``combo_tools``,
+        ``action_inspect``, ``action_terminal``.
+
+        Parameters
+        ----------
+        window : QMainWindow
+            Fenêtre parent utilisée comme owner des ``QAction``.
+        """
         def act(label, icon_name=None, tooltip=None):
             a = QAction(label, window)
             if icon_name and _icon(icon_name):

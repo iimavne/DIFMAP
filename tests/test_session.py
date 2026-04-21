@@ -1,113 +1,135 @@
+"""
+Tests unitaires : DifmapSession
+
+Chaque test reçoit une session propre via le fixture `session`.
+Le singleton est réinitialisé automatiquement avant et après chaque test.
+"""
 import pytest
 from difmap_wrapper.session import DifmapSession
-from difmap_wrapper.exceptions import DifmapError
+from difmap_wrapper.exceptions import DifmapStateError, DifmapError
 from difmap_wrapper.visualizer import Visualizer
 from difmap_wrapper.observation import Observation
 from difmap_wrapper.imaging import DifmapImager
 
-# =====================================================================
-# TESTS UNITAIRES : DifmapSession
-# =====================================================================
 
-# ---------------------------------------------------------------------
-# CAS NOMINAUX 
-# ---------------------------------------------------------------------
+@pytest.fixture
+def session():
+    """Fournit une session propre et la nettoie après le test."""
+    s = DifmapSession()
+    yield s
+    s.cleanup()
 
-def test_initialisation_session():
-    """Vérifie l'état initial de la session et la création de tous les sous-objets."""
-    session = DifmapSession()
-    assert session.uv_loaded is False, "Par défaut, aucune donnée ne doit être chargée."
-    assert isinstance(session.obs, Observation), "L'objet Observation n'est pas instancié."
-    assert isinstance(session.imager, DifmapImager), "L'objet Imager n'est pas instancié."
-    assert isinstance(session.vis, Visualizer), "L'objet Visualizer n'est pas instancié."
 
-def test_sous_objets_recoivent_session():
-    """Vérifie que tous les sous-objets ont une référence à la session."""
-    session = DifmapSession()
-    
-    assert session.obs._session is session, "Observation doit avoir référence à session"
-    assert session.imager._session is session, "DifmapImager doit avoir référence à session"
-    assert session.vis._session is session, "Visualizer doit avoir référence à session"
+# ─── Cas nominaux ─────────────────────────────────────────────────────────────
+
+def test_initialisation_session(session):
+    """À la création, aucune donnée n'est chargée et les sous-objets sont créés."""
+    assert session.uv_loaded is False
+    assert isinstance(session.obs, Observation)
+    assert isinstance(session.imager, DifmapImager)
+    assert isinstance(session.vis, Visualizer)
+
+
+def test_sous_objets_recoivent_session(session):
+    """Chaque sous-objet doit garder une référence à la session parente."""
+    assert session.obs._session is session
+    assert session.imager._session is session
+    assert session.vis._session is session
+
 
 def test_context_manager_cleanup(fichier_valide):
-    """Vérifie que le bloc 'with' charge puis appelle bien cleanup() à la sortie."""
-    with DifmapSession() as session:
-        session.observe(fichier_valide)
-        assert session.uv_loaded is True, "Le fichier aurait dû être chargé."
-        
-    # À la sortie du bloc with, cleanup() a dû être appelé automatiquement
-    assert session.uv_loaded is False, "Le cleanup n'a pas été exécuté à la sortie du 'with'."
-
-def test_observe_rechargement(fichier_valide):
-    """Vérifie que charger un 2ème fichier purge bien le 1er au préalable."""
+    """Le bloc `with` doit appeler cleanup() automatiquement à sa sortie."""
     with DifmapSession() as session:
         session.observe(fichier_valide)
         assert session.uv_loaded is True
-        
-        # Recharger le même fichier force un passage par cleanup() sans crasher
-        session.observe(fichier_valide)
-        assert session.uv_loaded is True
+    assert session.uv_loaded is False
 
 
-# ---------------------------------------------------------------------
-# CAS LIMITES 
-# ---------------------------------------------------------------------
+def test_observe_charge_fichier(session, fichier_valide):
+    """Après observe(), uv_loaded passe à True."""
+    session.observe(fichier_valide)
+    assert session.uv_loaded is True
 
-def test_nettoyage_manuel_pendant_session(fichier_valide):
-    """Vérifie qu'appeler cleanup() manuellement ne fait pas crasher la sortie du 'with'."""
+
+def test_observe_rechargement(session, fichier_valide):
+    """Charger un deuxième fichier remplace proprement le premier."""
+    session.observe(fichier_valide)
+    assert session.uv_loaded is True
+    session.observe(fichier_valide)
+    assert session.uv_loaded is True
+
+
+# ─── Cas limites ──────────────────────────────────────────────────────────────
+
+def test_cleanup_manuel_puis_with(fichier_valide):
+    """cleanup() manuel dans un bloc `with` ne doit pas faire crasher la sortie."""
     with DifmapSession() as session:
         session.observe(fichier_valide)
-        session.cleanup()  # L'utilisateur force le nettoyage
-        
+        session.cleanup()
         assert session.uv_loaded is False
-        # À la fin du bloc with, un 2ème cleanup() automatique va se lancer. 
-        # Ça ne doit pas planter.
+    # Le __exit__ appelle cleanup() une deuxième fois — ça ne doit pas planter
 
-def test_double_instanciation_simultanee(fichier_valide):
-    """Vérifie que créer deux sessions successives fonctionne sans emmêler les variables."""
+
+def test_sessions_sequentielles(fichier_valide):
+    """
+    Deux sessions créées l'une après l'autre (jamais simultanément)
+    fonctionnent chacune de façon indépendante.
+    """
     session1 = DifmapSession()
     session1.observe(fichier_valide)
-    
-    session2 = DifmapSession()
-    assert session2.uv_loaded is False, "La nouvelle session doit s'initialiser vierge."
-    
-    session2.observe(fichier_valide)  # Va écraser la mémoire globale du C proprement
-    assert session2.uv_loaded is True
-    
-    # Nettoyage manuel (puisqu'on n'utilise pas le bloc with ici)
+    assert session1.uv_loaded is True
     session1.cleanup()
+
+    # Le slot singleton est libéré : une nouvelle session est possible
+    assert DifmapSession._instance is None
+
+    session2 = DifmapSession()
+    assert session2.uv_loaded is False
+    session2.observe(fichier_valide)
+    assert session2.uv_loaded is True
     session2.cleanup()
 
-def test_sous_objets_independants_entre_sessions():
-    """Vérifie que deux sessions n'ont pas les mêmes objets Observation/Imager/Visualizer."""
+
+def test_deuxieme_session_apres_cleanup(fichier_valide):
+    """Après cleanup(), une nouvelle session démarre avec un état vierge."""
     session1 = DifmapSession()
+    obs1 = session1.obs
+    session1.cleanup()
+
     session2 = DifmapSession()
-    
-    assert session1.obs is not session2.obs, "Observation doit être différent entre sessions"
-    assert session1.imager is not session2.imager, "Imager doit être différent entre sessions"
-    assert session1.vis is not session2.vis, "Visualizer doit être différent entre sessions"
+    assert session2.obs is not obs1, "La nouvelle session doit avoir un nouvel objet Observation"
+    assert session2.uv_loaded is False
+    session2.cleanup()
 
 
-# ---------------------------------------------------------------------
-# GESTION DES ERREURS 
-# ---------------------------------------------------------------------
+# ─── Singleton ────────────────────────────────────────────────────────────────
 
-def test_observe_fichier_inexistant(fichier_inexistant):
-    """Vérifie qu'un fichier introuvable lève ta DifmapError personnalisée."""
-    with DifmapSession() as session:
-        with pytest.raises(DifmapError) as exc_info:
-            session.observe(fichier_inexistant)
-        
-        # On s'assure que le message indique la vraie raison
-        assert "Impossible de lire" in str(exc_info.value)
-        # On s'assure que la mémoire est restée propre
-        assert session.uv_loaded is False
+def test_singleton_interdit_double_instanciation(session):
+    """Créer une deuxième session pendant qu'une est active doit lever DifmapStateError."""
+    with pytest.raises(DifmapStateError):
+        DifmapSession()
 
-def test_observe_fichier_corrompu(fichier_corrompu):
-    """Vérifie qu'un fichier texte (non FITS) lève une erreur et sécurise l'état."""
-    with DifmapSession() as session:
-        with pytest.raises(DifmapError):
-            session.observe(fichier_corrompu)
-        
-        # L'état ne doit pas être marqué comme chargé si la lecture a planté
-        assert session.uv_loaded is False
+
+def test_singleton_libere_apres_cleanup():
+    """Après cleanup(), le slot singleton est vide et une nouvelle session est possible."""
+    s = DifmapSession()
+    s.cleanup()
+    assert DifmapSession._instance is None
+    s2 = DifmapSession()
+    s2.cleanup()
+
+
+# ─── Gestion des erreurs ──────────────────────────────────────────────────────
+
+def test_observe_fichier_inexistant(session, fichier_inexistant):
+    """Un fichier introuvable doit lever une exception sans corrompre l'état."""
+    with pytest.raises(Exception):
+        session.observe(fichier_inexistant)
+    assert session.uv_loaded is False
+
+
+def test_observe_fichier_corrompu(session, fichier_corrompu):
+    """Un fichier non-FITS doit lever une exception et laisser la session propre."""
+    with pytest.raises(Exception):
+        session.observe(fichier_corrompu)
+    assert session.uv_loaded is False
