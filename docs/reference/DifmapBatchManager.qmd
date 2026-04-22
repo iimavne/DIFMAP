@@ -1,0 +1,125 @@
+# DifmapBatchManager { #difmap_wrapper.DifmapBatchManager }
+
+```python
+DifmapBatchManager(max_workers=None)
+```
+
+Orchestrateur de traitement parallèle pour Difmap.
+
+Gère l'exécution de tâches indépendantes sur un pool de processus OS,
+en évitant les collisions mémoire dues aux variables globales du moteur C.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name        | Type            | Description                                                                                   |
+|-------------|-----------------|-----------------------------------------------------------------------------------------------|
+| max_workers | (int, optional) | Nombre maximal de processus parallèles. Si None (défaut), égal au nombre de CPUs disponibles. |
+
+## Examples {.doc-section .doc-section-examples}
+
+Instanciation et traitement simple :
+
+    >>> manager = DifmapBatchManager(max_workers=4)
+    >>> results = manager.run_batch(my_worker_func, range(10))
+    >>> for res in results:
+    ...     print(res)
+
+Traitement avec observation d'exécution :
+
+    >>> manager = DifmapBatchManager()
+    >>> args = [("file1.fits", "RR"), ("file2.fits", "LL"), ...]
+    >>> results = manager.run_batch(
+    ...     process_with_pol,
+    ...     args,
+    ...     max_workers=2
+    ... )
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [run_batch](#difmap_wrapper.DifmapBatchManager.run_batch) | Exécute une fonction worker sur une liste d'arguments en parallèle. |
+
+### run_batch { #difmap_wrapper.DifmapBatchManager.run_batch }
+
+```python
+DifmapBatchManager.run_batch(worker_func, arguments, max_workers=None)
+```
+
+Exécute une fonction worker sur une liste d'arguments en parallèle.
+
+Distribue les tâches à un pool de processus OS. Chaque processus
+s'exécute de manière isolée avec sa propre mémoire et sa propre
+instance DifmapSession Singleton.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name        | Type            | Description                                                                                                                                                                                                                                                                                                                                                               | Default    |
+|-------------|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| worker_func | Callable        | Fonction à exécuter dans chaque processus. **DOIT** être définie au niveau du module (non locale, non lambda) pour être sérialisable par pickle.  La signature typique est::      def worker_func(arg: Any) -> Any:         '''Traite arg et retourne un résultat.'''         with DifmapSession() as session:             # ... traitement ...             return result | _required_ |
+| arguments   | Iterable\[Any\] | Itérable d'arguments à passer au worker. Chaque argument sera passé à ``worker_func()`` dans un processus séparé. Peut être une liste, un tuple, un générateur, etc.  Examples : ``[file1, file2, file3]``, ``[(file, pol), ...]``                                                                                                                                        | _required_ |
+| max_workers | int             | Nombre maximal de workers parallèles. Si None, utilise la valeur stockée dans ``self.max_workers`` (ou le nombre de CPUs si celle-ci est aussi None).                                                                                                                                                                                                                     | `None`     |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type        | Description                                                                                                      |
+|--------|-------------|------------------------------------------------------------------------------------------------------------------|
+|        | List\[Any\] | Liste des résultats retournés par le worker pour chaque argument, dans le même ordre que les arguments d'entrée. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type      | Description                                                                                                                                   |
+|--------|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+|        | Exception | Toute exception levée dans un worker est propagée lors de l'accès au résultat. Utilisez un bloc try/except pour gérer les erreurs par worker. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+Cas basique avec une liste d'entiers :
+
+    >>> def square(x):
+    ...     return x ** 2
+    >>> manager = DifmapBatchManager()
+    >>> results = manager.run_batch(square, [1, 2, 3, 4, 5])
+    >>> print(results)
+    [1, 4, 9, 16, 25]
+
+Cas réaliste avec fichiers FITS :
+
+    >>> def process_fits(filepath):
+    ...     with DifmapSession() as session:
+    ...         session.observe(filepath)
+    ...         session.obs.select(pol="RR")
+    ...         data = session.obs.get_data()
+    ...         return {
+    ...             'file': filepath,
+    ...             'n_vis': len(data['amp']),
+    ...             'mean_amp': float(data['amp'].mean())
+    ...         }
+    >>> manager = DifmapBatchManager(max_workers=3)
+    >>> files = ["a.fits", "b.fits", "c.fits", "d.fits"]
+    >>> results = manager.run_batch(process_fits, files)
+    >>> for res in results:
+    ...     print(f"{res['file']}: {res['mean_amp']:.3f} Jy")
+
+Cas avec arguments tuples :
+
+    >>> def process_with_pol(arg):
+    ...     filepath, pol = arg
+    ...     with DifmapSession() as session:
+    ...         session.observe(filepath)
+    ...         session.obs.select(pol=pol)
+    ...         return len(session.obs.get_data()['amp'])
+    >>> args = [("f1.fits", "RR"), ("f2.fits", "LL")]
+    >>> manager = DifmapBatchManager()
+    >>> sizes = manager.run_batch(process_with_pol, args)
+    >>> print(sizes)
+    [1024, 2048]
+
+#### Notes {.doc-section .doc-section-notes}
+
+- La fonction worker doit être **picklable** : définie au niveau
+  du module, pas comme fonction locale ou lambda complexe.
+- Les résultats sont retournés dans l'ordre d'input, même si
+  les processus terminent dans un ordre différent.
+- Pour les tâches longues, utilisez ``max_workers`` < nombre de CPUs
+  pour éviter la surcharge système.

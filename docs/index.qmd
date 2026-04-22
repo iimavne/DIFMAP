@@ -1,54 +1,148 @@
 ---
-title: "Difmap Python API"
+title: "difmap_smartedit"
+subtitle: "Wrapper Python pour Difmap — imagerie VLBI moderne"
 page-layout: full
 toc: false
 ---
 
-Bienvenue sur la documentation du wrapper Python pour **Difmap**, le standard historique de l'imagerie en radioastronomie.
+**Difmap** (Caltech, 1994) est le moteur de référence pour l'imagerie radio-interférométrique VLBI : déconvolution CLEAN, auto-calibration, modélisation de sources. Ses algorithmes C/Fortran (~100 000 lignes) sont validés par trente ans de publications.
 
-Ce projet modernise l'utilisation de Difmap en remplaçant l'interface interactive textuelle par une **API Python robuste, automatisable et sécurisée**,
-directement interfacée avec le moteur C d'origine.
+Ce projet lui ajoute une couche Python complète sans toucher à ses mathématiques :
+
+::: {.columns}
+
+::: {.column width="31%"}
+**API Python native**
+Accès direct à la mémoire du moteur C via Cython. Zéro écriture disque, zéro copie de données. `DifmapSession`, `Observation`, `DifmapImager`, `Visualizer`.
+:::
+
+::: {.column width="4%"}
+:::
+
+::: {.column width="31%"}
+**Interface PyQt6**
+Application de bureau avec onglets UV/Radplot/Map, flagging interactif au clic, navigation antenne, console de log intégrée.
+:::
+
+::: {.column width="4%"}
+:::
+
+::: {.column width="31%"}
+**Traitement batch parallèle**
+`DifmapBatchManager` distribue des pipelines sur N processus OS indépendants, contournant le singleton C par isolation mémoire.
+:::
+
+:::
+
+---
+
+```python
+from difmap_wrapper import DifmapSession
+
+with DifmapSession() as session:
+    session.observe("data/source.uvfits")
+    session.obs.select(pol="I")
+    img = session.imager.make_dirty_map(size=512, cellsize=0.1)
+    session.vis.plot_image(img, cmap="inferno")
+```
+
+---
+
+## Navigation
+
+::: {.columns}
+
+::: {.column width="22%"}
+### [Installation →](01_installation.qmd)
+Prérequis système, compilation Meson, environnement virtuel, mode développeur, Jupyter/VS Code.
+:::
+
+::: {.column width="3%"}
+:::
+
+::: {.column width="22%"}
+### [Quick Start →](02_quick_start.qmd)
+Charger un fichier, sélectionner une polarisation, produire une Dirty Map et l'afficher. En cinq lignes.
+:::
+
+::: {.column width="3%"}
+:::
+
+::: {.column width="22%"}
+### [Recettes & Patterns →](03_api_python.qmd)
+Patterns d'utilisation courants : pipelines, boucles multi-polarisations, flagging programmatique, intégration Matplotlib, gestion d'erreurs.
+:::
+
+::: {.column width="3%"}
+:::
+
+::: {.column width="22%"}
+### [Interface graphique →](04_interface_gui.qmd)
+Lancement, onglets, panneau de contrôle, raccourcis clavier, architecture des signaux.
+:::
+
+:::
+
+::: {.columns}
+
+::: {.column width="22%"}
+### [Traitement batch →](05_batch.qmd)
+`DifmapBatchManager` — traitement de N fichiers en parallèle, gestion des erreurs worker, limitations RAM.
+:::
+
+::: {.column width="3%"}
+:::
+
+::: {.column width="22%"}
+### [Architecture →](07_architecture.qmd)
+Les 3 couches du wrapper (moteur C, binding Cython, API Python), bypass de SPHERE, build system.
+:::
+
+::: {.column width="3%"}
+:::
+
+::: {.column width="22%"}
+### [Implémentation →](08_implementation.qmd)
+Façade C, zéro-copie via Memoryviews, correction astrométrique du demi-pixel, hiérarchie d'exceptions.
+:::
+
+::: {.column width="3%"}
+:::
+
+::: {.column width="22%"}
+### [Contribuer →](09_contribuer.qmd)
+Ajouter une fonction C, recompiler, lancer les tests, conventions de nommage.
+:::
+
+:::
 
 ---
 
 ::: {.columns}
 
-::: {.column width="31%"}
-### 1. Le Projet Difmap
-**Origines et limitations**
-
-Découvrez ce qu'est le programme Difmap original , pourquoi l'ancienne méthode de pilotage posait problème, et la genèse de ce nouveau projet de 
-surcouche.
-
-[Lire le contexte ➔](01_contexte_et_existant.qmd)
+::: {.column width="20%"}
+**Version**
+`2.5.0`
 :::
 
-::: {.column width="3.5%"}
+::: {.column width="20%"}
+**Python**
+`≥ 3.8` (Linux)
 :::
 
-::: {.column width="31%"}
-### 2. Architecture
-**Sous le capot du wrapper**
-
-Comprenez comment Python communique directement avec le C via Cython. Explorez la gestion stricte de la RAM et l'automate d'état qui empêche les crashs natifs.
-
-[Voir l'architecture ➔](02_nouvelle_architecture.qmd)
+::: {.column width="20%"}
+**Moteur**
+Difmap 2.5q
 :::
 
-::: {.column width="3.5%"}
+::: {.column width="20%"}
+**Build**
+Meson + Ninja
 :::
 
-::: {.column width="31%"}
-### 3. Référence API
-**Documentation des classes**
-
-L'ensemble des modules Python (`DifmapSession`, `DifmapImager`, etc.) documentés en détail avec leurs paramètres, types de retours et des exemples de code.
-
-[Consulter l'API ➔](reference/index.qmd)
+::: {.column width="20%"}
+**Dépendances**
+NumPy ≥ 2, Cython ≥ 3, PyQt6, Matplotlib, Astropy
 :::
 
 :::
-
----
-
-*Développé pour l'automatisation des pipelines de traitement interférométrique.*

@@ -1,0 +1,274 @@
+# Observation { #difmap_wrapper.Observation }
+
+```python
+Observation(session)
+```
+
+Accès aux données UV chargées : sélection, flagging et extraction.
+
+Accessible via ``session.obs``. Centralise l'état du masque de flagging
+et propose les opérations courantes sur les visibilités.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name           | Type                       | Description                                                                                                                                          |
+|----------------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
+| masque_flagges | np.ndarray of bool or None | Tableau de la taille du nombre de visibilités. ``True`` = point exclu. Initialisé automatiquement au premier appel à ``get_data()`` ou ``select()``. |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.obs.select(pol="RR")
+>>> data = session.obs.get_data()
+>>> print(data["amp"].shape)
+(11560,)
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [flag_data](#difmap_wrapper.Observation.flag_data) | Marque les visibilités aux indices donnés comme exclues (flaguées). |
+| [get_data](#difmap_wrapper.Observation.get_data) | Retourne toutes les visibilités de la sélection active. |
+| [notify_data_changed](#difmap_wrapper.Observation.notify_data_changed) | Notifie tous les éditeurs enregistrés que les données C ont changé. |
+| [nsub](#difmap_wrapper.Observation.nsub) | Retourne le nombre de sous-réseaux (subarrays) dans l'observation. |
+| [register_editor](#difmap_wrapper.Observation.register_editor) | Enregistre un éditeur Matplotlib comme observateur de ces données. |
+| [reset_flags](#difmap_wrapper.Observation.reset_flags) | Remet tous les flags à zéro (aucune visibilité exclue). |
+| [save_wobs](#difmap_wrapper.Observation.save_wobs) | Sauvegarde les données avec les flags actuels dans un nouveau fichier FITS. |
+| [select](#difmap_wrapper.Observation.select) | Sélectionne la polarisation, les IFs et les canaux à analyser. |
+| [unflag_data](#difmap_wrapper.Observation.unflag_data) | Restaure les visibilités précédemment flaguées. |
+| [unregister_editor](#difmap_wrapper.Observation.unregister_editor) | Retire l'éditeur de la liste (appelé par cleanup()). |
+
+### flag_data { #difmap_wrapper.Observation.flag_data }
+
+```python
+Observation.flag_data(indices)
+```
+
+Marque les visibilités aux indices donnés comme exclues (flaguées).
+
+Le masque ``masque_flagges`` n'est **pas** mis à jour ici — c'est la
+responsabilité de l'éditeur graphique qui appelle cette méthode.
+Utilisez l'interface graphique ou ``BasePlotEditor._flag_indices()``
+pour une mise à jour cohérente.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name    | Type              | Description                                  | Default    |
+|---------|-------------------|----------------------------------------------|------------|
+| indices | array-like of int | Indices (0-based) des visibilités à flaguer. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type   | Description                                   |
+|--------|--------|-----------------------------------------------|
+|        | int    | Nombre de visibilités effectivement flaguées. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.obs.flag_data([0, 5, 12])
+3
+```
+
+### get_data { #difmap_wrapper.Observation.get_data }
+
+```python
+Observation.get_data()
+```
+
+Retourne toutes les visibilités de la sélection active.
+
+Chaque clé du dictionnaire est un tableau NumPy de même longueur
+(nombre de visibilités). Appeler ``select()`` avant ``get_data()``
+pour choisir la polarisation et les IFs.
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+|--------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | dict   | ``'u'``, ``'v'`` : coordonnées UV en longueurs d'onde (float32).  ``'amp'`` : amplitude en Jansky (float32).  ``'phase'`` : phase en degrés, wrappée dans [-180, 180] (float32).  ``'modamp'``, ``'modphs'`` : amplitude et phase du modèle courant.  ``'weight'`` : poids statistique de chaque visibilité. Valeur négative ou nulle = visibilité flaguée.  ``'tel_a'``, ``'tel_b'`` : indices des antennes formant la baseline.  ``'subarray'`` : indice du sous-réseau (0-based).  ``'if_no'`` : indice de la fréquence IF.  ``'time'`` : temps UTC en jours juliens. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type             | Description                                                                  |
+|--------|------------------|------------------------------------------------------------------------------|
+|        | DifmapStateError | Si aucune observation n'est chargée (appeler ``session.observe()`` d'abord). |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.obs.select(pol="RR")
+>>> data = session.obs.get_data()
+>>> import numpy as np
+>>> good = data["weight"] > 0
+>>> print(f"{good.sum()} visibilités valides sur {len(good)}")
+11200 visibilités valides sur 11560
+```
+
+### notify_data_changed { #difmap_wrapper.Observation.notify_data_changed }
+
+```python
+Observation.notify_data_changed()
+```
+
+Notifie tous les éditeurs enregistrés que les données C ont changé.
+
+Appeler après toute calibration ou modification des données côté C
+(ex : après un self-cal, un apply_gains, etc.) pour que les graphiques
+ouverts se mettent à jour automatiquement.
+
+### nsub { #difmap_wrapper.Observation.nsub }
+
+```python
+Observation.nsub()
+```
+
+Retourne le nombre de sous-réseaux (subarrays) dans l'observation.
+
+Un sous-réseau correspond à un groupe d'antennes qui observent ensemble.
+La plupart des observations n'en ont qu'un seul.
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type   | Description             |
+|--------|--------|-------------------------|
+|        | int    | Nombre de sous-réseaux. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type             | Description                                  |
+|--------|------------------|----------------------------------------------|
+|        | DifmapStateError | Si aucune observation n'est chargée.         |
+|        | DifmapError      | Si le moteur C rencontre une erreur interne. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> print(session.obs.nsub())
+1
+```
+
+### register_editor { #difmap_wrapper.Observation.register_editor }
+
+```python
+Observation.register_editor(editor)
+```
+
+Enregistre un éditeur Matplotlib comme observateur de ces données.
+
+### reset_flags { #difmap_wrapper.Observation.reset_flags }
+
+```python
+Observation.reset_flags(n_visibilities)
+```
+
+Remet tous les flags à zéro (aucune visibilité exclue).
+
+Appelé automatiquement par ``get_data()`` et ``select()``
+quand le nombre de visibilités change. Peut aussi être appelé
+manuellement pour annuler l'ensemble des flags.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name           | Type   | Description                                                 | Default    |
+|----------------|--------|-------------------------------------------------------------|------------|
+| n_visibilities | int    | Nombre total de visibilités dans le jeu de données courant. | _required_ |
+
+### save_wobs { #difmap_wrapper.Observation.save_wobs }
+
+```python
+Observation.save_wobs(filepath)
+```
+
+Sauvegarde les données avec les flags actuels dans un nouveau fichier FITS.
+
+Si l'extension ``'.fits'`` est absente du nom, elle est ajoutée automatiquement.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type   | Description                                                | Default    |
+|----------|--------|------------------------------------------------------------|------------|
+| filepath | str    | Chemin de destination. Exemple : ``"sortie_editee.fits"``. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type   | Description                         |
+|--------|--------|-------------------------------------|
+|        | bool   | ``True`` si la sauvegarde a réussi. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.obs.save_wobs("data/source_flagged.fits")
+True
+```
+
+### select { #difmap_wrapper.Observation.select }
+
+```python
+Observation.select(pol='I', ifs=(1, 0), channels=(1, 0))
+```
+
+Sélectionne la polarisation, les IFs et les canaux à analyser.
+
+Cette commande doit être appelée après ``session.observe()`` et avant
+tout accès aux données. Elle remet à zéro le masque de flagging.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type         | Description                                                                                                                                                                                        | Default   |
+|----------|--------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| pol      | str          | Polarisation souhaitée : ``"I"``, ``"RR"``, ``"LL"``, ``"Q"``, etc. Si la polarisation demandée n'existe pas dans le fichier, le moteur bascule sur la plus proche disponible. Par défaut ``"I"``. | `'I'`     |
+| ifs      | tuple of int | ``(premier_if, dernier_if)``. ``0`` signifie "jusqu'au dernier". Par défaut ``(1, 0)`` = tous les IFs.                                                                                             | `(1, 0)`  |
+| channels | tuple of int | ``(premier_canal, dernier_canal)``. Par défaut ``(1, 0)`` = tous.                                                                                                                                  | `(1, 0)`  |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type   | Description                                                                                                        |
+|--------|--------|--------------------------------------------------------------------------------------------------------------------|
+|        | str    | La polarisation réellement sélectionnée par le moteur C (peut différer de ``pol`` si elle n'était pas disponible). |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type             | Description                           |
+|--------|------------------|---------------------------------------|
+|        | DifmapStateError | Si aucune observation n'est chargée.  |
+|        | DifmapError      | Si la sélection échoue côté moteur C. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.obs.select(pol="RR")
+'RR'
+>>> session.obs.select(pol="I", ifs=(1, 2))
+'I'
+```
+
+### unflag_data { #difmap_wrapper.Observation.unflag_data }
+
+```python
+Observation.unflag_data(indices)
+```
+
+Restaure les visibilités précédemment flaguées.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name    | Type              | Description                                    | Default    |
+|---------|-------------------|------------------------------------------------|------------|
+| indices | array-like of int | Indices (0-based) des visibilités à restaurer. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type   | Description                       |
+|--------|--------|-----------------------------------|
+|        | int    | Nombre de visibilités restaurées. |
+
+### unregister_editor { #difmap_wrapper.Observation.unregister_editor }
+
+```python
+Observation.unregister_editor(editor)
+```
+
+Retire l'éditeur de la liste (appelé par cleanup()).

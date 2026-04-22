@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Difmap Python</title>
+<title>difmap_smartedit</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -113,7 +113,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
     <a class="navbar-brand" href="../index.html">
-    <span class="navbar-title">Difmap Python</span>
+    <span class="navbar-title">difmap_smartedit</span>
     </a>
   </div>
             <div id="quarto-search" class="" title="Search"></div>
@@ -121,14 +121,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <span class="navbar-toggler-icon"></span>
 </button>
           <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link active" href="../index.html" aria-current="page"> 
+<span class="menu-text">v2.5.0</span></a>
+  </li>  
+</ul>
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
   <li class="nav-item compact">
-    <a class="nav-link" href="https://github.com/ton-repo/difmap_wrapper"> <i class="bi bi-github" role="img" aria-label="GitHub">
+    <a class="nav-link" href="https://github.com/iimavne/DIFMAP"> <i class="bi bi-github" role="img" aria-label="GitHub">
 </i> 
 <span class="menu-text"></span></a>
   </li>  
-  <li class="dropdown-header">
- <span class="menu-text">theme-toggle</span></li>
 </ul>
           </div> <!-- /navcollapse -->
           <div class="quarto-navbar-tools">
@@ -140,7 +144,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">4. Référence API</a></li><li class="breadcrumb-item"><a href="../reference/exceptions.DifmapError.html">Gestion des Erreurs</a></li><li class="breadcrumb-item"><a href="../reference/exceptions.DifmapStateError.html">exceptions.DifmapStateError</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Référence API</a></li><li class="breadcrumb-item"><a href="../reference/index.html">Function reference</a></li><li class="breadcrumb-item"><a href="../reference/DifmapBatchManager.html">DifmapBatchManager</a></li></ol></nav>
         <a class="flex-grow-1" role="button" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="" onclick="window.quartoOpenSearch();">
@@ -166,34 +170,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
  <span class="menu-text">Accueil</span></a>
   </div>
 </li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../00_installation.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Installation</span></a>
-  </div>
-</li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../01_contexte_et_existant.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">1. Contexte et Existant</span></a>
-  </div>
-</li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../02_nouvelle_architecture.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">2. Nouvelle Architecture</span></a>
-  </div>
-</li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../03_implementation_technique.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">3. Implémentation Technique</span></a>
-  </div>
-</li>
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
             <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" aria-expanded="true">
- <span class="menu-text">4. Référence API</span></a>
+ <span class="menu-text">Démarrage</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
@@ -201,48 +181,60 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Vue d’ensemble</span></a>
+  <a href="../01_installation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Installation</span></a>
   </div>
 </li>
-          <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="false">
- <span class="menu-text">Session &amp; Environnement</span></a>
-          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="false" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth2 ">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/session.DifmapSession.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">session.DifmapSession</span></a>
+  <a href="../02_quick_start.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Quick Start</span></a>
   </div>
 </li>
       </ul>
   </li>
-          <li class="sidebar-item sidebar-item-section">
+        <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-expanded="false">
- <span class="menu-text">Génération d’Images</span></a>
-          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-expanded="false" aria-label="Toggle section">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="true">
+ <span class="menu-text">Guide utilisateur</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
-      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth2 ">  
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/imaging.DifmapImager.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">imaging.DifmapImager</span></a>
+  <a href="../03_api_python.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Recettes &amp; Patterns API</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../04_interface_gui.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Interface graphique (PyQt6)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../05_batch.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Traitement batch parallèle</span></a>
   </div>
 </li>
       </ul>
   </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-expanded="true">
+ <span class="menu-text">Référence API</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="true">
- <span class="menu-text">Gestion des Erreurs</span></a>
+            <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Function reference</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
@@ -250,26 +242,85 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth2 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/exceptions.DifmapError.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">exceptions.DifmapError</span></a>
+  <a href="../reference/DifmapBatchManager.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">DifmapBatchManager</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/exceptions.DifmapStateError.html" class="sidebar-item-text sidebar-link active">
- <span class="menu-text">exceptions.DifmapStateError</span></a>
+  <a href="../reference/DifmapError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapError</span></a>
   </div>
 </li>
-      </ul>
-  </li>
-      </ul>
-  </li>
-        <li class="sidebar-item">
+          <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../05_quick_start.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">5. Quick start</span></a>
+  <a href="../reference/DifmapImager.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapImager</span></a>
   </div>
 </li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DifmapSession.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapSession</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DifmapStateError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapStateError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Observation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Observation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Visualizer.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Visualizer</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" aria-expanded="true">
+ <span class="menu-text">Internals</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-5" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../06_contexte.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Contexte et existant</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../07_architecture.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Architecture du wrapper</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../08_implementation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Implémentation technique</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../09_contribuer.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Contribuer</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
     </ul>
     </div>
 </nav>
@@ -280,9 +331,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#difmap_wrapper.exceptions.DifmapStateError" id="toc-difmap_wrapper.exceptions.DifmapStateError" class="nav-link active" data-scroll-target="#difmap_wrapper.exceptions.DifmapStateError">exceptions.DifmapStateError</a>
+  <li><a href="#difmap_wrapper.DifmapBatchManager" id="toc-difmap_wrapper.DifmapBatchManager" class="nav-link active" data-scroll-target="#difmap_wrapper.DifmapBatchManager">DifmapBatchManager</a>
   <ul class="collapse">
+  <li><a href="#attributes" id="toc-attributes" class="nav-link" data-scroll-target="#attributes">Attributes</a></li>
   <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
+  <li><a href="#methods" id="toc-methods" class="nav-link" data-scroll-target="#methods">Methods</a>
+  <ul class="collapse">
+  <li><a href="#difmap_wrapper.DifmapBatchManager.run_batch" id="toc-difmap_wrapper.DifmapBatchManager.run_batch" class="nav-link" data-scroll-target="#difmap_wrapper.DifmapBatchManager.run_batch">run_batch</a></li>
+  </ul></li>
   </ul></li>
   </ul>
 </nav>
@@ -293,25 +349,208 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 
 
-<section id="difmap_wrapper.exceptions.DifmapStateError" class="level1">
-<h1>exceptions.DifmapStateError</h1>
-<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>exceptions.DifmapStateError()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Levée lorsqu’une action est tentée dans le mauvais ordre.</p>
-<p>Le moteur Difmap fonctionne comme un automate d’état strict. Cette erreur est levée par la surcouche Python pour prévenir les crashs violents (segfaults) du moteur C en bloquant les appels illogiques.</p>
+<section id="difmap_wrapper.DifmapBatchManager" class="level1">
+<h1>DifmapBatchManager</h1>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>DifmapBatchManager(max_workers<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Orchestrateur de traitement parallèle pour Difmap.</p>
+<p>Gère l’exécution de tâches indépendantes sur un pool de processus OS, en évitant les collisions mémoire dues aux variables globales du moteur C.</p>
+<section id="attributes" class="level2 doc-section doc-section-attributes">
+<h2 class="doc-section doc-section-attributes anchored" data-anchor-id="attributes">Attributes</h2>
+<table class="table">
+<colgroup>
+<col style="width: 10%">
+<col style="width: 13%">
+<col style="width: 76%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>max_workers</td>
+<td>(int, optional)</td>
+<td>Nombre maximal de processus parallèles. Si None (défaut), égal au nombre de CPUs disponibles.</td>
+</tr>
+</tbody>
+</table>
+</section>
 <section id="examples" class="level2 doc-section doc-section-examples">
 <h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
-<p>Typiquement levée si vous essayez de générer une image sans avoir chargé de données UV au préalable :</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> difmap_wrapper <span class="im">import</span> DifmapSession</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> difmap_wrapper.exceptions <span class="im">import</span> DifmapStateError</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> DifmapSession() <span class="im">as</span> session:</span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Oups, on a oublié session.load_observation() !</span></span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>        session.create_image()</span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> DifmapStateError <span class="im">as</span> e:</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"Erreur d'état bloquée proprement : </span><span class="sc">{</span>e<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Instanciation et traitement simple :</p>
+<pre><code>&gt;&gt;&gt; manager = DifmapBatchManager(max_workers=4)
+&gt;&gt;&gt; results = manager.run_batch(my_worker_func, range(10))
+&gt;&gt;&gt; for res in results:
+...     print(res)</code></pre>
+<p>Traitement avec observation d’exécution :</p>
+<pre><code>&gt;&gt;&gt; manager = DifmapBatchManager()
+&gt;&gt;&gt; args = [("file1.fits", "RR"), ("file2.fits", "LL"), ...]
+&gt;&gt;&gt; results = manager.run_batch(
+...     process_with_pol,
+...     args,
+...     max_workers=2
+... )</code></pre>
+</section>
+<section id="methods" class="level2">
+<h2 class="anchored" data-anchor-id="methods">Methods</h2>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="#difmap_wrapper.DifmapBatchManager.run_batch">run_batch</a></td>
+<td>Exécute une fonction worker sur une liste d’arguments en parallèle.</td>
+</tr>
+</tbody>
+</table>
+<section id="difmap_wrapper.DifmapBatchManager.run_batch" class="level3">
+<h3 class="anchored" data-anchor-id="difmap_wrapper.DifmapBatchManager.run_batch">run_batch</h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>DifmapBatchManager.run_batch(worker_func, arguments, max_workers<span class="op">=</span><span class="va">None</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Exécute une fonction worker sur une liste d’arguments en parallèle.</p>
+<p>Distribue les tâches à un pool de processus OS. Chaque processus s’exécute de manière isolée avec sa propre mémoire et sa propre instance DifmapSession Singleton.</p>
+<section id="parameters" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h4>
+<table class="table">
+<colgroup>
+<col style="width: 3%">
+<col style="width: 4%">
+<col style="width: 89%">
+<col style="width: 2%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>worker_func</td>
+<td>Callable</td>
+<td>Fonction à exécuter dans chaque processus. <strong>DOIT</strong> être définie au niveau du module (non locale, non lambda) pour être sérialisable par pickle. La signature typique est:: def worker_func(arg: Any) -&gt; Any: ’‘’Traite arg et retourne un résultat.’’’ with DifmapSession() as session: # … traitement … return result</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>arguments</td>
+<td>Iterable[Any]</td>
+<td>Itérable d’arguments à passer au worker. Chaque argument sera passé à <code>worker_func()</code> dans un processus séparé. Peut être une liste, un tuple, un générateur, etc. Examples : <code>[file1, file2, file3]</code>, <code>[(file, pol), ...]</code></td>
+<td><em>required</em></td>
+</tr>
+<tr class="odd">
+<td>max_workers</td>
+<td>int</td>
+<td>Nombre maximal de workers parallèles. Si None, utilise la valeur stockée dans <code>self.max_workers</code> (ou le nombre de CPUs si celle-ci est aussi None).</td>
+<td><code>None</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns">Returns</h4>
+<table class="table">
+<colgroup>
+<col style="width: 5%">
+<col style="width: 9%">
+<col style="width: 84%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>List[Any]</td>
+<td>Liste des résultats retournés par le worker pour chaque argument, dans le même ordre que les arguments d’entrée.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="raises" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises">Raises</h4>
+<table class="table">
+<colgroup>
+<col style="width: 4%">
+<col style="width: 6%">
+<col style="width: 88%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>Exception</td>
+<td>Toute exception levée dans un worker est propagée lors de l’accès au résultat. Utilisez un bloc try/except pour gérer les erreurs par worker.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="examples-1" class="level4 doc-section doc-section-examples">
+<h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-1">Examples</h4>
+<p>Cas basique avec une liste d’entiers :</p>
+<pre><code>&gt;&gt;&gt; def square(x):
+...     return x ** 2
+&gt;&gt;&gt; manager = DifmapBatchManager()
+&gt;&gt;&gt; results = manager.run_batch(square, [1, 2, 3, 4, 5])
+&gt;&gt;&gt; print(results)
+[1, 4, 9, 16, 25]</code></pre>
+<p>Cas réaliste avec fichiers FITS :</p>
+<pre><code>&gt;&gt;&gt; def process_fits(filepath):
+...     with DifmapSession() as session:
+...         session.observe(filepath)
+...         session.obs.select(pol="RR")
+...         data = session.obs.get_data()
+...         return {
+...             'file': filepath,
+...             'n_vis': len(data['amp']),
+...             'mean_amp': float(data['amp'].mean())
+...         }
+&gt;&gt;&gt; manager = DifmapBatchManager(max_workers=3)
+&gt;&gt;&gt; files = ["a.fits", "b.fits", "c.fits", "d.fits"]
+&gt;&gt;&gt; results = manager.run_batch(process_fits, files)
+&gt;&gt;&gt; for res in results:
+...     print(f"{res['file']}: {res['mean_amp']:.3f} Jy")</code></pre>
+<p>Cas avec arguments tuples :</p>
+<pre><code>&gt;&gt;&gt; def process_with_pol(arg):
+...     filepath, pol = arg
+...     with DifmapSession() as session:
+...         session.observe(filepath)
+...         session.obs.select(pol=pol)
+...         return len(session.obs.get_data()['amp'])
+&gt;&gt;&gt; args = [("f1.fits", "RR"), ("f2.fits", "LL")]
+&gt;&gt;&gt; manager = DifmapBatchManager()
+&gt;&gt;&gt; sizes = manager.run_batch(process_with_pol, args)
+&gt;&gt;&gt; print(sizes)
+[1024, 2048]</code></pre>
+</section>
+<section id="notes" class="level4 doc-section doc-section-notes">
+<h4 class="doc-section doc-section-notes anchored" data-anchor-id="notes">Notes</h4>
+<ul>
+<li>La fonction worker doit être <strong>picklable</strong> : définie au niveau du module, pas comme fonction locale ou lambda complexe.</li>
+<li>Les résultats sont retournés dans l’ordre d’input, même si les processus terminent dans un ordre différent.</li>
+<li>Pour les tâches longues, utilisez <code>max_workers</code> &lt; nombre de CPUs pour éviter la surcharge système.</li>
+</ul>
 
 
+</section>
+</section>
 </section>
 </section>
 
@@ -726,6 +965,26 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
 });
 </script>
 </div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+<p>difmap_smartedit v2.5.0 — wrapper Python pour Difmap (Caltech)</p>
+</div>   
+    <div class="nav-footer-center">
+      &nbsp;
+    </div>
+    <div class="nav-footer-right">
+      <ul class="footer-items list-unstyled">
+    <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/iimavne/DIFMAP">
+      <i class="bi bi-github" role="img">
+</i> 
+    </a>
+  </li>  
+</ul>
+    </div>
+  </div>
+</footer>
 
 
 

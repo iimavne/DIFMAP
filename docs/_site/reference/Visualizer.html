@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Difmap Python</title>
+<title>difmap_smartedit</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -113,7 +113,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
     <a class="navbar-brand" href="../index.html">
-    <span class="navbar-title">Difmap Python</span>
+    <span class="navbar-title">difmap_smartedit</span>
     </a>
   </div>
             <div id="quarto-search" class="" title="Search"></div>
@@ -121,14 +121,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <span class="navbar-toggler-icon"></span>
 </button>
           <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link active" href="../index.html" aria-current="page"> 
+<span class="menu-text">v2.5.0</span></a>
+  </li>  
+</ul>
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
   <li class="nav-item compact">
-    <a class="nav-link" href="https://github.com/ton-repo/difmap_wrapper"> <i class="bi bi-github" role="img" aria-label="GitHub">
+    <a class="nav-link" href="https://github.com/iimavne/DIFMAP"> <i class="bi bi-github" role="img" aria-label="GitHub">
 </i> 
 <span class="menu-text"></span></a>
   </li>  
-  <li class="dropdown-header">
- <span class="menu-text">theme-toggle</span></li>
 </ul>
           </div> <!-- /navcollapse -->
           <div class="quarto-navbar-tools">
@@ -140,7 +144,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">4. Référence API</a></li><li class="breadcrumb-item"><a href="../reference/imaging.DifmapImager.html">Génération d’Images</a></li><li class="breadcrumb-item"><a href="../reference/imaging.DifmapImager.html">imaging.DifmapImager</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Référence API</a></li><li class="breadcrumb-item"><a href="../reference/index.html">Function reference</a></li><li class="breadcrumb-item"><a href="../reference/Visualizer.html">Visualizer</a></li></ol></nav>
         <a class="flex-grow-1" role="button" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="" onclick="window.quartoOpenSearch();">
@@ -166,34 +170,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
  <span class="menu-text">Accueil</span></a>
   </div>
 </li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../00_installation.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Installation</span></a>
-  </div>
-</li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../01_contexte_et_existant.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">1. Contexte et Existant</span></a>
-  </div>
-</li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../02_nouvelle_architecture.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">2. Nouvelle Architecture</span></a>
-  </div>
-</li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../03_implementation_technique.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">3. Implémentation Technique</span></a>
-  </div>
-</li>
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
             <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" aria-expanded="true">
- <span class="menu-text">4. Référence API</span></a>
+ <span class="menu-text">Démarrage</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
@@ -201,75 +181,146 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Vue d’ensemble</span></a>
+  <a href="../01_installation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Installation</span></a>
   </div>
 </li>
-          <li class="sidebar-item sidebar-item-section">
-      <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="false">
- <span class="menu-text">Session &amp; Environnement</span></a>
-          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="false" aria-label="Toggle section">
-            <i class="bi bi-chevron-right ms-2"></i>
-          </a> 
-      </div>
-      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth2 ">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/session.DifmapSession.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">session.DifmapSession</span></a>
+  <a href="../02_quick_start.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Quick Start</span></a>
   </div>
 </li>
       </ul>
   </li>
-          <li class="sidebar-item sidebar-item-section">
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="true">
+ <span class="menu-text">Guide utilisateur</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../03_api_python.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Recettes &amp; Patterns API</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../04_interface_gui.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Interface graphique (PyQt6)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../05_batch.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Traitement batch parallèle</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
             <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-expanded="true">
- <span class="menu-text">Génération d’Images</span></a>
+ <span class="menu-text">Référence API</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
-      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth2 show">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/imaging.DifmapImager.html" class="sidebar-item-text sidebar-link active">
- <span class="menu-text">imaging.DifmapImager</span></a>
-  </div>
-</li>
-      </ul>
-  </li>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="false">
- <span class="menu-text">Gestion des Erreurs</span></a>
-          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="false" aria-label="Toggle section">
+            <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Function reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
-      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth2 ">  
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth2 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/exceptions.DifmapError.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">exceptions.DifmapError</span></a>
+  <a href="../reference/DifmapBatchManager.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapBatchManager</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/exceptions.DifmapStateError.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">exceptions.DifmapStateError</span></a>
+  <a href="../reference/DifmapError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DifmapImager.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapImager</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DifmapSession.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapSession</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DifmapStateError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapStateError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Observation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Observation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Visualizer.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Visualizer</span></a>
   </div>
 </li>
       </ul>
   </li>
       </ul>
   </li>
-        <li class="sidebar-item">
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" aria-expanded="true">
+ <span class="menu-text">Internals</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-5" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../05_quick_start.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">5. Quick start</span></a>
+  <a href="../06_contexte.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Contexte et existant</span></a>
   </div>
 </li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../07_architecture.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Architecture du wrapper</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../08_implementation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Implémentation technique</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../09_contribuer.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Contribuer</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
     </ul>
     </div>
 </nav>
@@ -280,12 +331,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#difmap_wrapper.imaging.DifmapImager" id="toc-difmap_wrapper.imaging.DifmapImager" class="nav-link active" data-scroll-target="#difmap_wrapper.imaging.DifmapImager">imaging.DifmapImager</a>
+  <li><a href="#difmap_wrapper.Visualizer" id="toc-difmap_wrapper.Visualizer" class="nav-link active" data-scroll-target="#difmap_wrapper.Visualizer">Visualizer</a>
   <ul class="collapse">
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
   <li><a href="#methods" id="toc-methods" class="nav-link" data-scroll-target="#methods">Methods</a>
   <ul class="collapse">
-  <li><a href="#difmap_wrapper.imaging.DifmapImager.make_dirty_map" id="toc-difmap_wrapper.imaging.DifmapImager.make_dirty_map" class="nav-link" data-scroll-target="#difmap_wrapper.imaging.DifmapImager.make_dirty_map">make_dirty_map</a></li>
-  <li><a href="#difmap_wrapper.imaging.DifmapImager.plot_image" id="toc-difmap_wrapper.imaging.DifmapImager.plot_image" class="nav-link" data-scroll-target="#difmap_wrapper.imaging.DifmapImager.plot_image">plot_image</a></li>
+  <li><a href="#difmap_wrapper.Visualizer.mapplot" id="toc-difmap_wrapper.Visualizer.mapplot" class="nav-link" data-scroll-target="#difmap_wrapper.Visualizer.mapplot">mapplot</a></li>
+  <li><a href="#difmap_wrapper.Visualizer.plot_image" id="toc-difmap_wrapper.Visualizer.plot_image" class="nav-link" data-scroll-target="#difmap_wrapper.Visualizer.plot_image">plot_image</a></li>
+  <li><a href="#difmap_wrapper.Visualizer.radplot" id="toc-difmap_wrapper.Visualizer.radplot" class="nav-link" data-scroll-target="#difmap_wrapper.Visualizer.radplot">radplot</a></li>
+  <li><a href="#difmap_wrapper.Visualizer.uvplot" id="toc-difmap_wrapper.Visualizer.uvplot" class="nav-link" data-scroll-target="#difmap_wrapper.Visualizer.uvplot">uvplot</a></li>
   </ul></li>
   </ul></li>
   </ul>
@@ -297,11 +351,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 
 
-<section id="difmap_wrapper.imaging.DifmapImager" class="level1">
-<h1>imaging.DifmapImager</h1>
-<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>imaging.DifmapImager()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Moteur de rendu mathématique pour la génération d’images astrophysiques.</p>
-<p>Cette classe est dite ‘stateless’ (sans état). Elle est pilotée par la session principale pour transformer les visibilités UV en cartes FITS via des Transformées de Fourier rapides (FFT).</p>
+<section id="difmap_wrapper.Visualizer" class="level1">
+<h1>Visualizer</h1>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>Visualizer(session)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Graphiques statiques pour explorer les données UV et les images.</p>
+<p>Accessible via <code>session.vis</code>. Pour l’interactivité (flagging au clic, zoom, statistiques), utiliser l’interface graphique PyQt6.</p>
+<section id="examples" class="level2 doc-section doc-section-examples">
+<h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session.obs.select(pol<span class="op">=</span><span class="st">"RR"</span>)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session.vis.uvplot()           <span class="co"># couverture UV</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session.vis.radplot()          <span class="co"># amplitude vs rayon UV</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
 <section id="methods" class="level2">
 <h2 class="anchored" data-anchor-id="methods">Methods</h2>
 <table class="table">
@@ -313,138 +373,35 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </thead>
 <tbody>
 <tr class="odd">
-<td><a href="#difmap_wrapper.imaging.DifmapImager.make_dirty_map">make_dirty_map</a></td>
-<td>Calcule la Dirty Map (image brute) à partir des visibilités en RAM.</td>
+<td><a href="#difmap_wrapper.Visualizer.mapplot">mapplot</a></td>
+<td>Affiche l’image actuellement en mémoire.</td>
 </tr>
 <tr class="even">
-<td><a href="#difmap_wrapper.imaging.DifmapImager.plot_image">plot_image</a></td>
-<td>Génère et affiche une visualisation scientifique de l’image reconstruite.</td>
+<td><a href="#difmap_wrapper.Visualizer.plot_image">plot_image</a></td>
+<td>Affiche une image astrophysique avec sa barre de couleur et ses axes astrométriques.</td>
+</tr>
+<tr class="odd">
+<td><a href="#difmap_wrapper.Visualizer.radplot">radplot</a></td>
+<td>Affiche l’amplitude des visibilités en fonction de leur rayon UV.</td>
+</tr>
+<tr class="even">
+<td><a href="#difmap_wrapper.Visualizer.uvplot">uvplot</a></td>
+<td>Affiche la couverture du plan UV (U en abscisse, V en ordonnée).</td>
 </tr>
 </tbody>
 </table>
-<section id="difmap_wrapper.imaging.DifmapImager.make_dirty_map" class="level3">
-<h3 class="anchored" data-anchor-id="difmap_wrapper.imaging.DifmapImager.make_dirty_map">make_dirty_map</h3>
-<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>imaging.DifmapImager.make_dirty_map(size, cellsize, pol<span class="op">=</span><span class="st">'I'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Calcule la Dirty Map (image brute) à partir des visibilités en RAM.</p>
-<p>Cette fonction orchestre la sélection de la polarisation, l’allocation de la grille d’image, et la Transformée de Fourier inverse.</p>
-<p><strong>L’astuce magique</strong> : Elle calcule et applique automatiquement le décalage astrométrique du demi-pixel. L’utilisateur n’a plus à se soucier de l’alignement des axes, la clé <code>extent</code> est prête à l’emploi.</p>
+<section id="difmap_wrapper.Visualizer.mapplot" class="level3">
+<h3 class="anchored" data-anchor-id="difmap_wrapper.Visualizer.mapplot">mapplot</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>Visualizer.mapplot(img_dict<span class="op">=</span><span class="va">None</span>, <span class="op">**</span>kwargs)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Affiche l’image actuellement en mémoire.</p>
+<p>Si <code>img_dict</code> est absent, récupère automatiquement l’image depuis le moteur C avec les paramètres du dernier <code>mapsize()</code>.</p>
 <section id="parameters" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h4>
 <table class="table">
 <colgroup>
-<col style="width: 2%">
-<col style="width: 1%">
-<col style="width: 93%">
-<col style="width: 2%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Name</th>
-<th>Type</th>
-<th>Description</th>
-<th>Default</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>size</td>
-<td>int</td>
-<td>Dimension de la grille (ex: 512 pour une image 512x512). Privilégiez les puissances de 2 pour optimiser la FFT.</td>
-<td><em>required</em></td>
-</tr>
-<tr class="even">
-<td>cellsize</td>
-<td>float</td>
-<td>Résolution spatiale d’un pixel en millisecondes d’arc (mas).</td>
-<td><em>required</em></td>
-</tr>
-<tr class="odd">
-<td>pol</td>
-<td>str</td>
-<td>La polarisation à imager. Accepte les paramètres de Stokes ou les corrélations brutes : <br> - “I” : Intensité totale (luminosité globale, valeur par défaut). <br> - “Q”, “U” : Polarisation linéaire (cartographie des champs magnétiques). <br> - “V” : Polarisation circulaire. <br> - “RR”, “LL” : Corrélations directes des antennes (circulaire droite/gauche). <br> - “RL”, “LR” : Polarisations croisées. <br></td>
-<td><code>"I"</code></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="returns" class="level4 doc-section doc-section-returns">
-<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns">Returns</h4>
-<table class="table">
-<colgroup>
-<col style="width: 2%">
-<col style="width: 2%">
-<col style="width: 95%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Name</th>
-<th>Type</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td></td>
-<td>dict</td>
-<td>Le “Package Complet” de l’image contenant : <br> - <strong>data</strong> (<em>numpy.ndarray</em>): La matrice 2D des flux (Jy/beam). <br> - <strong>header</strong> (<em>dict</em>): Les métadonnées du header FITS (NX, NY, etc.). <br> - <strong>beam</strong> (<em>dict</em>): Les paramètres de la PSF (bmaj, bmin, bpa). <br> - <strong>extent</strong> (<em>list</em>): Coordonnées absolues <code>[x_min, x_max, y_min, y_max]</code> corrigées.<br></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="raises" class="level4 doc-section doc-section-raises">
-<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises">Raises</h4>
-<table class="table">
-<colgroup>
-<col style="width: 8%">
-<col style="width: 14%">
-<col style="width: 76%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Name</th>
-<th>Type</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td></td>
-<td>DifmapError</td>
-<td>Si l’allocation de la grille échoue (mapsize) ou si la FFT plante.</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="examples" class="level4 doc-section doc-section-examples">
-<h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h4>
-<p>Affichage direct d’une image avec Matplotlib grâce à l’extent corrigé :</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># L'image a déjà été calculée et récupérée</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>img <span class="op">=</span> session.create_image(size<span class="op">=</span><span class="dv">512</span>, cellsize<span class="op">=</span><span class="fl">0.1</span>, pol<span class="op">=</span><span class="st">"I"</span>)</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span>
-<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>plt.imshow(img[<span class="st">"data"</span>], extent<span class="op">=</span>img[<span class="st">"extent"</span>], cmap<span class="op">=</span><span class="st">"magma"</span>)</span>
-<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>plt.colorbar(label<span class="op">=</span><span class="st">"Jy/beam"</span>)</span>
-<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</section>
-</section>
-<section id="difmap_wrapper.imaging.DifmapImager.plot_image" class="level3">
-<h3 class="anchored" data-anchor-id="difmap_wrapper.imaging.DifmapImager.plot_image">plot_image</h3>
-<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>imaging.DifmapImager.plot_image(</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    img_dict,</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    cmap<span class="op">=</span><span class="st">'magma'</span>,</span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="dv">6</span>),</span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    title<span class="op">=</span><span class="st">'Imagerie Difmap'</span>,</span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<p>Génère et affiche une visualisation scientifique de l’image reconstruite.</p>
-<p>Cette méthode statique extrait les données matricielles et les limites spatiales du dictionnaire généré par le moteur Difmap pour produire une figure Matplotlib formatée pour la radioastronomie (axes en décalage angulaire, échelle de flux).</p>
-<section id="parameters-1" class="level4 doc-section doc-section-parameters">
-<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-1">Parameters</h4>
-<table class="table">
-<colgroup>
-<col style="width: 4%">
-<col style="width: 3%">
-<col style="width: 83%">
+<col style="width: 7%">
+<col style="width: 5%">
+<col style="width: 78%">
 <col style="width: 8%">
 </colgroup>
 <thead>
@@ -459,43 +416,25 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>img_dict</td>
 <td>dict</td>
-<td>Le dictionnaire de l’image produit par l’API Difmap. Il doit impérativement contenir les clés ‘data’ (la matrice bidimensionnelle des flux) et ‘extent’ (les limites spatiales corrigées). <br></td>
-<td><em>required</em></td>
+<td>Package image (sortie de <code>get_map_package()</code>). Si absent, l’image courante en mémoire C est utilisée.</td>
+<td><code>None</code></td>
 </tr>
 <tr class="even">
-<td>cmap</td>
-<td>str</td>
-<td>La palette de couleurs Matplotlib à utiliser pour le rendu. Par défaut défini sur ‘magma’. <br></td>
-<td><code>'magma'</code></td>
-</tr>
-<tr class="odd">
-<td>figsize</td>
-<td>tuple</td>
-<td>Les dimensions de la figure générée (largeur, hauteur) en pouces. Par défaut défini sur (8, 6). <br></td>
-<td><code>(8, 6)</code></td>
-</tr>
-<tr class="even">
-<td>title</td>
-<td>str</td>
-<td>Le titre principal affiché au-dessus de la figure. Par défaut défini sur “Imagerie Difmap”. <br></td>
-<td><code>'Imagerie Difmap'</code></td>
-</tr>
-<tr class="odd">
 <td>**kwargs</td>
-<td>dict</td>
-<td>Arguments supplémentaires transmis directement à la fonction <code>matplotlib.pyplot.imshow</code> (par exemple <code>vmin</code>, <code>vmax</code>, <code>interpolation</code>).</td>
+<td></td>
+<td>Paramètres supplémentaires transmis à <code>plot_image()</code>.</td>
 <td><code>{}</code></td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="returns-1" class="level4 doc-section doc-section-returns">
-<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-1">Returns</h4>
+<section id="raises" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises">Raises</h4>
 <table class="table">
 <colgroup>
-<col style="width: 5%">
-<col style="width: 5%">
-<col style="width: 88%">
+<col style="width: 11%">
+<col style="width: 25%">
+<col style="width: 63%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -507,8 +446,76 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td></td>
-<td>None</td>
-<td>Cette fonction ne retourne aucune valeur. Elle déclenche l’affichage interactif de la figure via <code>matplotlib.pyplot.show()</code>.</td>
+<td>DifmapStateError</td>
+<td>Si <code>mapsize()</code> n’a pas encore été appelé.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="examples-1" class="level4 doc-section doc-section-examples">
+<h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-1">Examples</h4>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session.imager.mapsize(<span class="dv">512</span>, <span class="fl">0.1</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session.imager.invert()</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session.vis.mapplot(title<span class="op">=</span><span class="st">"Dirty Map après inversion"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+</section>
+<section id="difmap_wrapper.Visualizer.plot_image" class="level3">
+<h3 class="anchored" data-anchor-id="difmap_wrapper.Visualizer.plot_image">plot_image</h3>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>Visualizer.plot_image(</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    img_dict,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    cmap<span class="op">=</span><span class="st">'magma'</span>,</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="dv">6</span>),</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    title<span class="op">=</span><span class="st">'Dirty Map'</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Affiche une image astrophysique avec sa barre de couleur et ses axes astrométriques.</p>
+<section id="parameters-1" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-1">Parameters</h4>
+<table class="table">
+<colgroup>
+<col style="width: 5%">
+<col style="width: 8%">
+<col style="width: 79%">
+<col style="width: 7%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>img_dict</td>
+<td>dict</td>
+<td>Dictionnaire retourné par <code>DifmapImager.get_map_package()</code>. Doit contenir les clés <code>'data'</code> (tableau 2D) et <code>'extent'</code> (limites en mas pour les axes).</td>
+<td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>cmap</td>
+<td>str</td>
+<td>Palette de couleurs Matplotlib. Par défaut <code>'magma'</code>.</td>
+<td><code>'magma'</code></td>
+</tr>
+<tr class="odd">
+<td>figsize</td>
+<td>tuple of float</td>
+<td>Taille <code>(largeur, hauteur)</code> en pouces. Par défaut <code>(8, 6)</code>.</td>
+<td><code>(8, 6)</code></td>
+</tr>
+<tr class="even">
+<td>title</td>
+<td>str</td>
+<td>Titre affiché au-dessus de l’image. Par défaut <code>"Dirty Map"</code>.</td>
+<td><code>'Dirty Map'</code></td>
+</tr>
+<tr class="odd">
+<td>**kwargs</td>
+<td></td>
+<td>Paramètres supplémentaires transmis à <code>matplotlib.pyplot.imshow</code>.</td>
+<td><code>{}</code></td>
 </tr>
 </tbody>
 </table>
@@ -517,9 +524,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-1">Raises</h4>
 <table class="table">
 <colgroup>
-<col style="width: 7%">
-<col style="width: 9%">
-<col style="width: 82%">
+<col style="width: 8%">
+<col style="width: 11%">
+<col style="width: 79%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -532,29 +539,224 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td>KeyError</td>
-<td>Si le dictionnaire fourni ne contient pas les clés requises (‘data’ ou ‘extent’).</td>
+<td>Si les clés <code>'data'</code> ou <code>'extent'</code> sont absentes du dictionnaire.</td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="examples-1" class="level4 doc-section doc-section-examples">
-<h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-1">Examples</h4>
-<p>Génération et affichage rapide d’une image avec des paramètres personnalisés :</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> difmap_wrapper <span class="im">import</span> DifmapSession</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> difmap_wrapper.imaging <span class="im">import</span> DifmapImager</span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> </span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="cf">with</span> DifmapSession() <span class="im">as</span> session:</span>
-<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>...     session.load_observation(<span class="st">"data_uv.fits"</span>)</span>
-<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>...     img_package <span class="op">=</span> session.create_image(size<span class="op">=</span><span class="dv">512</span>, cellsize<span class="op">=</span><span class="fl">0.1</span>)</span>
-<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>...     </span>
-<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>...     <span class="co"># Affichage avec une palette différente et des limites de flux</span></span>
-<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>...     DifmapImager.plot_image(</span>
-<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>...         img_package, </span>
-<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>...         title<span class="op">=</span><span class="st">"Observation Radio"</span>, </span>
-<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>...         cmap<span class="op">=</span><span class="st">"viridis"</span>, </span>
-<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>...         vmin<span class="op">=-</span><span class="fl">0.01</span>, </span>
-<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>...         vmax<span class="op">=</span><span class="fl">0.5</span></span>
-<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>...     )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="examples-2" class="level4 doc-section doc-section-examples">
+<h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-2">Examples</h4>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> img <span class="op">=</span> session.imager.make_dirty_map(<span class="dv">512</span>, <span class="fl">0.1</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session.vis.plot_image(img, cmap<span class="op">=</span><span class="st">'viridis'</span>, title<span class="op">=</span><span class="st">"Source J0003"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+</section>
+<section id="difmap_wrapper.Visualizer.radplot" class="level3">
+<h3 class="anchored" data-anchor-id="difmap_wrapper.Visualizer.radplot">radplot</h3>
+<div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>Visualizer.radplot(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    ax<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    figsize<span class="op">=</span>(<span class="dv">10</span>, <span class="dv">6</span>),</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    color<span class="op">=</span><span class="st">'black'</span>,</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    alpha<span class="op">=</span><span class="fl">0.5</span>,</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    s<span class="op">=</span><span class="dv">1</span>,</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    title<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Affiche l’amplitude des visibilités en fonction de leur rayon UV.</p>
+<p>Ce graphique (aussi appelé “amplitude vs uv-distance”) donne une vue rapide de la structure de la source : une source ponctuelle donne une ligne horizontale, une source étendue montre une décroissance.</p>
+<section id="parameters-2" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-2">Parameters</h4>
+<table class="table">
+<colgroup>
+<col style="width: 8%">
+<col style="width: 18%">
+<col style="width: 62%">
+<col style="width: 9%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>ax</td>
+<td>matplotlib.axes.Axes</td>
+<td>Axe sur lequel dessiner. Si absent, une nouvelle figure est créée.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>figsize</td>
+<td>tuple of float</td>
+<td>Taille <code>(largeur, hauteur)</code> en pouces. Par défaut <code>(10, 6)</code>.</td>
+<td><code>(10, 6)</code></td>
+</tr>
+<tr class="odd">
+<td>color</td>
+<td>str</td>
+<td>Couleur des points. Par défaut <code>'black'</code>.</td>
+<td><code>'black'</code></td>
+</tr>
+<tr class="even">
+<td>alpha</td>
+<td>float</td>
+<td>Transparence des points. Par défaut <code>0.5</code>.</td>
+<td><code>0.5</code></td>
+</tr>
+<tr class="odd">
+<td>s</td>
+<td>float</td>
+<td>Taille des marqueurs. Par défaut <code>1</code>.</td>
+<td><code>1</code></td>
+</tr>
+<tr class="even">
+<td>title</td>
+<td>str</td>
+<td>Titre du graphique. Généré automatiquement si absent.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>**kwargs</td>
+<td></td>
+<td>Paramètres supplémentaires transmis à <code>matplotlib.axes.Axes.scatter</code>.</td>
+<td><code>{}</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns">Returns</h4>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>matplotlib.axes.Axes</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="examples-3" class="level4 doc-section doc-section-examples">
+<h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-3">Examples</h4>
+<div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session.vis.radplot(color<span class="op">=</span><span class="st">'navy'</span>, alpha<span class="op">=</span><span class="fl">0.3</span>, s<span class="op">=</span><span class="fl">0.5</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+</section>
+<section id="difmap_wrapper.Visualizer.uvplot" class="level3">
+<h3 class="anchored" data-anchor-id="difmap_wrapper.Visualizer.uvplot">uvplot</h3>
+<div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>Visualizer.uvplot(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    ax<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="dv">8</span>),</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    color<span class="op">=</span><span class="st">'blue'</span>,</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    s<span class="op">=</span><span class="dv">1</span>,</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    alpha<span class="op">=</span><span class="fl">0.5</span>,</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    title<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    edgecolors<span class="op">=</span><span class="st">'none'</span>,</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Affiche la couverture du plan UV (U en abscisse, V en ordonnée).</p>
+<p>Les coordonnées sont converties en Méga-longueurs d’onde (Mλ). Les points conjugués (−U, −V) sont ajoutés automatiquement.</p>
+<section id="parameters-3" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-3">Parameters</h4>
+<table class="table">
+<colgroup>
+<col style="width: 7%">
+<col style="width: 15%">
+<col style="width: 69%">
+<col style="width: 7%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>ax</td>
+<td>matplotlib.axes.Axes</td>
+<td>Axe sur lequel dessiner. Si absent, une nouvelle figure est créée.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>figsize</td>
+<td>tuple of float</td>
+<td>Taille <code>(largeur, hauteur)</code> en pouces si une nouvelle figure est créée. Par défaut <code>(8, 8)</code>.</td>
+<td><code>(8, 8)</code></td>
+</tr>
+<tr class="odd">
+<td>color</td>
+<td>str</td>
+<td>Couleur des points. Par défaut <code>'blue'</code>.</td>
+<td><code>'blue'</code></td>
+</tr>
+<tr class="even">
+<td>s</td>
+<td>float</td>
+<td>Taille des marqueurs en points². Par défaut <code>1</code>.</td>
+<td><code>1</code></td>
+</tr>
+<tr class="odd">
+<td>alpha</td>
+<td>float</td>
+<td>Transparence des points, entre 0 (invisible) et 1 (opaque). Par défaut <code>0.5</code>.</td>
+<td><code>0.5</code></td>
+</tr>
+<tr class="even">
+<td>title</td>
+<td>str</td>
+<td>Titre du graphique. Si absent, un titre est généré automatiquement à partir du nom de la source.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>**kwargs</td>
+<td></td>
+<td>Paramètres supplémentaires transmis à <code>matplotlib.axes.Axes.scatter</code>.</td>
+<td><code>{}</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="returns-1" class="level4 doc-section doc-section-returns">
+<h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-1">Returns</h4>
+<table class="table">
+<colgroup>
+<col style="width: 11%">
+<col style="width: 30%">
+<col style="width: 58%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>matplotlib.axes.Axes</td>
+<td>L’axe sur lequel la figure a été tracée.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="examples-4" class="level4 doc-section doc-section-examples">
+<h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-4">Examples</h4>
+<div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session.vis.uvplot(color<span class="op">=</span><span class="st">'steelblue'</span>, s<span class="op">=</span><span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Sur un axe existant :</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> fig, ax <span class="op">=</span> plt.subplots()</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session.vis.uvplot(ax<span class="op">=</span>ax, color<span class="op">=</span><span class="st">'red'</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
 
 </section>
@@ -973,6 +1175,26 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
 });
 </script>
 </div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+<p>difmap_smartedit v2.5.0 — wrapper Python pour Difmap (Caltech)</p>
+</div>   
+    <div class="nav-footer-center">
+      &nbsp;
+    </div>
+    <div class="nav-footer-right">
+      <ul class="footer-items list-unstyled">
+    <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/iimavne/DIFMAP">
+      <i class="bi bi-github" role="img">
+</i> 
+    </a>
+  </li>  
+</ul>
+    </div>
+  </div>
+</footer>
 
 
 

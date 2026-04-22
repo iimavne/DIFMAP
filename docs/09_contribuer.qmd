@@ -1,0 +1,228 @@
+---
+title: "Contribuer"
+---
+
+Ce guide explique comment ajouter des fonctionnalités au wrapper, recompiler après des modifications, et respecter les conventions du projet.
+
+## Environnement de développement
+
+```bash
+git clone https://github.com/iimavne/DIFMAP.git
+cd DIFMAP
+
+python3 -m venv .venv
+source .venv/bin/activate
+
+pip install --upgrade pip
+pip install meson-python meson ninja \
+  "numpy>=2.0.0" "cython>=3.0.0" \
+  astropy matplotlib PyQt6 qtawesome
+
+# Installer en mode éditable (recompile sans réinstaller)
+pip install -e . --no-build-isolation
+```
+
+---
+
+## Ajouter une nouvelle fonction C
+
+Le flux de travail complet pour exposer une nouvelle fonction du moteur Difmap à Python :
+
+```{mermaid}
+graph LR
+    A["1. difmap.c\n(implémenter la fonction C)"]
+    B["2. difmap_api.h\n(déclarer le prototype)"]
+    C["3. cdifmap.pxd\n(déclarer pour Cython)"]
+    D["4. difmap_native.pyx\n(envelopper en Python)"]
+    E["5. imaging.py / observation.py\n(exposer dans l'API)"]
+
+    A --> B --> C --> D --> E
+```
+
+### Étape 1 — Implémenter dans `difmap.c`
+
+Ajouter la fonction dans le fichier `difmap_src/difmap.c`. Elle doit avoir accès aux variables globales `vlbob` / `vlbmap` et inclure une vérification `NULL` si elle y accède.
+
+```c
+/* difmap_src/difmap.c — exemple : exposer le nombre de visibilités */
+int get_native_n_vis() {
+    if (vlbob == NULL) return -1;
+    return vlbob->n_vis;   /* adapter au champ réel de la structure */
+}
+```
+
+### Étape 2 — Déclarer le prototype dans `difmap_api.h`
+
+```c
+/* include/difmap_api.h */
+int get_native_n_vis(void);
+```
+
+### Étape 3 — Déclarer dans `cdifmap.pxd`
+
+```python
+# binding/cdifmap.pxd
+cdef extern from "difmap_api.h":
+    # ... fonctions existantes ...
+    int get_native_n_vis()   # ← ajouter ici
+```
+
+### Étape 4 — Envelopper dans `difmap_native.pyx`
+
+```python
+# binding/difmap_native.pyx
+def get_n_vis() -> int:
+    """Retourne le nombre total de visibilités dans l'observation active."""
+    cdef int n = cdifmap.get_native_n_vis()
+    if n < 0:
+        raise RuntimeError("Aucune observation chargée.")
+    return n
+```
+
+### Étape 5 — Exposer dans l'API Python
+
+```python
+# difmap_wrapper/observation.py
+def n_vis(self) -> int:
+    """
+    Nombre total de visibilités dans l'observation active.
+
+    Returns
+    -------
+    int
+        Nombre de visibilités.
+
+    Raises
+    ------
+    DifmapStateError
+        Si aucune observation n'est chargée.
+    """
+    if not self._session.uv_loaded:
+        raise DifmapStateError("Aucune observation chargée.")
+    return self._native.get_n_vis()
+```
+
+### Étape 6 — Recompiler
+
+```bash
+pip install -e . --no-build-isolation
+```
+
+### Étape 7 — Tester
+
+```python
+from difmap_wrapper import DifmapSession
+
+with DifmapSession() as session:
+    session.observe("data/source.uvfits")
+    session.obs.select(pol="I")
+    print(session.obs.n_vis())
+```
+
+---
+
+## Recompiler après une modification
+
+| Type de modification | Commande |
+|:---------------------|:---------|
+| Fichier `.c` ou `.f` | `pip install -e . --no-build-isolation` |
+| Fichier `.pyx` ou `.pxd` | `pip install -e . --no-build-isolation` |
+| Fichier `.py` uniquement | Aucune recompilation nécessaire (mode éditable) |
+
+Meson ne recompile que les fichiers modifiés (compilation incrémentale). La première compilation prend ~2–5 minutes ; les suivantes sont beaucoup plus rapides si peu de fichiers ont changé.
+
+---
+
+## Lancer les tests
+
+```bash
+# Depuis la racine du projet, environnement activé
+python -m pytest tests/ -v
+```
+
+Les tests sont dans `tests/` :
+
+| Fichier | Ce qu'il teste |
+|:--------|:---------------|
+| `tests/test_session.py` | Cycle de vie `DifmapSession`, singleton, `observe()` |
+| `tests/test_imaging.py` | `mapsize()`, `invert()`, `get_map_package()` |
+| `tests/test_manager.py` | `DifmapBatchManager.run_batch()` |
+
+Pour ajouter un test :
+
+```python
+# tests/test_session.py
+def test_singleton_bloque_double_instance(tmp_fits_file):
+    from difmap_wrapper import DifmapSession
+    from difmap_wrapper.exceptions import DifmapStateError
+
+    s1 = DifmapSession()
+    with pytest.raises(DifmapStateError):
+        s2 = DifmapSession()
+    s1.cleanup()
+```
+
+---
+
+## Conventions de code
+
+### Nommage
+
+| Contexte | Convention | Exemple |
+|:---------|:-----------|:--------|
+| Fonctions C (façade) | `native_xxx` ou `get_native_xxx` | `native_invert()`, `get_native_map_nx()` |
+| Fonctions Cython | nom court, snake_case | `get_map()`, `observe()` |
+| Méthodes Python publiques | snake_case anglais | `make_dirty_map()`, `flag_data()` |
+| Attributs publics | snake_case anglais | `flag_mask`, `cut_history` |
+| Classes | PascalCase | `DifmapSession`, `BasePlotEditor` |
+
+::: {.callout-warning}
+Les attributs `masque_flagges` et `historique_coupes` de `Observation` sont en français (héritage du code initial). Ne pas reproduire ce pattern dans de nouveaux attributs publics — utilisez l'anglais.
+:::
+
+### Gestion des erreurs
+
+- **Dans la couche C** : retourner `-1` ou `NULL` en cas d'erreur, ne jamais `exit()`.
+- **Dans la couche Cython** : vérifier le code de retour et lever `RuntimeError` (jamais `Exception` générique).
+- **Dans la couche Python** : lever `DifmapStateError` pour les erreurs d'ordre d'appel (avant d'atteindre le C), `DifmapError` pour les erreurs moteur.
+
+### Docstrings
+
+Format NumPy. Toujours inclure `Parameters`, `Returns` et `Raises` pour les méthodes publiques.
+
+```python
+def ma_methode(self, param: int) -> dict:
+    """
+    Une ligne de description.
+
+    Paragraphe optionnel si besoin.
+
+    Parameters
+    ----------
+    param : int
+        Description du paramètre.
+
+    Returns
+    -------
+    dict
+        Description du retour.
+
+    Raises
+    ------
+    DifmapStateError
+        Si l'état est invalide.
+    """
+```
+
+---
+
+## Checklist avant une contribution
+
+- [ ] La fonction C vérifie que les pointeurs ne sont pas `NULL` avant de les déréférencer
+- [ ] Le prototype est dans `difmap_api.h` et `cdifmap.pxd`
+- [ ] La fonction Cython gère le cas `NULL` / code d'erreur
+- [ ] La méthode Python lève `DifmapStateError` si `uv_loaded` est `False` (le cas échéant)
+- [ ] La docstring inclut `Parameters`, `Returns`, `Raises`
+- [ ] Un test unitaire existe dans `tests/`
+- [ ] Les noms sont en anglais et en snake_case
+- [ ] `pip install -e . --no-build-isolation` + `pytest tests/` passent sans erreur

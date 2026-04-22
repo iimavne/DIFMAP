@@ -1,0 +1,134 @@
+---
+title: "Installation"
+---
+
+## Prérequis système
+
+Le wrapper compile du code C, Fortran et Cython. Toutes les dépendances système doivent être présentes **avant** l'installation Python.
+
+**Système supporté :** Linux (Ubuntu 22.04+ recommandé). macOS et Windows ne sont pas supportés.
+
+### Paquets système requis
+
+```bash
+sudo apt-get update && sudo apt-get install -y \
+  gcc gfortran pkg-config \
+  libgsl-dev pgplot5 libx11-dev libncurses-dev libtecla-dev \
+  python3-full python3-venv python3-dev \
+  meson ninja-build
+```
+
+| Paquet | Rôle |
+|:-------|:-----|
+| `gcc` / `gfortran` | Compilateur C et Fortran pour le moteur Difmap |
+| `libgsl-dev` | Bibliothèque GSL (calculs mathématiques) |
+| `pgplot5` | Librairie graphique requise par Difmap |
+| `libx11-dev` | Fenêtres X11 (requis même sans affichage) |
+| `libncurses-dev` | Terminal interactif (héritage Difmap) |
+| `libtecla-dev` | Complétion de commandes Difmap |
+| `meson` + `ninja-build` | Système de compilation moderne |
+
+---
+
+## Installation standard
+
+C'est le mode pour **utiliser** le wrapper (scripts Python, notebooks, application GUI).
+
+```bash
+git clone https://github.com/iimavne/DIFMAP.git
+cd DIFMAP
+
+# 1. Créer un environnement virtuel isolé
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 2. Mettre à jour pip et installer les dépendances Python
+pip install --upgrade pip
+pip install meson-python meson ninja \
+  "numpy>=2.0.0" "cython>=3.0.0" \
+  astropy matplotlib PyQt6 qtawesome
+
+# 3. Compiler et installer le paquet
+pip install .
+```
+
+Meson compile silencieusement le C/Fortran, transpile le Cython, et installe le module `difmap_wrapper` dans l'environnement virtuel.
+
+### Vérification de l'installation
+
+```bash
+python3 -c "from difmap_wrapper import DifmapSession; print('Installation OK')"
+```
+
+Si le message `Installation OK` s'affiche, tout est prêt.
+
+---
+
+## Mode développeur
+
+À utiliser **uniquement si vous modifiez le code C, Fortran ou Cython.** Ce mode compile le projet sur place (sans copie dans `site-packages`) : toute modification de fichier source est prise en compte à la prochaine exécution Python.
+
+```bash
+pip install -e . --no-build-isolation
+```
+
+::: {.callout-important}
+### Restriction du mode éditable
+
+En mode éditable, le loader dynamique (`difmap_native.so`) est cherché dans `build/`, pas dans `site-packages`. Exécutez toujours vos scripts depuis un **terminal** activé avec `source .venv/bin/activate`.
+
+Les notebooks VS Code (sous Windows ou WSL) peuvent lever `FileNotFoundError: build/cp312/difmap_native.so`. Dans ce cas, passez par le terminal ou utilisez l'installation standard.
+:::
+
+### Recompilation après modification C/Cython
+
+Après avoir modifié un fichier `.c`, `.f`, `.pyx` ou `.pxd` :
+
+```bash
+pip install -e . --no-build-isolation
+```
+
+Meson ne recompile que les fichiers modifiés (compilation incrémentale).
+
+---
+
+## Configuration Jupyter / VS Code
+
+Pour utiliser le wrapper dans un notebook Jupyter ou VS Code :
+
+```bash
+pip install ipykernel
+python -m ipykernel install --user \
+  --name=difmap-venv \
+  --display-name "Python (Difmap)"
+```
+
+Dans VS Code : `Ctrl+Shift+P` → **Jupyter: Select Kernel** → **Jupyter Kernels** → **Python (Difmap)**.
+
+---
+
+## Utiliser l'interactivité native (optionnel)
+
+L'interactivité du Difmap original (ligne de commande interactive, piloté par SPHERE) peut être compilé séparément. Il n'est pas nécessaire pour utiliser le wrapper Python.
+
+```bash
+bash setup.sh
+```
+
+Le binaire `difmap` est généré dans `builddir/`. Il peut être lancé directement :
+
+```bash
+./builddir/difmap
+```
+
+---
+
+## Résolution de problèmes courants
+
+| Erreur | Cause probable | Solution |
+|:-------|:---------------|:---------|
+| `pgplot5 not found` | Paquet système manquant | `sudo apt-get install pgplot5` |
+| `FileNotFoundError: difmap_native.so` | Mode éditable + mauvais répertoire | Lancer depuis la racine du projet |
+| `DifmapStateError: Une instance est déjà active` | Session non fermée dans une cellule précédente | Redémarrer le kernel, ou appeler `session.cleanup()` |
+| `ImportError: numpy version mismatch` | NumPy < 2.0 | `pip install "numpy>=2.0.0" --upgrade` |
+| Erreur de compilation `gfortran` | GFortran absent | `sudo apt-get install gfortran` |

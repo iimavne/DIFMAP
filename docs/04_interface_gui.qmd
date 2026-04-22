@@ -1,0 +1,283 @@
+---
+title: "Interface Graphique (PyQt6)"
+---
+
+L'interface graphique fournit un environnement visuel complet pour explorer les données, effectuer du flagging interactif, et calculer des images. Elle encapsule la même `DifmapSession` que l'API Python.
+
+## Lancement
+
+```python
+from difmap_wrapper.app import main
+main()
+```
+
+Ou depuis le terminal (environnement virtuel activé) :
+
+```bash
+python -m difmap_wrapper.app
+```
+
+La fenêtre s'ouvre sans données. Chargez un fichier via **File → Load FITS** dans la barre de menus, ou via le bouton de la toolbar.
+
+---
+
+## Structure de la fenêtre
+
+```{mermaid}
+graph LR
+    subgraph MW["MainWindow (QMainWindow)"]
+        direction TB
+        TB["MainToolbar\n(barre d'outils supérieure)"]
+        subgraph Centre["Zone centrale"]
+            direction LR
+            CP["ControlPanel\n(dock gauche)\nSélection · Télescope · Flagging · Imagerie"]
+            subgraph Tabs["QTabWidget"]
+                UV["Onglet UV\n(UVPlotWidget)"]
+                RAD["Onglet Radplot\n(RadPlotWidget)"]
+                MAP["Onglet Dirty Map\n(MapPlotWidget)"]
+            end
+        end
+        LOG["ImprovedLogConsole\n(dock droit)\nMessages · Erreurs · Stats"]
+    end
+
+    style MW fill:#f8f9fa,stroke:#343a40
+    style Centre fill:#f1f5f9,stroke:#94a3b8
+    style Tabs fill:#e9ecef,stroke:#adb5bd
+    style UV fill:#dbeafe,stroke:#3b82f6
+    style RAD fill:#dcfce7,stroke:#22c55e
+    style MAP fill:#fef9c3,stroke:#eab308
+    style CP fill:#fef2f2,stroke:#dc2626
+    style LOG fill:#f0fdf4,stroke:#16a34a
+```
+
+---
+
+## Onglets de visualisation
+
+### Onglet UV
+
+Affiche les visibilités dans le plan (U, V) en Méga-longueurs d'onde (Mλ). Les éditeurs interactifs de flagging y sont actifs.
+
+- Points directs (U, V) et conjugués (−U, −V) représentés.
+- Touche `%` pour afficher/masquer les points conjugués.
+- Couleur rouge = visibilité flaguée.
+
+### Onglet Radplot
+
+Amplitude et/ou phase des visibilités en fonction du rayon UV. Trois modes d'affichage (touches `1`, `2`, `3`) :
+
+| Touche | Mode affiché |
+|:-------|:-------------|
+| `1` | Amplitude seule |
+| `2` | Phase seule |
+| `3` | Amplitude + Phase (graphe divisé) |
+
+Options dans le panneau gauche :
+
+| Option | Description |
+|:-------|:------------|
+| **Model** | Superpose les amplitudes/phases du modèle courant sur les données |
+| **Residuals** | Bascule sur Data − Model (résidus) |
+| **Errors** | Affiche un sous-graphe 1/√w (bruit théorique par visibilité) |
+
+### Onglet Dirty Map
+
+Affiche l'image calculée par le pipeline d'imagerie. Paramètres configurables dans le panneau gauche (groupe **Imaging**) :
+
+| Champ | Description |
+|:------|:------------|
+| **Map size** | Nombre de pixels par côté (puissance de 2 recommandée) |
+| **Cell size** | Taille du pixel en mas |
+| **Weighting** | `Natural` (0, −2), `Uniform` (2, 0), `Briggs` (2, −1) |
+| **Taper** | Valeur gaussienne entre 0 et 1 (0 = aucun taper) |
+
+Cliquer **Compute** déclenche `mapsize → uvweight → uvtaper → invert`.
+
+---
+
+## Panneau de contrôle (dock gauche)
+
+Le panneau adapte ses contrôles selon l'onglet actif.
+
+### Data Selection
+
+Sélection de la polarisation active : `I`, `RR`, `LL`, `Q`, `U`, `V`. Équivaut à appeler `session.obs.select(pol=...)`.
+
+### Telescope
+
+Navigation antenne par antenne dans les données :
+
+| Contrôle | Fonction |
+|:---------|:---------|
+| Touches `n` / `p` | Antenne suivante / précédente |
+| Touches `N` / `P` | Sous-réseau suivant / précédent |
+| Champ de recherche `T` | Chercher par nom (`BR`), index (`1:BR`), ou combiné (`1BR`) |
+
+Quand une antenne est sélectionnée, seules les baselines qui l'impliquent sont mises en surbrillance.
+
+### Flagging
+
+| Contrôle | Fonction |
+|:---------|:---------|
+| **All channels** | Étend chaque opération à tous les IFs (pas seulement l'IF sélectionné) |
+| **Marker size** | Slider 3 niveaux pour la taille des marqueurs de flagging |
+| **Crosshair** | Active une ligne de visée plein écran sur le curseur |
+
+---
+
+## Raccourcis clavier
+
+Appuyez sur `H` dans l'application pour afficher la liste complète. Les raccourcis s'appliquent sur l'onglet actif.
+
+### Navigation et affichage
+
+| Touche | Action |
+|:-------|:-------|
+| `R` | Réinitialiser la vue (zoom par défaut) |
+| `L` | Rafraîchir le canvas (redessiner) |
+| `Z` | Mode zoom (rectangle de sélection) |
+| `M` | Mode pan (glisser la vue) |
+| `+` | Activer le crosshair |
+| `.` | Cycler la taille des marqueurs (3 niveaux) |
+| `H` | Afficher l'aide complète |
+| `X` ou `Q` | Fermer la fenêtre |
+
+### Navigation télescope
+
+| Touche | Action |
+|:-------|:-------|
+| `n` | Antenne suivante |
+| `p` | Antenne précédente |
+| `N` | Sous-réseau suivant |
+| `P` | Sous-réseau précédent |
+| `T` | Ouvrir la recherche par nom ou ID |
+
+### Flagging
+
+| Touche | Action |
+|:-------|:-------|
+| `C` | Mode **Cut** — dessiner un rectangle pour flaguer les points à l'intérieur |
+| `F` | Mode **Flag interactif** — clic gauche = flag, clic droit = unflag |
+| `A` | Flaguer le point le plus proche du curseur |
+| `W` | Activer/désactiver le flagging sur tous les canaux |
+| `U` ou `Ctrl+Z` | Annuler la dernière opération de flagging |
+| `Ctrl+S` | Sauvegarder les données flaguées en FITS |
+
+### Radplot uniquement
+
+| Touche | Action |
+|:-------|:-------|
+| `1` / `2` / `3` | Amplitude seule / Phase seule / Les deux |
+| `M` | Superposer le modèle |
+| `-` | Résidus (Data − Model) |
+| `E` | Sous-graphe d'erreurs (1/√w) |
+| `S` | Statistiques scalaires sur sélection rectangulaire |
+| `V` | Statistiques vectorielles Re/Im sur sélection |
+| `U` (maj.) | Zoom sur la plage de rayon UV sélectionnée |
+
+### UV uniquement
+
+| Touche | Action |
+|:-------|:-------|
+| `%` | Afficher / masquer les points conjugués (−U, −V) |
+| `s` (min.) | Afficher les infos du point le plus proche du curseur |
+
+---
+
+## Architecture interne — éditeurs Matplotlib
+
+Les onglets UV et Radplot embarquent des éditeurs Matplotlib interactifs (`UVPlotEditor`, `RadPlotEditor`) dérivés de `BasePlotEditor`. Ces éditeurs fonctionnent aussi en dehors de l'interface graphique (dans un notebook).
+
+### Hiérarchie
+
+```{mermaid}
+graph TD
+    subgraph Editors["Couche Éditeurs (editors/)"]
+        BASE["BasePlotEditor\n(modes, navigation, historique undo)"]
+        UV["UVPlotEditor\n(plan UV, conjugués, cut rectangulaire)"]
+        RAD["RadPlotEditor\n(amplitude, phase, modèle, stats)"]
+    end
+
+    subgraph Core["Couche Core"]
+        OBS["Observation\n(masque_flagges · historique_coupes)"]
+    end
+
+    BASE -->|hérite| UV
+    BASE -->|hérite| RAD
+    UV   -->|"lit/écrit masque_flagges"| OBS
+    RAD  -->|"lit/écrit masque_flagges"| OBS
+    OBS  -->|"notify_data_changed()"| UV
+    OBS  -->|"notify_data_changed()"| RAD
+
+    style Editors fill:#f0fdf4,stroke:#16a34a
+    style Core    fill:#eff6ff,stroke:#3b82f6
+```
+
+`Observation` est le point central : elle détient `masque_flagges` et notifie les éditeurs enregistrés quand les données changent (pattern Observer).
+
+### Flux de synchronisation GUI ↔ Éditeur
+
+Le flux est strictement unidirectionnel : l'éditeur Matplotlib notifie la `MainWindow`, qui met à jour les checkboxes Qt. Les checkboxes ne reparent jamais vers l'éditeur directement (pour éviter les boucles de signal).
+
+```{mermaid}
+sequenceDiagram
+    participant E as Éditeur Matplotlib
+    participant MW as MainWindow
+    participant CP as ControlPanel (Qt)
+
+    E->>MW: sync_callback(state_dict)
+    MW->>CP: blockSignals(True)
+    MW->>CP: setChecked() / setValue()
+    MW->>CP: blockSignals(False)
+    Note over CP: Pas de re-émission de signal vers E
+```
+
+`blockSignals(True/False)` empêche la mise à jour des checkboxes de déclencher un second aller-retour vers l'éditeur.
+
+---
+
+## Éditeurs interactifs hors GUI (notebook)
+
+Les éditeurs peuvent être instanciés directement sur n'importe quelle figure Matplotlib, sans lancer l'application Qt.
+
+```python
+import matplotlib.pyplot as plt
+from difmap_wrapper import DifmapSession
+from difmap_wrapper.editors.uv_editor import UVPlotEditor
+
+with DifmapSession() as session:
+    session.observe("data/source.uvfits")
+    session.obs.select(pol="I")
+    data = session.obs.get_data()
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    editor = UVPlotEditor(
+        observation=session.obs,
+        fig=fig,
+        ax=ax,
+        data=data,
+    )
+    plt.show()
+    editor.cleanup()   # déconnecte les callbacks et désenregistre l'éditeur
+```
+
+::: {.callout-important}
+Appelez toujours `editor.cleanup()` avant de recréer un éditeur sur la même figure. Sans cela, les callbacks Matplotlib restent connectés et la figure peut se comporter de façon inattendue.
+:::
+
+La même logique s'applique à `RadPlotEditor` :
+
+```python
+from difmap_wrapper.editors.rad_editor import RadPlotEditor
+
+fig, ax = plt.subplots()
+editor = RadPlotEditor(
+    observation=session.obs,
+    fig=fig,
+    ax=ax,
+    data=data,
+)
+plt.show()
+editor.cleanup()
+```

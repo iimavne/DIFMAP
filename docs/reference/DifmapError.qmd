@@ -1,7 +1,7 @@
-# exceptions.DifmapError { #difmap_wrapper.exceptions.DifmapError }
+# DifmapError { #difmap_wrapper.DifmapError }
 
 ```python
-exceptions.DifmapError()
+DifmapError()
 ```
 
 Exception de base pour toutes les erreurs liées au moteur C de Difmap.

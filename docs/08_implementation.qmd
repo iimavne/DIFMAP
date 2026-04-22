@@ -1,0 +1,313 @@
+---
+title: "Implémentation Technique"
+---
+
+Ce chapitre détaille les décisions d'implémentation non-évidentes : pourquoi le code est structuré ainsi, et quelles contraintes techniques ont guidé chaque choix. Lecture recommandée avant toute modification du code C, Cython, ou Python.
+
+---
+
+## Couche 1 — Façade C (`difmap.c`)
+
+Les variables globales de Difmap (`vlbob`, `vlbmap`) sont `static` dans `difmap.c`. Elles sont invisibles en dehors de ce fichier. Plutôt que de modifier les 150+ fichiers sources pour exporter ces variables, on a injecté une mini-API directement dans `difmap.c` — le seul fichier qui y a déjà accès.
+
+### Safe getters — prévention des segfaults
+
+Lire un pointeur `NULL` depuis Python provoque un segfault immédiat et **non-récupérable** : Python ne peut pas capturer un SIGSEGV. Chaque getter vérifie la validité du pointeur avant de le déréférencer.
+
+```c
+/* difmap.c */
+int get_native_map_nx() {
+    return (vlbmap != NULL) ? vlbmap->nx : -1;
+}
+
+char* get_native_source_name() {
+    return (vlbob != NULL) ? vlbob->source.name : "Inconnue";
+}
+
+float* get_native_map_data() {
+    if (vlbmap == NULL || vlbmap->map == NULL) return NULL;
+    return vlbmap->map;
+}
+```
+
+Le Cython vérifie ensuite ce `NULL` et lève une `RuntimeError` Python propre, à la place d'un crash système.
+
+### Gestion du cycle de vie — prévention des fuites mémoire
+
+Chaque appel à `native_observe()` doit libérer l'observation précédente avant d'allouer la nouvelle. Sans `obs_end()`, traiter 10 000 fichiers en boucle consomme toute la RAM (*OOM Kill*).
+
+```c
+int native_observe(char *name) {
+    obs_end();   /* Libère vlbob précédent — CRITIQUE */
+    vlbob = new_Observation(name, 0.0, 0, 1, NULL, NO_POL, fix_visibility_weights);
+    if (vlbob == NULL) return -1;
+    vlbspec = new_Specattr(vlbob);
+    return 0;
+}
+```
+
+### Synchronisation C ↔ Fortran (le double pointeur)
+
+Difmap maintient **deux systèmes d'image en parallèle** : le système C moderne (`vlbmap`) et le vieux système Fortran (`mb_map`). Si leurs pointeurs divergent, la FFT s'exécute dans le vide (résultat zéro sans erreur).
+
+La solution : après chaque allocation de grille, forcer les pointeurs Fortran à pointer sur la mémoire C :
+
+```c
+int native_mapsize(int nx, float cellsize) {
+    float xinc = xytorad(cellsize);
+    vlbmap = new_MapBeam(vlbmap, nx, xinc, nx, xinc);  /* allocation C */
+
+    /* Force les pointeurs Fortran sur la mémoire C */
+    VOIDPTR(&mb_beam) = vlbmap->beam;
+    VOIDPTR(&mb_map)  = vlbmap->map;
+    mb_map.adim[0]    = nx;
+    mb_map.adim[1]    = nx;
+    mb_map.num_el     = (size_t)(nx * nx);
+    return 0;
+}
+```
+
+Sans ces 5 lignes, `native_invert()` calcule la FFT dans le buffer Fortran `mb_map` mais `get_native_map_data()` lit le buffer C `vlbmap->map` → résultat toujours zéro.
+
+### Tableau de correspondance des fonctions C
+
+| Fonction C exportée | Rôle | Méthode Python |
+|:--------------------|:-----|:---------------|
+| `native_observe(filepath)` | Reset RAM + chargement FITS | `session.observe()` |
+| `native_select(pol, if_beg, if_end, ch_beg, ch_end)` | Filtrage Stokes + IFs | `session.obs.select()` |
+| `native_mapsize(nx, cellsize)` | Allocation grille + sync Fortran | `session.imager.mapsize()` |
+| `native_uvweight(bin, pow, dorad)` | Pondération UV | `session.imager.uvweight()` |
+| `native_uvtaper(val, rad_wav)` | Filtre gaussien | `session.imager.uvtaper()` |
+| `native_invert()` | FFT inverse → Dirty Map en RAM | `session.imager.invert()` |
+| `get_native_map_data()` | Adresse brute de `vlbmap->map` | `session.imager.get_map()` |
+| `get_native_beam_data()` | Adresse brute du beam | `session.imager.get_map_package()` |
+| `l_extract_uv()` | Prépare le buffer UV pour extraction | `session.obs.get_data()` |
+| `get_native_uv_count()` | Nombre de visibilités | interne |
+| `flag_native_data(indices, n)` | Flagging dans la mémoire C | `session.obs.flag_data()` |
+| `save_native_wobs(filepath)` | Sauvegarde FITS avec flags | `session.obs.save_wobs()` |
+
+---
+
+## Couche 2 — Binding Cython (`binding/`)
+
+### Déclaration d'interface : `cdifmap.pxd`
+
+Ce fichier `.pxd` est l'équivalent Cython d'un header C. Il dit à Cython quelles fonctions C existent et leurs signatures. `cimport` réalise une **liaison statique à la compilation** — l'appel est résolu par le compilateur, pas à l'exécution. Latence O(1), sans overhead Python.
+
+```python
+# binding/cdifmap.pxd
+cdef extern from "difmap_api.h":
+    int  native_observe(const char* filepath)
+    int  native_select(const char* pol, int if_beg, int if_end, int ch_beg, int ch_end)
+    int  native_invert()
+    float* get_native_map_data()
+    int  get_native_map_nx()
+    int  get_native_map_ny()
+    # ... etc.
+```
+
+::: {.callout-important}
+### Règle pour les contributeurs
+
+Toute nouvelle fonction C ajoutée dans `difmap.c` doit être :
+1. Déclarée dans `difmap_api.h`
+2. Déclarée dans `cdifmap.pxd`
+3. Enveloppée dans `difmap_native.pyx`
+
+Sans ces 3 étapes, la fonction n'est pas accessible depuis Python.
+:::
+
+### Conversion de chaînes Python → `char*`
+
+Les fonctions C attendent des `char*` (bytes C). Python 3 manipule des `str` Unicode. La conversion doit se faire **avant** l'appel C, et le buffer bytes doit rester alloué pendant toute la durée de l'appel :
+
+```python
+# binding/difmap_native.pyx
+def observe(filepath: str) -> int:
+    cdef bytes filepath_bytes = filepath.encode('utf-8')
+    # filepath_bytes est maintenu en vie jusqu'à la fin de la fonction
+    return cdifmap.native_observe(filepath_bytes)
+```
+
+Sans le `cdef bytes` explicite, un `filepath.encode('utf-8')` temporaire peut être ramassé par le GC pendant l'appel C → **dangling pointer** → segfault.
+
+### Zéro-copie via Typed Memoryviews
+
+C'est la technique centrale qui rend le wrapper performant. Un Typed Memoryview est un pointeur Cython typé sur un buffer existant. `np.asarray()` crée ensuite un tableau NumPy qui utilise **l'adresse fournie** sans allouer de nouvelle mémoire.
+
+```python
+# binding/difmap_native.pyx
+def get_map():
+    cdef float* map_ptr = cdifmap.get_native_map_data()
+    cdef int nx = cdifmap.get_native_map_nx()
+    cdef int ny = cdifmap.get_native_map_ny()
+
+    if map_ptr == NULL or nx <= 0:
+        raise RuntimeError("Aucune image en mémoire. Avez-vous appelé invert() ?")
+
+    # Typed Memoryview : vue 2D sur la RAM C, sans copie
+    cdef float[:ny, :nx] view = <float[:ny, :nx]> map_ptr
+
+    # np.fliplr : corrige l'orientation RA (Ascension Droite croît à gauche)
+    return np.fliplr(np.asarray(view))
+```
+
+| Étape | Coût mémoire | Explication |
+|:------|:-------------|:------------|
+| `<float[:ny, :nx]> map_ptr` | 0 octet | Crée un descripteur de vue, pas de copie |
+| `np.asarray(view)` | 0 octet | NumPy utilise l'adresse fournie |
+| `np.fliplr(...)` | `ny × nx × 4` octets | **Seule copie** — nécessaire pour inverser l'axe RA |
+
+Pour une image 2048×2048 : 16 Mo copiés une seule fois (pour le fliplr), au lieu de 32 Mo (copie C→Python + copie pour fliplr).
+
+### Pourquoi `np.fliplr` ?
+
+Difmap stocke les pixels avec l'axe X dans l'ordre croissant des indices mémoire (gauche→droite = RA décroissant). La convention astronomique standard est l'inverse : RA croît vers la gauche.
+
+Sans `np.fliplr`, l'image est un miroir horizontal de la réalité. Toutes les coordonnées astrométriques seraient symétriquement erronées.
+
+---
+
+## Couche 3 — Décisions d'implémentation Python
+
+### Le Singleton `_SingletonMeta`
+
+La mécanique de prévention des instances multiples est implémentée comme une métaclasse, pas comme un attribut de classe. Cela garantit que la vérification se produit **avant** que `__init__` s'exécute :
+
+```python
+# difmap_wrapper/session.py
+class _SingletonMeta(type):
+    _instance = None
+
+    def __call__(cls, *args, **kwargs):
+        if cls._instance is not None:
+            raise DifmapStateError(
+                "Une instance DifmapSession est déjà active dans ce processus."
+                " Appelez session.cleanup() avant d'en créer une nouvelle."
+            )
+        instance = super().__call__(*args, **kwargs)
+        cls._instance = instance
+        return instance
+
+class DifmapSession(metaclass=_SingletonMeta):
+    ...
+    def cleanup(self):
+        self.uv_loaded = False
+        type(self)._instance = None   # libère le slot singleton
+```
+
+`cleanup()` remet `_instance = None` — la prochaine instanciation réussira.
+
+### Correction astrométrique du demi-pixel
+
+C'est un point subtil qui affecte toutes les mesures de position. Les algorithmes FFT de Difmap placent l'origine mathématique à l'indice `N/2` (sur un pixel entier). Matplotlib, lui, place l'origine au centre géométrique **entre** les pixels pour une image de taille paire.
+
+Sans correction, toute mesure de position est décalée de **0.5 pixel** = `0.5 × cellsize` mas.
+
+La correction est appliquée dans `get_map_package()` :
+
+```python
+# difmap_wrapper/imaging.py
+def get_map_package(self, cellsize: float) -> dict:
+    nx = hdr.get('NX', 512)
+    ny = hdr.get('NY', 512)
+
+    demi_pixel = 0.5 * cellsize   # décalage à corriger (en mas)
+
+    extent_corrige = [
+         (nx / 2.0) * cellsize + demi_pixel,   # bord gauche (RA+, as conventions)
+        -(nx / 2.0) * cellsize + demi_pixel,   # bord droit  (RA-)
+        -(ny / 2.0) * cellsize - demi_pixel,   # bord bas    (Dec-)
+         (ny / 2.0) * cellsize - demi_pixel    # bord haut   (Dec+)
+    ]
+    ...
+```
+
+**Explication des signes :**
+
+```
+Centre image Difmap (index N/2) :
+  mathématiquement à la position 0,0
+
+Centre géométrique Matplotlib :
+  entre le pixel N/2 et N/2+1
+  décalage = +0.5 pixel vers la droite
+
+Correction : ajouter +demi_pixel au bord gauche
+             soustraire -demi_pixel au bord bas
+```
+
+Ce paramètre `extent` est utilisé directement dans `imshow()` — aucun calcul supplémentaire n'est nécessaire côté utilisateur.
+
+### Restauration de la grille après `uvweight`
+
+Appeler `uvweight()` détruit la grille interne du moteur C (effet de bord Difmap). Sans correction, un `invert()` après `uvweight()` produit une image vide ou une erreur.
+
+La solution : `DifmapImager` mémorise la dernière taille de grille et la réapplique automatiquement après chaque `uvweight()` et `uvtaper()` :
+
+```python
+# difmap_wrapper/imaging.py
+def mapsize(self, size, cellsize):
+    self._native.mapsize(size, cellsize)
+    self._last_mapsize = size        # mémorisé
+    self._last_cellsize = cellsize   # mémorisé
+
+def uvweight(self, ...):
+    ...
+    self._native.uvweight(b, e, dorad)
+    self._reissue_mapsize_if_needed()   # restaure la grille
+
+def _reissue_mapsize_if_needed(self):
+    if self._last_mapsize is not None:
+        self._native.mapsize(self._last_mapsize, self._last_cellsize)
+```
+
+### Hiérarchie des exceptions
+
+```python
+# difmap_wrapper/exceptions.py
+
+class DifmapError(Exception):
+    """Échec du moteur C (fichier corrompu, grille invalide, FFT, etc.)."""
+    pass
+
+class DifmapStateError(DifmapError):
+    """Opération dans le mauvais ordre ou état incohérent.
+
+    Levée par la couche Python AVANT d'atteindre le C.
+    Exemples : invert() sans mapsize(), session déjà active.
+    """
+    pass
+```
+
+`DifmapStateError` est interceptée avant d'atteindre le C — c'est un garde-fou Python. `DifmapError` remonte depuis le binding quand le moteur C retourne un code non nul.
+
+**Ordre de propagation :**
+
+```
+Appel Python
+    ↓
+Vérification d'état Python → DifmapStateError si état invalide
+    ↓
+Appel Cython → native_xxx()
+    ↓
+Code de retour ≠ 0 → DifmapError
+    ↓
+Segfault évité
+```
+
+---
+
+## Notes pour les contributeurs
+
+### Ajouter une nouvelle fonction C
+
+Voir [Contribuer](09_contribuer.qmd) pour le guide pas-à-pas.
+
+### Modifier `get_map_package()`
+
+Si vous ajoutez des clés au dictionnaire retourné, vérifiez que `Visualizer.plot_image()` ne fait pas d'hypothèses sur les clés absentes (elle teste uniquement `'data'` et `'extent'`).
+
+### Modifier le nombre d'arguments de `native_select()`
+
+La signature dans `cdifmap.pxd` doit correspondre exactement à celle dans `difmap_api.h`. Toute divergence produit un crash à l'import du module.

@@ -1,0 +1,191 @@
+# Visualizer { #difmap_wrapper.Visualizer }
+
+```python
+Visualizer(session)
+```
+
+Graphiques statiques pour explorer les données UV et les images.
+
+Accessible via ``session.vis``. Pour l'interactivité (flagging au clic,
+zoom, statistiques), utiliser l'interface graphique PyQt6.
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.obs.select(pol="RR")
+>>> session.vis.uvplot()           # couverture UV
+>>> session.vis.radplot()          # amplitude vs rayon UV
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [mapplot](#difmap_wrapper.Visualizer.mapplot) | Affiche l'image actuellement en mémoire. |
+| [plot_image](#difmap_wrapper.Visualizer.plot_image) | Affiche une image astrophysique avec sa barre de couleur et ses axes astrométriques. |
+| [radplot](#difmap_wrapper.Visualizer.radplot) | Affiche l'amplitude des visibilités en fonction de leur rayon UV. |
+| [uvplot](#difmap_wrapper.Visualizer.uvplot) | Affiche la couverture du plan UV (U en abscisse, V en ordonnée). |
+
+### mapplot { #difmap_wrapper.Visualizer.mapplot }
+
+```python
+Visualizer.mapplot(img_dict=None, **kwargs)
+```
+
+Affiche l'image actuellement en mémoire.
+
+Si ``img_dict`` est absent, récupère automatiquement l'image depuis le
+moteur C avec les paramètres du dernier ``mapsize()``.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type   | Description                                                                                             | Default   |
+|----------|--------|---------------------------------------------------------------------------------------------------------|-----------|
+| img_dict | dict   | Package image (sortie de ``get_map_package()``). Si absent, l'image courante en mémoire C est utilisée. | `None`    |
+| **kwargs |        | Paramètres supplémentaires transmis à ``plot_image()``.                                                 | `{}`      |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type             | Description                                 |
+|--------|------------------|---------------------------------------------|
+|        | DifmapStateError | Si ``mapsize()`` n'a pas encore été appelé. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.imager.mapsize(512, 0.1)
+>>> session.imager.invert()
+>>> session.vis.mapplot(title="Dirty Map après inversion")
+```
+
+### plot_image { #difmap_wrapper.Visualizer.plot_image }
+
+```python
+Visualizer.plot_image(
+    img_dict,
+    cmap='magma',
+    figsize=(8, 6),
+    title='Dirty Map',
+    **kwargs,
+)
+```
+
+Affiche une image astrophysique avec sa barre de couleur et ses axes astrométriques.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type           | Description                                                                                                                                                  | Default       |
+|----------|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| img_dict | dict           | Dictionnaire retourné par ``DifmapImager.get_map_package()``. Doit contenir les clés ``'data'`` (tableau 2D) et ``'extent'`` (limites en mas pour les axes). | _required_    |
+| cmap     | str            | Palette de couleurs Matplotlib. Par défaut ``'magma'``.                                                                                                      | `'magma'`     |
+| figsize  | tuple of float | Taille ``(largeur, hauteur)`` en pouces. Par défaut ``(8, 6)``.                                                                                              | `(8, 6)`      |
+| title    | str            | Titre affiché au-dessus de l'image. Par défaut ``"Dirty Map"``.                                                                                              | `'Dirty Map'` |
+| **kwargs |                | Paramètres supplémentaires transmis à ``matplotlib.pyplot.imshow``.                                                                                          | `{}`          |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type     | Description                                                           |
+|--------|----------|-----------------------------------------------------------------------|
+|        | KeyError | Si les clés ``'data'`` ou ``'extent'`` sont absentes du dictionnaire. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> img = session.imager.make_dirty_map(512, 0.1)
+>>> session.vis.plot_image(img, cmap='viridis', title="Source J0003")
+```
+
+### radplot { #difmap_wrapper.Visualizer.radplot }
+
+```python
+Visualizer.radplot(
+    ax=None,
+    figsize=(10, 6),
+    color='black',
+    alpha=0.5,
+    s=1,
+    title=None,
+    **kwargs,
+)
+```
+
+Affiche l'amplitude des visibilités en fonction de leur rayon UV.
+
+Ce graphique (aussi appelé "amplitude vs uv-distance") donne une vue
+rapide de la structure de la source : une source ponctuelle donne une
+ligne horizontale, une source étendue montre une décroissance.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                 | Description                                                             | Default   |
+|----------|----------------------|-------------------------------------------------------------------------|-----------|
+| ax       | matplotlib.axes.Axes | Axe sur lequel dessiner. Si absent, une nouvelle figure est créée.      | `None`    |
+| figsize  | tuple of float       | Taille ``(largeur, hauteur)`` en pouces. Par défaut ``(10, 6)``.        | `(10, 6)` |
+| color    | str                  | Couleur des points. Par défaut ``'black'``.                             | `'black'` |
+| alpha    | float                | Transparence des points. Par défaut ``0.5``.                            | `0.5`     |
+| s        | float                | Taille des marqueurs. Par défaut ``1``.                                 | `1`       |
+| title    | str                  | Titre du graphique. Généré automatiquement si absent.                   | `None`    |
+| **kwargs |                      | Paramètres supplémentaires transmis à ``matplotlib.axes.Axes.scatter``. | `{}`      |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                 | Description   |
+|--------|----------------------|---------------|
+|        | matplotlib.axes.Axes |               |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.vis.radplot(color='navy', alpha=0.3, s=0.5)
+```
+
+### uvplot { #difmap_wrapper.Visualizer.uvplot }
+
+```python
+Visualizer.uvplot(
+    ax=None,
+    figsize=(8, 8),
+    color='blue',
+    s=1,
+    alpha=0.5,
+    title=None,
+    edgecolors='none',
+    **kwargs,
+)
+```
+
+Affiche la couverture du plan UV (U en abscisse, V en ordonnée).
+
+Les coordonnées sont converties en Méga-longueurs d'onde (Mλ).
+Les points conjugués (−U, −V) sont ajoutés automatiquement.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                 | Description                                                                                      | Default   |
+|----------|----------------------|--------------------------------------------------------------------------------------------------|-----------|
+| ax       | matplotlib.axes.Axes | Axe sur lequel dessiner. Si absent, une nouvelle figure est créée.                               | `None`    |
+| figsize  | tuple of float       | Taille ``(largeur, hauteur)`` en pouces si une nouvelle figure est créée. Par défaut ``(8, 8)``. | `(8, 8)`  |
+| color    | str                  | Couleur des points. Par défaut ``'blue'``.                                                       | `'blue'`  |
+| s        | float                | Taille des marqueurs en points². Par défaut ``1``.                                               | `1`       |
+| alpha    | float                | Transparence des points, entre 0 (invisible) et 1 (opaque). Par défaut ``0.5``.                  | `0.5`     |
+| title    | str                  | Titre du graphique. Si absent, un titre est généré automatiquement à partir du nom de la source. | `None`    |
+| **kwargs |                      | Paramètres supplémentaires transmis à ``matplotlib.axes.Axes.scatter``.                          | `{}`      |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                 | Description                              |
+|--------|----------------------|------------------------------------------|
+|        | matplotlib.axes.Axes | L'axe sur lequel la figure a été tracée. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.vis.uvplot(color='steelblue', s=2)
+```
+
+Sur un axe existant :
+
+```python
+>>> fig, ax = plt.subplots()
+>>> session.vis.uvplot(ax=ax, color='red')
+```

@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Difmap Python - Chapitre 2 : La Nouvelle Architecture</title>
+<title>difmap_smartedit</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -20,25 +20,59 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
-<script src="site_libs/quarto-nav/quarto-nav.js"></script>
-<script src="site_libs/quarto-nav/headroom.min.js"></script>
-<script src="site_libs/clipboard/clipboard.min.js"></script>
-<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
-<script src="site_libs/quarto-search/fuse.min.js"></script>
-<script src="site_libs/quarto-search/quarto-search.js"></script>
-<meta name="quarto:offset" content="./">
-<script src="site_libs/quarto-html/quarto.js"></script>
-<script src="site_libs/quarto-html/popper.min.js"></script>
-<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
-<script src="site_libs/quarto-html/anchor.min.js"></script>
-<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
-<script src="site_libs/bootstrap/bootstrap.min.js"></script>
-<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -66,41 +100,9 @@ ul.task-list li input[type="checkbox"] {
     "search-label": "Search"
   }
 }</script>
-<script src="site_libs/quarto-diagram/mermaid.min.js"></script>
-<script src="site_libs/quarto-diagram/mermaid-init.js"></script>
-<link href="site_libs/quarto-diagram/mermaid.css" rel="stylesheet">
 
-  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
 
-<script type="text/javascript">
-const typesetMath = (el) => {
-  if (window.MathJax) {
-    // MathJax Typeset
-    window.MathJax.typeset([el]);
-  } else if (window.katex) {
-    // KaTeX Render
-    var mathElements = el.getElementsByClassName("math");
-    var macros = [];
-    for (var i = 0; i < mathElements.length; i++) {
-      var texText = mathElements[i].firstChild;
-      if (mathElements[i].tagName == "SPAN") {
-        window.katex.render(texText.data, mathElements[i], {
-          displayMode: mathElements[i].classList.contains('display'),
-          throwOnError: false,
-          macros: macros,
-          fleqn: false
-        });
-      }
-    }
-  }
-}
-window.Quarto = {
-  typesetMath
-};
-</script>
-
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="../styles.css">
 </head>
 
 <body class="nav-sidebar floating nav-fixed">
@@ -110,8 +112,8 @@ window.Quarto = {
     <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
-    <a class="navbar-brand" href="./index.html">
-    <span class="navbar-title">Difmap Python</span>
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">difmap_smartedit</span>
     </a>
   </div>
             <div id="quarto-search" class="" title="Search"></div>
@@ -119,14 +121,18 @@ window.Quarto = {
   <span class="navbar-toggler-icon"></span>
 </button>
           <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link active" href="../index.html" aria-current="page"> 
+<span class="menu-text">v2.5.0</span></a>
+  </li>  
+</ul>
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
   <li class="nav-item compact">
-    <a class="nav-link" href="https://github.com/ton-repo/difmap_wrapper"> <i class="bi bi-github" role="img" aria-label="GitHub">
+    <a class="nav-link" href="https://github.com/iimavne/DIFMAP"> <i class="bi bi-github" role="img" aria-label="GitHub">
 </i> 
 <span class="menu-text"></span></a>
   </li>  
-  <li class="dropdown-header">
- <span class="menu-text">theme-toggle</span></li>
 </ul>
           </div> <!-- /navcollapse -->
           <div class="quarto-navbar-tools">
@@ -138,7 +144,7 @@ window.Quarto = {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./02_nouvelle_architecture.html">2. Nouvelle Architecture</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Référence API</a></li><li class="breadcrumb-item"><a href="../reference/index.html">Function reference</a></li><li class="breadcrumb-item"><a href="../reference/DifmapSession.html">DifmapSession</a></li></ol></nav>
         <a class="flex-grow-1" role="button" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="" onclick="window.quartoOpenSearch();">
@@ -160,38 +166,14 @@ window.Quarto = {
     <ul class="list-unstyled mt-1">
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./index.html" class="sidebar-item-text sidebar-link">
+  <a href="../index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Accueil</span></a>
-  </div>
-</li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="./00_installation.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Installation</span></a>
-  </div>
-</li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="./01_contexte_et_existant.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">1. Contexte et Existant</span></a>
-  </div>
-</li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="./02_nouvelle_architecture.html" class="sidebar-item-text sidebar-link active">
- <span class="menu-text">2. Nouvelle Architecture</span></a>
-  </div>
-</li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="./03_implementation_technique.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">3. Implémentation Technique</span></a>
   </div>
 </li>
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
             <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" aria-expanded="true">
- <span class="menu-text">4. Référence API</span></a>
+ <span class="menu-text">Démarrage</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
@@ -199,75 +181,146 @@ window.Quarto = {
       <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/index.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Vue d’ensemble</span></a>
+  <a href="../01_installation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Installation</span></a>
   </div>
 </li>
-          <li class="sidebar-item sidebar-item-section">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../02_quick_start.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Quick Start</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="false">
- <span class="menu-text">Session &amp; Environnement</span></a>
-          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="false" aria-label="Toggle section">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="true">
+ <span class="menu-text">Guide utilisateur</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
-      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth2 ">  
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/session.DifmapSession.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">session.DifmapSession</span></a>
+  <a href="../03_api_python.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Recettes &amp; Patterns API</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../04_interface_gui.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Interface graphique (PyQt6)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../05_batch.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Traitement batch parallèle</span></a>
   </div>
 </li>
       </ul>
   </li>
-          <li class="sidebar-item sidebar-item-section">
+        <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-expanded="false">
- <span class="menu-text">Génération d’Images</span></a>
-          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-expanded="false" aria-label="Toggle section">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-expanded="true">
+ <span class="menu-text">Référence API</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
-      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth2 ">  
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="./reference/imaging.DifmapImager.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">imaging.DifmapImager</span></a>
-  </div>
-</li>
-      </ul>
-  </li>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="false">
- <span class="menu-text">Gestion des Erreurs</span></a>
-          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="false" aria-label="Toggle section">
+            <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Function reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
-      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth2 ">  
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth2 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/exceptions.DifmapError.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">exceptions.DifmapError</span></a>
+  <a href="../reference/DifmapBatchManager.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapBatchManager</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/exceptions.DifmapStateError.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">exceptions.DifmapStateError</span></a>
+  <a href="../reference/DifmapError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DifmapImager.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapImager</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DifmapSession.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">DifmapSession</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/DifmapStateError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapStateError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Observation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Observation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Visualizer.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Visualizer</span></a>
   </div>
 </li>
       </ul>
   </li>
       </ul>
   </li>
-        <li class="sidebar-item">
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" aria-expanded="true">
+ <span class="menu-text">Internals</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-5" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./05_quick_start.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">5. Quick start</span></a>
+  <a href="../06_contexte.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Contexte et existant</span></a>
   </div>
 </li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../07_architecture.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Architecture du wrapper</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../08_implementation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Implémentation technique</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../09_contribuer.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Contribuer</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
     </ul>
     </div>
 </nav>
@@ -278,167 +331,177 @@ window.Quarto = {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#le-choix-de-larchitecture-hybride" id="toc-le-choix-de-larchitecture-hybride" class="nav-link active" data-scroll-target="#le-choix-de-larchitecture-hybride">2.1. Le choix de l’architecture hybride</a></li>
-  <li><a href="#le-modèle-en-3-couches-architecture-3-tier" id="toc-le-modèle-en-3-couches-architecture-3-tier" class="nav-link" data-scroll-target="#le-modèle-en-3-couches-architecture-3-tier">2.2. Le modèle en 3 couches (Architecture 3-Tier)</a>
+  <li><a href="#difmap_wrapper.DifmapSession" id="toc-difmap_wrapper.DifmapSession" class="nav-link active" data-scroll-target="#difmap_wrapper.DifmapSession">DifmapSession</a>
   <ul class="collapse">
-  <li><a href="#larchitecture" id="toc-larchitecture" class="nav-link" data-scroll-target="#larchitecture">2.2.1 L’architecture</a></li>
-  <li><a href="#couche-1-le-moteur-difmap" id="toc-couche-1-le-moteur-difmap" class="nav-link" data-scroll-target="#couche-1-le-moteur-difmap">Couche 1 : Le Moteur Difmap</a></li>
-  <li><a href="#couche-2-le-binding-cython-niveau-intermédiaire" id="toc-couche-2-le-binding-cython-niveau-intermédiaire" class="nav-link" data-scroll-target="#couche-2-le-binding-cython-niveau-intermédiaire">Couche 2 : Le Binding Cython (Niveau Intermédiaire)</a></li>
-  <li><a href="#couche-3-lapi-orientée-objet-haut-niveau" id="toc-couche-3-lapi-orientée-objet-haut-niveau" class="nav-link" data-scroll-target="#couche-3-lapi-orientée-objet-haut-niveau">Couche 3 : L’API Orientée Objet (Haut Niveau)</a></li>
+  <li><a href="#attributes" id="toc-attributes" class="nav-link" data-scroll-target="#attributes">Attributes</a></li>
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
+  <li><a href="#methods" id="toc-methods" class="nav-link" data-scroll-target="#methods">Methods</a>
+  <ul class="collapse">
+  <li><a href="#difmap_wrapper.DifmapSession.cleanup" id="toc-difmap_wrapper.DifmapSession.cleanup" class="nav-link" data-scroll-target="#difmap_wrapper.DifmapSession.cleanup">cleanup</a></li>
+  <li><a href="#difmap_wrapper.DifmapSession.observe" id="toc-difmap_wrapper.DifmapSession.observe" class="nav-link" data-scroll-target="#difmap_wrapper.DifmapSession.observe">observe</a></li>
   </ul></li>
-  <li><a href="#le-nouveau-flux-dexécution-le-contournement-de-sphere" id="toc-le-nouveau-flux-dexécution-le-contournement-de-sphere" class="nav-link" data-scroll-target="#le-nouveau-flux-dexécution-le-contournement-de-sphere">2.3. Le nouveau flux d’exécution : Le contournement de SPHERE</a></li>
-  <li><a href="#la-gestion-moderne-de-la-compilation-build-system" id="toc-la-gestion-moderne-de-la-compilation-build-system" class="nav-link" data-scroll-target="#la-gestion-moderne-de-la-compilation-build-system">2.4. La gestion moderne de la compilation (Build System)</a></li>
+  </ul></li>
   </ul>
 </nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default">
-<div class="quarto-title">
-<h1 class="title">Chapitre 2 : La Nouvelle Architecture</h1>
-</div>
 
 
 
-<div class="quarto-title-meta">
-
-    
-  
-    
-  </div>
-  
-
-
-</header>
-
-
-<section id="le-choix-de-larchitecture-hybride" class="level2">
-<h2 class="anchored" data-anchor-id="le-choix-de-larchitecture-hybride">2.1. Le choix de l’architecture hybride</h2>
-<p>Face aux limitations de l’architecture historique (I/O intensifs, dépendance à SPHERE, état global non-rentrant), deux solutions s’offraient à nous : réécrire intégralement les 100 000 lignes de code mathématique en Python, ou créer une architecture “hybride”.</p>
-<p>La réécriture totale a été rapidement écartée. Elle aurait nécessité des années de développement et, surtout, aurait invalidé des décennies de validation scientifique des algorithmes de Difmap (comme sa Transformée de Fourier optimisée ou son itération CLEAN).</p>
-<p>Le choix s’est donc porté sur un <strong>Wrapper natif</strong>. L’objectif est de conserver le moteur C/Fortran d’origine pour les calculs intensifs et l’allocation mémoire, tout en construisant une interface Python moderne par-dessus.</p>
-<div class="callout callout-style-default callout-tip callout-titled" title="Lexique Métier : Les termes clés">
-<div class="callout-header d-flex align-content-center">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<div class="callout-title-container flex-fill">
-Lexique Métier : Les termes clés
-</div>
-</div>
-<section id="lexique-des-termes-clés" class="level3 callout-body-container callout-body">
-<h3 class="anchored" data-anchor-id="lexique-des-termes-clés">Lexique des termes clés</h3>
-<p>Pour faciliter la lecture, voici les définitions des termes techniques et astronomiques utilisés dans ce chapitre :</p>
-<p><strong>Termes de Génie Logiciel :</strong></p>
-<ul>
-<li><strong>Binding (Liaison) :</strong> Code intermédiaire (ici en Cython) qui sert de “pont” entre deux langages. Il permet à Python d’appeler directement des fonctions écrites en C.</li>
-<li><strong>Zéro-Copie (Zero-Copy) :</strong> Technique d’optimisation où Python accède directement à la plage de mémoire RAM allouée par le C.</li>
-<li><strong>I/O (Input/Output) :</strong> Opérations de lecture et d’écriture sur le disque dur.</li>
-<li><strong>Wrapper (Enveloppe) :</strong> Une surcouche logicielle qui entoure un programme existant pour lui donner une nouvelle interface, plus simple ou plus moderne, sans modifier son cœur.</li>
-</ul>
-<p><strong>Termes de Radioastronomie :</strong></p>
-<ul>
-<li><strong>WCS (World Coordinate System) :</strong> Standard de la Fédération Astronomique Internationale permettant de convertir les coordonnées “pixels” <span class="math inline">\((x, y)\)</span> d’une image en coordonnées réelles sur la voûte céleste (Ascension Droite et Déclinaison)</li>
-</ul>
+<section id="difmap_wrapper.DifmapSession" class="level1">
+<h1>DifmapSession</h1>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>DifmapSession()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Point d’entrée principal pour analyser des données radio-interférométriques.</p>
+<p>Charge des fichiers de visibilités FITS/UVFITS et donne accès aux données brutes, à l’imagerie et aux graphiques. Une seule instance peut être active à la fois (le moteur C utilise une mémoire globale).</p>
+<p>S’utilise de préférence comme gestionnaire de contexte pour garantir la libération des ressources.</p>
+<section id="attributes" class="level2 doc-section doc-section-attributes">
+<h2 class="doc-section doc-section-attributes anchored" data-anchor-id="attributes">Attributes</h2>
+<table class="table">
+<colgroup>
+<col style="width: 10%">
+<col style="width: 17%">
+<col style="width: 72%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>obs</td>
+<td>Observation</td>
+<td>Données UV, sélection de polarisation, flagging.</td>
+</tr>
+<tr class="even">
+<td>imager</td>
+<td>DifmapImager</td>
+<td>Imagerie : grille, pondération, transformée de Fourier.</td>
+</tr>
+<tr class="odd">
+<td>vis</td>
+<td>Visualizer</td>
+<td>Graphiques statiques (couverture UV, radplot, carte).</td>
+</tr>
+</tbody>
+</table>
 </section>
-</div>
+<section id="examples" class="level2 doc-section doc-section-examples">
+<h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
+<p>Chargement et accès aux données avec gestionnaire de contexte :</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="cf">with</span> DifmapSession() <span class="im">as</span> session:</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>...     session.observe(<span class="st">"data/source.uvfits"</span>)</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>...     session.obs.select(pol<span class="op">=</span><span class="st">"RR"</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>...     data <span class="op">=</span> session.obs.get_data()</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>...     <span class="bu">print</span>(data[<span class="st">"amp"</span>].mean())</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="fl">0.312</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Utilisation sans <code>with</code> — cleanup manuel obligatoire :</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session <span class="op">=</span> DifmapSession()</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session.observe(<span class="st">"data/source.uvfits"</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="co"># ... travail ...</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session.cleanup()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
-<section id="le-modèle-en-3-couches-architecture-3-tier" class="level2">
-<h2 class="anchored" data-anchor-id="le-modèle-en-3-couches-architecture-3-tier">2.2. Le modèle en 3 couches (Architecture 3-Tier)</h2>
-<section id="larchitecture" class="level3">
-<h3 class="anchored" data-anchor-id="larchitecture">2.2.1 L’architecture</h3>
-<p>Pour garantir une séparation stricte des responsabilités et ne pas corrompre le code mathématique d’origine, la nouvelle solution repose sur une architecture logicielle en trois couches distinctes :</p>
-<div class="cell" data-layout-align="default">
-<div class="cell-output-display">
-<div>
-<p></p><figure class="figure"><p></p>
-<div>
-<pre class="mermaid mermaid-js">graph TD
-    %% Définition du contenu des Couches
-    subgraph Couche3 ["&lt;span style='color:#1e40af'&gt;&lt;b&gt; Couche 3 : API Python (High-Level)&lt;/b&gt;&lt;/span&gt;"]
-        A[" Script Utilisateur"] --&gt;|Appel Méthode| B(" Façade principale pour piloter 
-    &lt;br&gt; l'environnement Difmap -DifmapSession")
-        B --&gt;|Astrométrie WCS| C(" Module pour génération d'images astrophysiques &lt;br&gt; - DifmapImager")
-    end
-
-    subgraph Couche2 ["&lt;span style='color:#92400e'&gt;&lt;b&gt;Couche 2 : Pont Cython (Binding)&lt;/b&gt;&lt;/span&gt;"]
-        D{" Binding - difmap_native.pyx"}
-    end
-
-    subgraph Couche1 ["&lt;span style='color:#991b1b'&gt;&lt;b&gt; Couche 1 : Moteur - Difmap en C &lt;/b&gt;&lt;/span&gt;"]
-        E[" Variables Globales C"]
-        F[" Algorithmes"]
-        G[" Mémoire RAM"]
-    end
-
-    %% Liaisons entre couches
-    B --&gt;|Appels API C| D
-    D -.-&gt;|Zéro-Copie| C
-    D --&gt;|Pointeurs directs| E
-    E --- F
-    E --- G
-
-    %% --- STYLES DES GRANDS RECTANGLES (SUBGRAPHS) ---
-    style Couche3 fill:#ffffff,stroke:#1e40af,stroke-width:2px
-    style Couche2 fill:#ffffff,stroke:#92400e,stroke-width:2px
-    style Couche1 fill:#ffffff,stroke:#991b1b,stroke-width:2px
-
-    %% --- STYLES DES BLOCS INTERNES ---
-    style A fill:#f0fdf4,stroke:#16a34a,color:#16a34a,stroke-width:2px
-    style B fill:#eff6ff,stroke:#1e40af,color:#1e40af,stroke-width:2px
-    style C fill:#eff6ff,stroke:#1e40af,color:#1e40af,stroke-width:2px
-    style D fill:#fffbeb,stroke:#92400e,color:#92400e,stroke-width:2px
-    style E fill:#fef2f2,stroke:#991b1b,color:#991b1b,stroke-width:2px
-    style F fill:#fef2f2,stroke:#991b1b,color:#991b1b,stroke-width:1px
-    style G fill:#fef2f2,stroke:#991b1b,color:#991b1b,stroke-width:1px
-</pre>
-</div>
-<p></p></figure><p></p>
-</div>
-</div>
-</div>
-</section>
-<section id="couche-1-le-moteur-difmap" class="level3">
-<h3 class="anchored" data-anchor-id="couche-1-le-moteur-difmap">Couche 1 : Le Moteur Difmap</h3>
-<p>Composée notamment du dossiers <code>difmap_src/</code> cette couche est le “muscle” du logiciel. Elle ne gère plus aucune interface utilisateur. Elle se contente d’allouer la mémoire RAM pour les images et d’exécuter les mathématiques. Nous avons ajouté de légers <em>getters</em> et <em>setters</em> en C pour exposer ses variables globales en toute sécurité.</p>
-</section>
-<section id="couche-2-le-binding-cython-niveau-intermédiaire" class="level3">
-<h3 class="anchored" data-anchor-id="couche-2-le-binding-cython-niveau-intermédiaire">Couche 2 : Le Binding Cython (Niveau Intermédiaire)</h3>
-<p>C’est le cœur de l’innovation de ce projet (le dossier <code>binding/</code>). Écrit en Cython, le fichier <code>difmap_native.pyx</code> agit comme un traducteur bidirectionnel. Il convertit les objets Python en pointeurs C compréhensibles par Difmap, et surtout, il récupère les immenses tableaux de pixels générés par le C pour les transformer en objets <code>NumPy</code> instantanément via la technique du <strong>Zéro-Copie</strong>.</p>
-</section>
-<section id="couche-3-lapi-orientée-objet-haut-niveau" class="level3">
-<h3 class="anchored" data-anchor-id="couche-3-lapi-orientée-objet-haut-niveau">Couche 3 : L’API Orientée Objet (Haut Niveau)</h3>
-<p>C’est la partie visible de l’iceberg (le dossier <code>difmap_wrapper/</code>). Elle offre des classes Python tel que<code>DifmapSession</code> qui masquent totalement la complexité des pointeurs C à l’utilisateur final.</p>
+<section id="methods" class="level2">
+<h2 class="anchored" data-anchor-id="methods">Methods</h2>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><a href="#difmap_wrapper.DifmapSession.cleanup">cleanup</a></td>
+<td>Libère les ressources et permet de créer une nouvelle session.</td>
+</tr>
+<tr class="even">
+<td><a href="#difmap_wrapper.DifmapSession.observe">observe</a></td>
+<td>Charge un fichier de visibilités en mémoire.</td>
+</tr>
+</tbody>
+</table>
+<section id="difmap_wrapper.DifmapSession.cleanup" class="level3">
+<h3 class="anchored" data-anchor-id="difmap_wrapper.DifmapSession.cleanup">cleanup</h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>DifmapSession.cleanup()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Libère les ressources et permet de créer une nouvelle session.</p>
+<p>Appelé automatiquement à la sortie d’un bloc <code>with</code>. Après cet appel, une nouvelle <code>DifmapSession()</code> peut être instanciée.</p>
+<section id="examples-1" class="level4 doc-section doc-section-examples">
+<h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-1">Examples</h4>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session.cleanup()</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session2 <span class="op">=</span> DifmapSession()   <span class="co"># OK, le slot est libéré</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
 </section>
-<section id="le-nouveau-flux-dexécution-le-contournement-de-sphere" class="level2">
-<h2 class="anchored" data-anchor-id="le-nouveau-flux-dexécution-le-contournement-de-sphere">2.3. Le nouveau flux d’exécution : Le contournement de SPHERE</h2>
-<p>L’un des apports majeurs de cette architecture est la mise hors-circuit de l’interpréteur de commandes historique, SPHERE.</p>
-<p>Dans l’ancienne architecture, l’utilisateur tapait une commande texte (<code>clean 100</code>) qui était parsée par <code>difmap.c</code> avant d’invoquer la fonction mathématique C correspondante. Désormais, <strong>la Couche 2 (Cython) attaque directement les fonctions mathématiques C</strong>. Le terminal SPHERE n’est jamais initialisé lors de l’utilisation en tant que bibliothèque Python, supprimant ainsi tout le goulot d’étranglement lié au parsing de texte et aux I/O sur le disque dur.</p>
+<section id="difmap_wrapper.DifmapSession.observe" class="level3">
+<h3 class="anchored" data-anchor-id="difmap_wrapper.DifmapSession.observe">observe</h3>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>DifmapSession.observe(filepath)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Charge un fichier de visibilités en mémoire.</p>
+<p>Si une observation était déjà active, elle est remplacée proprement. Après cet appel, <code>session.obs.select()</code> doit être appelé pour choisir la polarisation et activer les données.</p>
+<section id="parameters" class="level4 doc-section doc-section-parameters">
+<h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h4>
+<table class="table">
+<colgroup>
+<col style="width: 9%">
+<col style="width: 7%">
+<col style="width: 71%">
+<col style="width: 11%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>filepath</td>
+<td>str</td>
+<td>Chemin vers le fichier FITS ou UVFITS. Exemple : <code>"data/source.uvfits"</code>.</td>
+<td><em>required</em></td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="la-gestion-moderne-de-la-compilation-build-system" class="level2">
-<h2 class="anchored" data-anchor-id="la-gestion-moderne-de-la-compilation-build-system">2.4. La gestion moderne de la compilation (Build System)</h2>
-<p>Intégrer du code C/Fortran des années 90 dans l’écosystème Python de 2026 exige un système de compilation robuste. Les anciens fichiers <code>Makefile</code>, souvent capricieux selon les systèmes d’exploitation, ont été remplacés par une chaîne de compilation standardisée:</p>
-<ol type="1">
-<li><strong><code>pyproject.toml</code> :</strong> Définit les métadonnées du projet Python et force l’utilisation d’un environnement de build isolé.</li>
-<li><strong>Meson &amp; Ninja :</strong> Remplacent les outils historiques pour compiler le code C. Meson est capable de détecter dynamiquement les compilateurs système (GCC, GFortran) et de lier les dépendances complexes (PGPLOT, GSL, X11) de manière transparente.</li>
-</ol>
-<div class="callout callout-style-default callout-tip callout-titled">
-<div class="callout-header d-flex align-content-center">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<div class="callout-title-container flex-fill">
-Le résultat pour l’utilisateur
-</div>
-</div>
-<div class="callout-body-container callout-body">
-<p>Grâce à ce nouveau système de Build, toute cette complexité d’ingénierie se résume à une seule commande standard pour l’astronome : <code>pip install .</code>. Le système compile silencieusement le C, transpile le Cython, et installe le package Python en quelques secondes.</p>
-</div>
-</div>
+<section id="raises" class="level4 doc-section doc-section-raises">
+<h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises">Raises</h4>
+<table class="table">
+<colgroup>
+<col style="width: 8%">
+<col style="width: 13%">
+<col style="width: 77%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td>DifmapError</td>
+<td>Si le fichier est introuvable, corrompu ou dans un format non reconnu.</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="examples-2" class="level4 doc-section doc-section-examples">
+<h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-2">Examples</h4>
+<div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> session.observe(<span class="st">"data/source.uvfits"</span>)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="bu">print</span>(session.obs.source)</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="co">'J0003-066'</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 
 
+</section>
+</section>
+</section>
 </section>
 
 </main> <!-- /main -->
@@ -852,6 +915,26 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
 });
 </script>
 </div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+<p>difmap_smartedit v2.5.0 — wrapper Python pour Difmap (Caltech)</p>
+</div>   
+    <div class="nav-footer-center">
+      &nbsp;
+    </div>
+    <div class="nav-footer-right">
+      <ul class="footer-items list-unstyled">
+    <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/iimavne/DIFMAP">
+      <i class="bi bi-github" role="img">
+</i> 
+    </a>
+  </li>  
+</ul>
+    </div>
+  </div>
+</footer>
 
 
 

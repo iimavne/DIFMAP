@@ -1,7 +1,7 @@
-# exceptions.DifmapStateError { #difmap_wrapper.exceptions.DifmapStateError }
+# DifmapStateError { #difmap_wrapper.DifmapStateError }
 
 ```python
-exceptions.DifmapStateError()
+DifmapStateError()
 ```
 
 Levée lorsqu'une action est tentée dans le mauvais ordre.

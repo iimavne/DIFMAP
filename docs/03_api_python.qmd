@@ -1,0 +1,258 @@
+---
+title: "Utilisation Api Python"
+---
+
+Ce guide présente les utilisation courants de l'API Python sous forme de script prêt à l'emploi. Pour la référence exhaustive (signatures, paramètres, types de retour), cf. (/reference).
+
+---
+
+## Structure de base — le bloc `with`
+
+Tout script commence par ce patron. Le bloc `with` garantit la libération de la mémoire C même si une exception se produit.
+
+```python
+from difmap_wrapper import DifmapSession
+
+with DifmapSession() as session:
+    session.observe("data/source.uvfits")
+    session.obs.select(pol="I")
+    # ... toutes les opérations ici
+```
+
+Les trois sous-objets exposés par `session` :
+
+| Attribut | Rôle |
+|:---------|:-----|
+| `session.obs` | Données UV : sélection, extraction, flagging, sauvegarde |
+| `session.imager` | Imagerie : grille, pondération, FFT, image |
+| `session.vis` | Graphiques statiques Matplotlib |
+
+---
+
+## Recette 1 — Dirty Map en une commande
+
+```python
+with DifmapSession() as session:
+    session.observe("data/source.uvfits")
+    img = session.imager.make_dirty_map(size=512, cellsize=0.1, pol="I")
+    session.vis.plot_image(img, cmap="inferno")
+```
+
+`make_dirty_map` enchaîne `select → mapsize → invert` automatiquement. Utilisez-le quand vous n'avez pas besoin de contrôler la pondération.
+
+---
+
+## Recette 2 — Pipeline avec pondération et taper
+
+```python
+with DifmapSession() as session:
+    session.observe("data/source.uvfits")
+    session.obs.select(pol="I")
+
+    session.imager.mapsize(512, 0.1)                                      # grille 512×512, 0.1 mas/px
+    session.imager.uvweight(bin_size=2.0, err_power=0.0)                  # uniforme
+    session.imager.uvtaper(gaussian_value=0.3, gaussian_radius_wav=50e6)  # taper 50 Mλ
+    session.imager.invert()
+
+    img = session.imager.get_map_package(cellsize=0.1)
+    session.vis.plot_image(img, cmap="viridis")
+```
+
+Les trois pondérations standard :
+
+| Pondération | `bin_size` | `err_power` | Effet |
+|:------------|:-----------|:------------|:------|
+| Naturelle | `0.0` | `-2.0` | Meilleure sensibilité, résolution réduite |
+| Uniforme | `2.0` | `0.0` | Meilleure résolution, bruit plus élevé |
+| Briggs | `2.0` | `-1.0` | Compromis résolution/sensibilité |
+
+---
+
+## Recette 3 — Accéder aux visibilités brutes
+
+```python
+import numpy as np
+
+with DifmapSession() as session:
+    session.observe("data/source.uvfits")
+    session.obs.select(pol="RR")
+
+    data = session.obs.get_data()
+
+    # Filtrer les visibilités valides (weight > 0)
+    ok = data["weight"] > 0
+    print(f"{ok.sum()} visibilités valides sur {len(ok)}")
+
+    # Rayon UV en Méga-longueurs d'onde
+    # Les coordonnées brutes u, v sont en λ — diviser par 1e6 pour Mλ
+    r_Ml = np.sqrt(data["u"]**2 + data["v"]**2) / 1e6
+    print(f"Rayon UV max : {r_Ml.max():.1f} Mλ")
+
+    # Sélectionner les baselines longues (> 100 Mλ)
+    longues = r_Ml > 100
+    print(f"Baselines > 100 Mλ : {longues.sum()}")
+```
+
+::: {.callout-note}
+### Unités UV : λ vs Mλ
+
+`get_data()` retourne `u` et `v` en **longueurs d'onde (λ)** — l'unité native de Difmap et du format FITS. En VLBI, une baseline intercontinentale à 1.6 GHz donne typiquement ~55 000 000 λ (55 Mλ). Les graphiques `uvplot()` et `radplot()` convertissent automatiquement en Mλ (`/ 1e6`). Faites de même dans vos calculs manuels.
+:::
+
+---
+
+## Recette 4 — Plusieurs polarisations en boucle
+
+```python
+with DifmapSession() as session:
+    session.observe("data/source.uvfits")
+
+    for pol in ["RR", "LL"]:
+        pol_reelle = session.obs.select(pol=pol)
+        img = session.imager.make_dirty_map(size=512, cellsize=0.1)
+        session.vis.plot_image(img, title=f"Dirty Map — {pol_reelle}")
+```
+
+`select()` remet à zéro le masque de flagging à chaque appel.
+
+---
+
+## Recette 5 — Extraire les données et afficher manuellement
+
+```python
+import matplotlib.pyplot as plt
+
+with DifmapSession() as session:
+    session.observe("data/source.uvfits")
+    session.obs.select(pol="I")
+    img = session.imager.make_dirty_map(512, 0.1)
+
+# Structure du dictionnaire img :
+# img["data"]      → np.ndarray (ny, nx), Jy/beam
+# img["beam_data"] → np.ndarray (ny, nx), PSF
+# img["extent"]    → [left, right, bottom, top] en mas (prêt pour imshow)
+# img["info"]      → {"nx", "ny", "cellsize", "bmaj", "bmin", "bpa"}
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+
+ax1.imshow(img["data"], extent=img["extent"], origin="lower", cmap="inferno")
+ax1.set_title(f"Dirty Map — bmaj={img['info']['bmaj']:.2f} mas")
+ax1.set_xlabel("Décalage RA (mas)")
+ax1.set_ylabel("Décalage Dec (mas)")
+
+ax2.imshow(img["beam_data"], extent=img["extent"], origin="lower", cmap="gray")
+ax2.set_title("Dirty Beam (PSF)")
+
+plt.colorbar(ax1.images[0], ax=ax1, label="Jy/beam")
+plt.tight_layout()
+plt.show()
+```
+
+L'`extent` utilise la convention radioastronomique : l'axe RA est inversé (RA croît vers la gauche). Il est calculé avec une correction de demi-pixel pour une astrométrie exacte — voir [Implémentation technique](08_implementation.qmd#correction-astrométrique-du-demi-pixel).
+
+---
+
+## Recette 6 — Flagging programmatique
+
+```python
+import numpy as np
+
+with DifmapSession() as session:
+    session.observe("data/source.uvfits")
+    session.obs.select(pol="I")
+    data = session.obs.get_data()
+
+    # Flaguer les amplitudes aberrantes (> 5σ au-dessus de la médiane)
+    amp = data["amp"]
+    seuil = np.median(amp) + 5 * amp.std()
+    idx = np.where(amp > seuil)[0].astype(np.int32)
+
+    if len(idx) > 0:
+        session.obs.flag_data(idx)
+        session.obs.masque_flagges[idx] = True   # synchroniser le masque Python
+        print(f"{len(idx)} visibilités flaguées (seuil {seuil:.3f} Jy)")
+
+    session.obs.save_wobs("data/source_clean.fits")
+```
+
+::: {.callout-important}
+`flag_data()` modifie la mémoire C mais ne met **pas** à jour `masque_flagges` automatiquement. Synchronisez-le manuellement quand vous appelez `flag_data()` directement. L'interface graphique le fait automatiquement.
+:::
+
+---
+
+## Recette 7 — Utilisation sans bloc `with`
+
+Acceptable dans un script one-shot ou un notebook où le kernel est redémarré entre les runs.
+
+```python
+session = DifmapSession()
+session.observe("data/source.uvfits")
+session.obs.select(pol="I")
+img = session.imager.make_dirty_map(512, 0.1)
+
+# ... travail ...
+
+session.cleanup()   # OBLIGATOIRE — libère le slot singleton et la mémoire C
+```
+
+Sans `cleanup()`, la prochaine `DifmapSession()` lèvera `DifmapStateError`.
+
+---
+
+## Recette 8 — Chaîner deux observations
+
+```python
+sources = ["data/3C273.uvfits", "data/M87.uvfits"]
+
+with DifmapSession() as session:
+    for filepath in sources:
+        session.observe(filepath)           # remplace proprement la précédente
+        session.obs.select(pol="I")
+        img = session.imager.make_dirty_map(512, 0.1)
+        session.vis.plot_image(img, title=session.obs.source)
+```
+
+`observe()` appelle `obs_end()` en C avant de charger le nouveau fichier — pas de fuite mémoire.
+
+---
+
+## Recette 9 — Intégration avec Matplotlib (axe existant)
+
+```python
+fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+with DifmapSession() as session:
+    session.observe("data/source.uvfits")
+    session.obs.select(pol="I")
+
+    session.vis.uvplot(ax=axes[0], color="steelblue", s=1, alpha=0.4)
+    session.vis.radplot(ax=axes[1], color="navy", s=0.5)
+
+    img = session.imager.make_dirty_map(512, 0.1)
+    axes[2].imshow(img["data"], extent=img["extent"], origin="lower", cmap="magma")
+    axes[2].set_title("Dirty Map")
+
+plt.tight_layout()
+plt.show()
+```
+
+`uvplot()` et `radplot()` acceptent un axe existant via le paramètre `ax=` et retournent l'axe pour chaîner les opérations.
+
+---
+
+## Gestion des erreurs
+
+```python
+from difmap_wrapper.exceptions import DifmapError, DifmapStateError
+
+with DifmapSession() as session:
+    try:
+        session.imager.invert()            # sans observe() → DifmapStateError
+    except DifmapStateError as e:
+        print(f"Erreur d'état : {e}")      # opération hors-séquence
+    except DifmapError as e:
+        print(f"Erreur moteur : {e}")      # échec C (fichier, FFT...)
+```
+
+`DifmapStateError` est un sous-type de `DifmapError` — un seul `except DifmapError` intercepte les deux.
