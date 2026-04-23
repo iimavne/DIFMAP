@@ -176,9 +176,11 @@ def generer_ref_difmap_cli(chemin_uv: str, fits_out: str, type_export: str, comm
     shutil.copy(chemin_uv, os.path.join(dossier_cible, uv_court))
 
     # ATTENTION : Il faut TOUJOURS un mapsize avant uvweight, même pour les UV !
-    lignes_script = [f"observe {uv_court}", "select RR", "mapsize 512,0.1"]
+    lignes_script = [f"observe {uv_court}", "select RR", "mapsize 512, 0.1"]
     
     if commandes_difmap:
+        # Remplacer les virgules par des espaces pour la syntaxe Difmap
+        commandes_difmap = commandes_difmap.replace(",", ", ")
         lignes_script.append(commandes_difmap)
         
     if type_export == "image":
@@ -190,7 +192,7 @@ def generer_ref_difmap_cli(chemin_uv: str, fits_out: str, type_export: str, comm
     lignes_script.append("quit")
     script = "\n".join(lignes_script) + "\n"
 
-    res = subprocess.run(["difmap"], input=script, text=True, capture_output=True, cwd=dossier_cible)
+    res = subprocess.run(["/home/mahssini/Bureau/difmap2.5q_mod/builddir/difmap"], input=script, text=True, capture_output=True, cwd=dossier_cible)
 
     chemin_out_complet = os.path.join(dossier_cible, nom_court_out)
     if os.path.exists(chemin_out_complet):
@@ -204,7 +206,7 @@ def appliquer_physique_wrapper(session, cmd_difmap):
     
     if "uvtaper" in cmd_difmap:
         val, rad = cmd_difmap.replace("uvtaper ", "").split(",")
-        session.imager.uvtaper(float(val), float(rad))
+        session.imager.uvtaper(float(val), float(rad) * 1e6)  # Convert Mλ to wavelengths
     elif "uvweight" in cmd_difmap:
         val, err = cmd_difmap.replace("uvweight ", "").split(",")
         session.imager.uvweight(float(val), float(err))

@@ -8179,3 +8179,17 @@ int native_selfcal(int doamp, int dofloat, float solint) {
         vlbmap->dobeam = 1;
     return iret ? -1 : 0;
 }
+
+int native_cleanup(void) {
+    if (vlbob) del_Observation(vlbob);
+    vlbob = NULL;
+    if (vlbmap) del_MapBeam(vlbmap);
+    vlbmap = NULL;
+    invpar.uvmin = invpar.uvmax = 0.0f;
+    invpar.gauval = 0.0f;
+    invpar.gaurad = 0.0f;
+    invpar.errpow = 0.0f;
+    invpar.uvbin = 0.0f;
+    invpar.dorad = 0;
+    return 0;
+}

@@ -54,4 +54,6 @@ int native_peakwin(float size, int doabs);
 /* Auto-calibration */
 int native_selfcal(int doamp, int dofloat, float solint);
 
+int native_cleanup(void);
+
 #endif

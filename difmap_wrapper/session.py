@@ -118,6 +118,7 @@ class DifmapSession(metaclass=_SingletonMeta):
     def _native_cleanup(self) -> None:
         """Remet à zéro l'état interne sans libérer le slot singleton."""
         self.uv_loaded = False
+        # native_observe (appelé juste après) réinitialise l'état C via obs_end() + invpar = invdef
 
     def cleanup(self) -> None:
         """

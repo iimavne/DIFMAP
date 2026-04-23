@@ -187,12 +187,12 @@ class DifmapImager:
         val = float(gaussian_value) if gaussian_value is not None else 0.0
         rad = float(gaussian_radius_wav) if gaussian_radius_wav is not None else 0.0
 
-        if self._native.uvtaper(val, rad) != 0:
+        if self._native.uvtaper(val, rad / 1e6) != 0:
             raise DifmapError("Erreur lors de l'application de uvtaper.")
         
         # 3. Mise à jour de la mémoire et restauration de la grille C
         self._current_uvtaper = (val, rad)
-        self._reissue_mapsize_if_needed()
+        # self._reissue_mapsize_if_needed()  # Peut-être pas nécessaire pour uvtaper
         
         if val == 0.0 and rad == 0.0:
             print("Taper désactivé avec succès.")

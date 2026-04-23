@@ -57,3 +57,5 @@ cdef extern from "difmap_api.h":
 
     # Auto-calibration
     int native_selfcal(int doamp, int dofloat, float solint)
+
+    int native_cleanup()

@@ -97,24 +97,20 @@ class TestImagerWeightAndTaper:
         assert "Taper actuel" in captured.out
 
     def test_uvtaper_desactivation(self, capsys):
+        import difmap_native as dn
         session = DifmapSession()
-        session.imager._native.uvtaper = MagicMock(return_value=0)
-        session.imager.uvtaper(0, 0)
+        with patch.object(dn, 'uvtaper', return_value=0):
+            session.imager.uvtaper(0, 0)
         captured = capsys.readouterr()
         assert "Taper désactivé" in captured.out
 
     def test_uvtaper_logique_python(self):
         """Vérifie que le wrapper Python envoie bien la commande au moteur C et mémorise l'état."""
+        import difmap_native as dn
         session = DifmapSession()
-        # On intercepte l'appel vers le C pour vérifier que le Python fait son job
-        session.imager._native.uvtaper = MagicMock(return_value=0)
-        
-        # Application du taper
-        session.imager.uvtaper(0.5, 10.0)
-        
-        # Vérifications strictes : le Wrapper a-t-il appelé la bonne fonction C avec les bons arguments ?
-        session.imager._native.uvtaper.assert_called_once_with(0.5, 10.0)
-        # Vérification que le Wrapper a bien mis à jour sa mémoire interne
+        with patch.object(dn, 'uvtaper', return_value=0) as mock_uvtaper:
+            session.imager.uvtaper(0.5, 10.0)
+            mock_uvtaper.assert_called_once_with(0.5, 10.0 / 1e6)
         assert session.imager._current_uvtaper == (0.5, 10.0)
 
     def test_uvweight_impact_reel_sur_dirty_map(self, fichier_valide):
