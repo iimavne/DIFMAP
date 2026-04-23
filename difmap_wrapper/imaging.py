@@ -284,6 +284,7 @@ class DifmapImager:
         0.85
         """
         hdr = self._native.get_header()
+        beam = self._native.get_beam_info()
         nx = hdr.get('NX', 512)
         ny = hdr.get('NY', 512)
 
@@ -294,7 +295,7 @@ class DifmapImager:
             -(ny / 2.0) * cellsize - demi_pixel,
              (ny / 2.0) * cellsize - demi_pixel
         ]
-            
+
         return {
             "data": self.get_map(),
             "beam_data": self._native.get_beam(),
@@ -302,12 +303,198 @@ class DifmapImager:
                 "nx": nx,
                 "ny": ny,
                 "cellsize": cellsize,
-                "bmaj": hdr.get('BMAJ', 0.0),
-                "bmin": hdr.get('BMIN', 0.0),
-                "bpa": hdr.get('BPA', 0.0)
+                "bmaj": beam.get('BMAJ', 0.0),
+                "bmin": beam.get('BMIN', 0.0),
+                "bpa": beam.get('BPA', 0.0),
+                "rms": beam.get('RMS', 0.0)
             },
             "extent": extent_corrige
         }
+
+    def clean(self, niter: int = 100, gain: float = 0.05) -> None:
+        """
+        Déconvolue la Dirty Map par l'algorithme CLEAN de Högbom/Clark natif.
+
+        Doit être appelé après ``invert()``. Soustrait itérativement les
+        composantes ponctuelles du lobe de synthèse et construit le modèle
+        de sources propres.
+
+        Parameters
+        ----------
+        niter : int, optional
+            Nombre maximum d'itérations CLEAN. Par défaut 100.
+        gain : float, optional
+            Gain de boucle CLEAN (entre 0 et 1). Par défaut 0.05.
+
+        Raises
+        ------
+        DifmapError
+            Si le moteur C retourne une erreur (carte ou observation absente).
+        """
+        if self._native.clean(niter, gain) != 0:
+            raise DifmapError("Échec de la déconvolution CLEAN.")
+
+    def restore(self) -> None:
+        """
+        Restaure la Clean Map en convoluant le modèle avec le faisceau propre.
+
+        Doit être appelé après ``clean()``. Utilise automatiquement les
+        paramètres du faisceau estimés lors du dernier ``invert()``.
+
+        Raises
+        ------
+        DifmapError
+            Si le moteur C retourne une erreur (modèle absent ou faisceau
+            non estimé).
+        """
+        if self._native.restore() != 0:
+            raise DifmapError("Échec de la restauration (restore).")
+
+    def peak(self) -> dict:
+        """
+        Retourne les statistiques du pic de flux dans la carte courante.
+
+        Équivalent à la commande ``peak`` de Difmap.
+
+        Returns
+        -------
+        dict
+            ``'flux'`` : valeur du pic en Jy/beam (peut être négative).
+
+            ``'x'`` : position X en mas (positif = Est).
+
+            ``'y'`` : position Y en mas (positif = Nord).
+
+            ``'rms'`` : bruit RMS de la carte en Jy/beam.
+
+            ``'snr'`` : rapport signal sur bruit.
+
+        Raises
+        ------
+        DifmapStateError
+            Si aucune carte n'est disponible en mémoire.
+
+        Examples
+        --------
+        >>> session.imager.invert()
+        >>> p = session.imager.peak()
+        >>> print(f"Pic : {p['flux']:.3f} Jy/beam, SNR = {p['snr']:.1f}")
+        """
+        info = self._native.get_peak_info()
+        if info["rms"] == 0.0 and info["flux"] == 0.0:
+            raise DifmapStateError("Aucune carte disponible. Appelez invert() d'abord.")
+        return info
+
+    def addwin(self, xa: float, xb: float, ya: float, yb: float) -> None:
+        """
+        Ajoute une fenêtre CLEAN rectangulaire.
+
+        Équivalent à la commande ``addwin`` de Difmap.
+        Les coordonnées sont en milli-arcseconds (mas) depuis le centre de la carte.
+
+        Parameters
+        ----------
+        xa : float
+            Bord gauche de la fenêtre (RA, en mas).
+        xb : float
+            Bord droit de la fenêtre (RA, en mas).
+        ya : float
+            Bord bas de la fenêtre (Dec, en mas).
+        yb : float
+            Bord haut de la fenêtre (Dec, en mas).
+
+        Examples
+        --------
+        >>> session.imager.addwin(-5, 5, -5, 5)   # fenêtre 10×10 mas centrée
+        """
+        if self._native.addwin(xa, xb, ya, yb) != 0:
+            raise DifmapError("Erreur lors de l'ajout d'une fenêtre CLEAN.")
+
+    def delwin(self) -> None:
+        """
+        Supprime toutes les fenêtres CLEAN actives.
+
+        Équivalent à la commande ``delwin`` de Difmap.
+        """
+        self._native.delwin()
+
+    def peakwin(self, size: float = 1.0, doabs: bool = False) -> None:
+        """
+        Ajoute automatiquement une fenêtre CLEAN autour du pic de flux.
+
+        Équivalent à la commande ``peakwin`` de Difmap : place une fenêtre
+        centrée sur le pixel de valeur maximale avec une taille proportionnelle
+        au faisceau synthétique.
+
+        Parameters
+        ----------
+        size : float, optional
+            Taille de la fenêtre relative à la taille FWHM du beam. Par défaut 1.0.
+        doabs : bool, optional
+            Si ``True``, cherche le pic en valeur absolue (max ou min).
+            Par défaut ``False`` (pic positif).
+
+        Raises
+        ------
+        DifmapError
+            Si aucune carte n'est en mémoire.
+
+        Examples
+        --------
+        >>> session.imager.invert()
+        >>> session.imager.peakwin(size=2.0)   # fenêtre 2× le beam autour du pic
+        >>> session.imager.clean(500, 0.05)
+        """
+        if self._native.peakwin(float(size), int(doabs)) != 0:
+            raise DifmapError("Erreur peakwin : aucune carte disponible.")
+
+    def selfcal(self, doamp: bool = False, dofloat: bool = False, solint: float = 0.0) -> None:
+        """
+        Applique une auto-calibration sur les visibilités.
+
+        Équivalent à la commande ``selfcal`` de Difmap. Utilise le modèle
+        CLEAN courant pour corriger les gains des antennes. La carte doit
+        être recalculée (``invert()``) après cette opération.
+
+        Parameters
+        ----------
+        doamp : bool, optional
+            Si ``True``, calibration amplitude + phase. Par défaut ``False``
+            (phase seule).
+        dofloat : bool, optional
+            Si ``True``, corrections d'amplitude non contraintes (flottantes).
+            Par défaut ``False``.
+        solint : float, optional
+            Intervalle de solution en minutes. ``0.0`` = intégration par
+            intégration. Par défaut ``0.0``.
+
+        Raises
+        ------
+        DifmapError
+            Si l'auto-calibration échoue (pas de modèle ou pas de données).
+
+        Examples
+        --------
+        Boucle CLEAN + selfcal classique :
+
+        >>> session.imager.invert()
+        >>> session.imager.clean(200, 0.05)
+        >>> session.imager.selfcal()          # phase seule
+        >>> session.imager.invert()           # recalculer la carte résiduelle
+        >>> session.imager.clean(500, 0.05)
+        >>> session.imager.selfcal(doamp=True) # amplitude + phase
+        """
+        if self._native.selfcal(int(doamp), int(dofloat), float(solint)) != 0:
+            raise DifmapError("Échec de l'auto-calibration (selfcal).")
+
+    def make_clean_map(self, size: int, cellsize: float, niter: int = 100, gain: float = 0.05, pol: str = "I") -> dict:
+        """Orchestre la création d'une Clean Map de A à Z."""
+        self._session.obs.select(pol=pol)
+        self.mapsize(size, cellsize)
+        self.invert()          
+        self.clean(niter, gain) 
+        self.restore()         
+        return self.get_map_package(cellsize) 
 
     def make_dirty_map(self, size: int, cellsize: float, pol: str = "I") -> dict:
         """

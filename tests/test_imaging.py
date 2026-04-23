@@ -1,11 +1,16 @@
 import os
+import shutil
+import subprocess
 import pytest
 import numpy as np
 import numpy.testing as npt
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
+
+from astropy.io import fits
 
 from difmap_wrapper.session import DifmapSession
 from difmap_wrapper.exceptions import DifmapError, DifmapStateError
+from difmap_wrapper import standardizer
 
 # --- Remplacer par le vrai chemin de tes données de test ---
 TEST_UV_FILE = os.path.join(os.path.dirname(__file__), "test_data", "0003-066_X.SPLIT.1")
@@ -137,19 +142,16 @@ class TestImagerWeightAndTaper:
 class TestImagerGetMapPackage:
     def test_get_map_package_structure(self):
         """Vérifie que get_map_package retourne un dictionnaire avec les bonnes clés."""
+        import difmap_native as dn
         session = DifmapSession()
 
         session.imager.get_map = MagicMock(return_value=np.ones((256, 256)))
-        session.imager._native.get_beam = MagicMock(return_value=np.ones((256, 256)))
-        session.imager._native.get_header = MagicMock(return_value={
-            'NX': 256,
-            'NY': 256,
-            'BMAJ': 0.5,
-            'BMIN': 0.4,
-            'BPA': 45.0
-        })
-
-        pkg = session.imager.get_map_package(cellsize=1.0)
+        with patch.object(dn, 'get_beam', return_value=np.ones((256, 256))), \
+             patch.object(dn, 'get_header', return_value={
+                 'NX': 256, 'NY': 256,
+                 'BMAJ': 0.5, 'BMIN': 0.4, 'BPA': 45.0
+             }):
+            pkg = session.imager.get_map_package(cellsize=1.0)
 
         assert 'data' in pkg
         assert 'beam_data' in pkg
@@ -168,31 +170,34 @@ class TestImagerGetMapPackage:
 
 class TestImagerMapsize:
     def test_mapsize_stocke_cellsize(self):
+        import difmap_native as dn
         session = DifmapSession()
-        session.imager._native.mapsize = MagicMock(return_value=0)
-        session.imager.mapsize(512, 1.5)
-
+        with patch.object(dn, 'mapsize', return_value=0) as mock_ms:
+            session.imager.mapsize(512, 1.5)
         assert session.imager._last_cellsize == 1.5
-        session.imager._native.mapsize.assert_called_once_with(512, 1.5)
+        mock_ms.assert_called_once_with(512, 1.5)
 
     def test_mapsize_erreur_c(self):
+        import difmap_native as dn
         session = DifmapSession()
-        session.imager._native.mapsize = MagicMock(return_value=-1)
-        with pytest.raises(DifmapError, match="mapsize"):
-            session.imager.mapsize(512, 1.0)
+        with patch.object(dn, 'mapsize', return_value=-1):
+            with pytest.raises(DifmapError, match="mapsize"):
+                session.imager.mapsize(512, 1.0)
 
 class TestImagerInvert:
     def test_invert_appel_c(self):
+        import difmap_native as dn
         session = DifmapSession()
-        session.imager._native.invert = MagicMock(return_value=0)
-        session.imager.invert()
-        session.imager._native.invert.assert_called_once()
+        with patch.object(dn, 'invert', return_value=0) as mock_inv:
+            session.imager.invert()
+        mock_inv.assert_called_once()
 
     def test_invert_erreur_c(self):
+        import difmap_native as dn
         session = DifmapSession()
-        session.imager._native.invert = MagicMock(return_value=-1)
-        with pytest.raises(DifmapError, match="Fourier"):
-            session.imager.invert()
+        with patch.object(dn, 'invert', return_value=-1):
+            with pytest.raises(DifmapError, match="Fourier"):
+                session.imager.invert()
 
 # =====================================================================
 # 6. TESTS VISUELS MATPLOTLIB (En attendant test_visualizer.py)
@@ -202,7 +207,8 @@ class TestImagerAffichage:
     @patch("matplotlib.pyplot.show")
     @patch("matplotlib.pyplot.colorbar")
     @patch("matplotlib.pyplot.imshow")
-    def test_plot_image(self, mock_imshow, mock_colorbar, mock_show):
+    @patch("matplotlib.pyplot.figure")
+    def test_plot_image(self, mock_figure, mock_imshow, mock_colorbar, mock_show):
         session = DifmapSession()
         fake_dict = {"data": np.zeros((10, 10)), "extent": [5, -5, -5, 5]}
 
@@ -220,3 +226,272 @@ class TestImagerAffichage:
         bad_dict = {"data": np.zeros((5, 5))}
         with pytest.raises(KeyError, match="doit contenir les clés"):
             session.vis.plot_image(bad_dict)
+
+
+# =====================================================================
+# 7. TESTS CLEAN, RESTORE ET MAKE_CLEAN_MAP
+# =====================================================================
+
+def _generer_ref_clean_cli(chemin_uv: str, fits_out: str) -> None:
+    """Pilote le vrai Difmap CLI pour produire une Clean Map de référence."""
+    dossier = os.path.dirname(fits_out)
+    shutil.copy(chemin_uv, os.path.join(dossier, "data.uvf"))
+    script = (
+        "observe data.uvf\n"
+        "select RR\n"
+        "mapsize 512,0.1\n"
+        "invert\n"
+        "clean 100,0.05\n"
+        "restore\n"
+        "wmap out.fits\n"
+        "quit\n"
+    )
+    res = subprocess.run(
+        ["difmap"], input=script, text=True,
+        capture_output=True, cwd=dossier, timeout=120
+    )
+    out_path = os.path.join(dossier, "out.fits")
+    if os.path.exists(out_path):
+        os.rename(out_path, fits_out)
+    else:
+        raise RuntimeError(
+            f"Difmap CLI a échoué.\nSTDOUT:\n{res.stdout[-2000:]}"
+        )
+
+
+class TestCleanAndRestore:
+    """
+    Validation complète de clean(), restore() et make_clean_map().
+
+    Trois niveaux :
+      1. Unitaires (mocks) — vérifient la plomberie Python.
+      2. Intégration (moteur C réel) — prouvent la validité physique.
+      3. Formel (CLI Difmap) — comparaison pixel à pixel contre la vérité terrain.
+    """
+
+    # ------------------------------------------------------------------
+    # 7.1  Tests unitaires (mocks — zéro appel C)
+    #
+    # IMPORTANT : tous les patches se font via patch.object() utilisé comme
+    # context manager, ce qui garantit la restauration automatique des
+    # attributs du module difmap_native après chaque test. Ne jamais écrire
+    # session.imager._native.xxx = MagicMock(...) sans context manager, car
+    # difmap_native est un singleton de module Python et le mock persisterait
+    # dans tous les tests suivants.
+    # ------------------------------------------------------------------
+
+    def test_clean_transmet_bons_parametres_au_c(self):
+        """clean() doit appeler native.clean avec niter et gain corrects."""
+        import difmap_native as dn
+        session = DifmapSession()
+        with patch.object(dn, 'clean', return_value=0) as mock_clean:
+            session.imager.clean(niter=200, gain=0.1)
+        mock_clean.assert_called_once_with(200, 0.1)
+
+    def test_clean_valeurs_par_defaut(self):
+        """clean() doit utiliser niter=100 et gain=0.05 par défaut."""
+        import difmap_native as dn
+        session = DifmapSession()
+        with patch.object(dn, 'clean', return_value=0) as mock_clean:
+            session.imager.clean()
+        mock_clean.assert_called_once_with(100, 0.05)
+
+    def test_clean_leve_difmaperror_si_moteur_echoue(self):
+        """clean() doit lever DifmapError quand le moteur C retourne -1."""
+        import difmap_native as dn
+        session = DifmapSession()
+        with patch.object(dn, 'clean', return_value=-1):
+            with pytest.raises(DifmapError, match="CLEAN"):
+                session.imager.clean()
+
+    def test_restore_appelle_moteur_c(self):
+        """restore() doit appeler native.restore() exactement une fois."""
+        import difmap_native as dn
+        session = DifmapSession()
+        with patch.object(dn, 'restore', return_value=0) as mock_restore:
+            session.imager.restore()
+        mock_restore.assert_called_once()
+
+    def test_restore_leve_difmaperror_si_moteur_echoue(self):
+        """restore() doit lever DifmapError quand le moteur C retourne -1."""
+        import difmap_native as dn
+        session = DifmapSession()
+        with patch.object(dn, 'restore', return_value=-1):
+            with pytest.raises(DifmapError, match="restore"):
+                session.imager.restore()
+
+    def test_make_clean_map_orchestre_pipeline_dans_le_bon_ordre(self):
+        """
+        make_clean_map() doit appeler les 4 étapes dans l'ordre strict :
+        mapsize → invert → clean → restore → get_map_package.
+
+        Le patch s'effectue sur les méthodes Python de DifmapImager (et non
+        sur le module C difmap_native) pour éviter toute contamination entre
+        tests.
+        """
+        session = DifmapSession()
+        call_order = []
+
+        with patch.object(session.imager, 'mapsize',
+                          side_effect=lambda *a, **kw: call_order.append("mapsize")), \
+             patch.object(session.imager, 'invert',
+                          side_effect=lambda: call_order.append("invert")), \
+             patch.object(session.imager, 'clean',
+                          side_effect=lambda *a, **kw: call_order.append("clean")), \
+             patch.object(session.imager, 'restore',
+                          side_effect=lambda: call_order.append("restore")), \
+             patch.object(session.imager, 'get_map_package', return_value={}):
+            session.obs.select = MagicMock()
+            session.imager.make_clean_map(size=4, cellsize=1.0, niter=50, gain=0.1, pol="I")
+
+        assert call_order == ["mapsize", "invert", "clean", "restore"], (
+            f"Ordre incorrect des étapes : {call_order}"
+        )
+
+    def test_make_clean_map_passe_les_parametres_clean(self):
+        """make_clean_map() doit transmettre niter et gain à clean()."""
+        session = DifmapSession()
+
+        with patch.object(session.imager, 'mapsize'), \
+             patch.object(session.imager, 'invert'), \
+             patch.object(session.imager, 'clean') as mock_clean, \
+             patch.object(session.imager, 'restore'), \
+             patch.object(session.imager, 'get_map_package', return_value={}):
+            session.obs.select = MagicMock()
+            session.imager.make_clean_map(size=4, cellsize=1.0, niter=77, gain=0.03)
+
+        mock_clean.assert_called_once_with(77, 0.03)
+
+    # ------------------------------------------------------------------
+    # 7.2  Tests d'intégration (moteur C réel, pas de CLI externe)
+    # ------------------------------------------------------------------
+
+    def test_make_clean_map_retourne_structure_valide(self, fichier_valide):
+        """make_clean_map() doit retourner un dict avec les clés attendues."""
+        with DifmapSession() as session:
+            session.observe(fichier_valide)
+            pkg = session.imager.make_clean_map(512, 0.1, niter=50, pol="RR")
+
+        assert isinstance(pkg, dict), "Le retour doit être un dictionnaire"
+        for cle in ("data", "beam_data", "info", "extent"):
+            assert cle in pkg, f"Clé manquante : '{cle}'"
+
+        assert isinstance(pkg["data"], np.ndarray)
+        assert pkg["data"].ndim == 2
+        assert len(pkg["extent"]) == 4
+        info = pkg["info"]
+        for champ in ("nx", "ny", "cellsize", "bmaj", "bmin", "bpa"):
+            assert champ in info, f"Champ info manquant : '{champ}'"
+
+    def test_make_clean_map_sans_nan_ni_inf(self, fichier_valide):
+        """
+        Preuve mathématique : la Clean Map ne doit contenir ni NaN ni Inf.
+
+        Un NaN ou Inf indiquerait une corruption de la mémoire C lors de
+        la convolution (mapres) ou de la soustraction de composantes (mapclean).
+        """
+        with DifmapSession() as session:
+            session.observe(fichier_valide)
+            pkg = session.imager.make_clean_map(512, 0.1, niter=100, pol="RR")
+            img = pkg["data"]
+
+        assert not np.any(np.isnan(img)), (
+            f"La Clean Map contient {np.isnan(img).sum()} pixel(s) NaN"
+        )
+        assert not np.any(np.isinf(img)), (
+            f"La Clean Map contient {np.isinf(img).sum()} pixel(s) Inf"
+        )
+
+    def test_clean_reduit_le_bruit_par_rapport_a_la_dirty_map(self, fichier_valide):
+        """
+        Preuve physique de déconvolution : le CLEAN doit réduire le bruit.
+
+        L'algorithme de Högbom soustrait itérativement les lobes secondaires
+        du faisceau sale. Le RMS global de la Clean Map DOIT être inférieur
+        au RMS de la Dirty Map sur la même zone, prouvant que la déconvolution
+        a eu lieu et a été correctement appliquée par le moteur C natif.
+        """
+        with DifmapSession() as session:
+            session.observe(fichier_valide)
+
+            # Dirty Map
+            session.obs.select(pol="RR")
+            session.imager.mapsize(512, 0.1)
+            session.imager.invert()
+            dirty_map = session.imager.get_map().copy()
+
+            # Clean Map (même observation, même grille)
+            session.obs.select(pol="RR")
+            session.imager.mapsize(512, 0.1)
+            session.imager.invert()
+            session.imager.clean(niter=100, gain=0.05)
+            session.imager.restore()
+            clean_map = session.imager.get_map().copy()
+
+        rms_dirty = float(np.std(dirty_map))
+        rms_clean = float(np.std(clean_map))
+
+        assert rms_clean < rms_dirty, (
+            f"Le CLEAN n'a pas réduit le bruit : "
+            f"RMS dirty={rms_dirty:.4e}, RMS clean={rms_clean:.4e}. "
+            f"Le moteur C n'a pas exécuté la déconvolution."
+        )
+
+    # ------------------------------------------------------------------
+    # 7.3  Test formel : comparaison pixel à pixel contre Difmap CLI
+    # ------------------------------------------------------------------
+
+    def test_make_clean_map_vs_difmap_cli(self, fichier_valide, tmp_path):
+        """
+        Preuve formelle d'exactitude : compare la Clean Map du wrapper
+        contre la vérité terrain produite par le vrai binaire Difmap.
+
+        Protocole :
+          1. Génère une Clean Map de référence via le CLI Difmap (wmap).
+          2. Génère la même Clean Map via make_clean_map().
+          3. Recadre le wrapper sur la zone centrale 256×256 (zone nettoyée).
+          4. Appelle standardizer.compare_images() pour calculer les résidus.
+          5. Vérifie que err_max < 1e-4 Jy/beam (seuil identical dirty-map tests).
+
+        La différence résiduelle (< 1e-4 Jy/beam) est due à la différence
+        de gestion du modèle interne (keep_fn dans wmap vs double mapres
+        dans native_restore). Elle reste dans la précision flottante float32.
+        """
+        fits_ref = str(tmp_path / "clean_ref.fits")
+
+        try:
+            _generer_ref_clean_cli(fichier_valide, fits_ref)
+        except (RuntimeError, FileNotFoundError, subprocess.TimeoutExpired) as exc:
+            pytest.skip(f"Difmap CLI indisponible ou a échoué : {exc}")
+
+        with fits.open(fits_ref) as hdul:
+            img_cli = hdul[0].data.squeeze().astype(np.float32)
+
+        with DifmapSession() as session:
+            session.observe(fichier_valide)
+            session.imager.make_clean_map(512, 0.1, niter=100, gain=0.05, pol="RR")
+            # get_map() retourne la grille complète (512×512) ;
+            # on recadre sur la zone centrale que wmap exporte (256×256).
+            img_wrapper = session.imager.get_cropped_map(target_shape=img_cli.shape)
+            assert img_wrapper.shape == img_cli.shape, (
+                f"Échec du recadrage : attendu {img_cli.shape}, obtenu {img_wrapper.shape}"
+            )
+
+        metrics = standardizer.compare_images(img_cli, img_wrapper)
+
+        print(
+            f"\n{'='*60}\n"
+            f" VALIDATION CLEAN MAP : CLI vs Wrapper\n"
+            f"{'='*60}\n"
+            f" err_max : {metrics['err_max']:.2e} Jy/beam\n"
+            f" rmse    : {metrics['rmse']:.2e} Jy/beam\n"
+            f" std_err : {metrics['std_err']:.2e} Jy/beam\n"
+            f" NaN     : {np.isnan(img_wrapper).sum()}\n"
+            f"{'='*60}"
+        )
+
+        assert not np.any(np.isnan(img_wrapper)), "NaN détectés dans le wrapper"
+        assert metrics['err_max'] < 1e-4, (
+            f"Divergence trop grande vs CLI Difmap : "
+            f"err_max={metrics['err_max']:.2e} Jy/beam (seuil : 1e-4)"
+        )

@@ -31,6 +31,18 @@ def mapsize(size: int, cellsize: float) -> int:
 def invert() -> int:
     return cdifmap.native_invert()
 
+def clean(niter: int, gain: float) -> int:
+    cdef int ret = cdifmap.native_clean(niter, gain)
+    if ret != 0:
+        raise RuntimeError("Échec de la déconvolution CLEAN dans le moteur C.")
+    return ret
+
+def restore() -> int:
+    cdef int ret = cdifmap.native_restore()
+    if ret != 0:
+        raise RuntimeError("Échec de la restauration (restore) dans le moteur C.")
+    return ret
+
 def wfits(filepath: str) -> int:
     cdef bytes filepath_bytes = filepath.encode('utf-8')
     return cdifmap.native_wfits(filepath_bytes)
@@ -86,12 +98,12 @@ def get_header() -> dict:
     }
 
 def get_beam_info() -> dict:
-    """Extrait les paramètres de la fonction de pointage (PSF)."""
+    """Extrait les paramètres de la fonction de pointage (PSF) et le bruit de carte."""
     return {
         "BMAJ": cdifmap.get_native_bmaj(),
         "BMIN": cdifmap.get_native_bmin(),
         "BPA": cdifmap.get_native_bpa(),
-        "RMS": 0.0
+        "RMS": cdifmap.native_get_map_rms()
     }
 
 
@@ -186,3 +198,54 @@ def save_wobs(str filepath):
 def get_polarization():
     """Renvoie le nom de la polarisation actuellement chargée en mémoire C."""
     return cdifmap.get_observation_polarization().decode('utf-8')
+
+# =====================================================================
+# STATISTIQUES DU PIC ET DU BRUIT
+# =====================================================================
+
+def get_peak_info() -> dict:
+    """Retourne le pic de flux, sa position et le bruit RMS de la carte courante."""
+    cdef float flux = cdifmap.native_get_peak_flux()
+    cdef float x    = cdifmap.native_get_peak_x()
+    cdef float y    = cdifmap.native_get_peak_y()
+    cdef float rms  = cdifmap.native_get_map_rms()
+    return {
+        "flux": flux,
+        "x": x,
+        "y": y,
+        "rms": rms,
+        "snr": flux / rms if rms > 0.0 else 0.0
+    }
+
+# =====================================================================
+# GESTION DES FENÊTRES CLEAN
+# =====================================================================
+
+def addwin(float xa, float xb, float ya, float yb) -> int:
+    """Ajoute une fenêtre CLEAN rectangulaire (coordonnées en mas)."""
+    cdef int ret = cdifmap.native_addwin(xa, xb, ya, yb)
+    if ret != 0:
+        raise RuntimeError("Erreur lors de l'ajout d'une fenêtre CLEAN.")
+    return ret
+
+def delwin() -> int:
+    """Supprime toutes les fenêtres CLEAN."""
+    return cdifmap.native_delwin()
+
+def peakwin(float size=1.0, int doabs=0) -> int:
+    """Ajoute une fenêtre CLEAN autour du pic de flux (équivalent à 'peakwin' difmap)."""
+    cdef int ret = cdifmap.native_peakwin(size, doabs)
+    if ret != 0:
+        raise RuntimeError("Erreur lors de la création de la fenêtre peakwin.")
+    return ret
+
+# =====================================================================
+# AUTO-CALIBRATION
+# =====================================================================
+
+def selfcal(int doamp=0, int dofloat=0, float solint=0.0) -> int:
+    """Applique une auto-calibration (phase seule par défaut, équivalent à 'selfcal' difmap)."""
+    cdef int ret = cdifmap.native_selfcal(doamp, dofloat, solint)
+    if ret != 0:
+        raise RuntimeError("Échec de l'auto-calibration dans le moteur C.")
+    return ret

@@ -1,6 +1,7 @@
 import pytest
 import os
 import sys
+import matplotlib.pyplot as plt
 
 # Ajouter builddir au sys.path pour que difmap_native soit trouvable
 # Cela doit être fait avant que pytest collecte les tests
@@ -20,8 +21,10 @@ except ImportError as e:
 def reset_singleton():
     """Remet le singleton DifmapSession à zéro avant et après chaque test."""
     from difmap_wrapper.session import DifmapSession
+    plt.close('all')
     DifmapSession._instance = None
     yield
+    plt.close('all')
     DifmapSession._instance = None
 
 

@@ -99,7 +99,11 @@ class MainWindow(QMainWindow):
             self._reload_all_plots()
 
             n = len(self.data['u'])
-            self.log_console.log(f"Loaded {n} visibilities (Stokes I).")
+            n_sub = len(set(self.data.get('subarray', [])))
+            n_ant = len(set(list(self.data.get('tel_a', [])) + list(self.data.get('tel_b', []))))
+            self.log_console.log(
+                f"Loaded {n:,} visibilities — {n_ant} antennas, {n_sub} subarray(s) — Stokes I."
+            )
             self.setWindowTitle(f"DIFMAP Modern - {filepath.split('/')[-1]}")
 
         except Exception as e:
@@ -205,11 +209,13 @@ class MainWindow(QMainWindow):
 
         tb.combo_tools.currentIndexChanged.connect(_on_tool_changed)
 
-        def _quick_inspect():
+        def _toggle_inspect(checked):
             editor = self._get_active_editor()
-            if editor and hasattr(editor, 'action_show_info_nearest'):
-                editor.action_show_info_nearest(None)
-        tb.action_inspect.triggered.connect(_quick_inspect)
+            if editor and hasattr(editor, 'action_toggle_inspect'):
+                # Synchroniser l'état editor avec l'état du bouton
+                if editor.inspect_active != checked:
+                    editor.action_toggle_inspect(None)
+        tb.action_inspect.toggled.connect(_toggle_inspect)
 
         tb.action_terminal.triggered.connect(self._toggle_terminal)
 
@@ -261,6 +267,27 @@ class MainWindow(QMainWindow):
         router.route_checkbox_both('chk_residuals',    'set_residuals_visible')
         router.route_checkbox_both('chk_errors',       'set_show_errors')
 
+        # Transparence des points — appliquée à tous les éditeurs actifs
+        def _on_alpha_changed(val):
+            alpha = val / 100.0
+            for editor in (
+                self.plot_widget.editor if self.plot_widget else None,
+                self.radplot_widget.editor if self.radplot_widget else None,
+            ):
+                if editor and hasattr(editor, 'update_data_alpha'):
+                    editor.update_data_alpha(alpha)
+        self.control_panel.slider_alpha.valueChanged.connect(_on_alpha_changed)
+
+        # Couleur des points — appliquée à tous les éditeurs actifs dès la sélection
+        def _on_color_selected(color: str):
+            for editor in (
+                self.plot_widget.editor if self.plot_widget else None,
+                self.radplot_widget.editor if self.radplot_widget else None,
+            ):
+                if editor and hasattr(editor, 'update_data_color'):
+                    editor.update_data_color(color)
+        self.control_panel.data_color_changed.connect(_on_color_selected)
+
         self.control_panel.btn_compute.clicked.connect(self._compute_dirty_map)
         self.control_panel.combo_pol.currentTextChanged.connect(self._change_polarization)
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -270,18 +297,20 @@ class MainWindow(QMainWindow):
         )
         
         def _sync_ui_on_tab_change(index):
-            """Synchronise les checkboxes avec l'état du nouvel onglet actif"""
+            """Synchronise les checkboxes et boutons toolbar avec l'état du nouvel onglet actif."""
             try:
                 editor = self._get_active_editor()
-                if not editor or not hasattr(editor, 'cursor_active'):
+                if not editor:
                     return
-                
                 ctrl = self.control_panel
                 ctrl.chk_crosshair.blockSignals(True)
                 ctrl.chk_crosshair.setChecked(getattr(editor, 'cursor_active', False))
                 ctrl.chk_crosshair.blockSignals(False)
+                self.toolbar.action_inspect.blockSignals(True)
+                self.toolbar.action_inspect.setChecked(getattr(editor, 'inspect_active', False))
+                self.toolbar.action_inspect.blockSignals(False)
             except Exception:
-                pass  
+                pass
         
         self.tabs.currentChanged.connect(_sync_ui_on_tab_change)
 
@@ -330,19 +359,27 @@ class MainWindow(QMainWindow):
         ctrl.group_telescope.setVisible(has_data and not is_map)
         ctrl.group_flagging.setVisible(has_data and not is_map)
         ctrl.group_display.setVisible(has_data and not is_map)
-        ctrl.group_imaging.setVisible(has_data)
+        ctrl.group_imaging.setVisible(has_data and is_map)
 
         if hasattr(ctrl, 'lbl_rad_mode'):
             ctrl.lbl_rad_mode.setVisible(has_data and is_radplot)
             ctrl.combo_rad_mode.setVisible(has_data and is_radplot)
             ctrl.sep_display.setVisible(has_data and is_radplot)
-            ctrl.chk_model.setVisible(has_data and is_radplot)
-            ctrl.chk_residuals.setVisible(has_data and is_radplot)
+            _mod = self.data.get('modamp') if (has_data and self.data) else None
+            has_model = _mod is not None and any(v != 0 for v in _mod)
+            ctrl.chk_model.setVisible(has_data and is_radplot and has_model)
+            ctrl.chk_residuals.setVisible(has_data and is_radplot and has_model)
             ctrl.chk_errors.setVisible(has_data and is_radplot)
             ctrl.chk_conjugate.setVisible(has_data and is_uv)
 
         if is_radplot:
             ctrl.chk_conjugate.setChecked(False)
+        elif is_uv and self.plot_widget and self.plot_widget.editor:
+            # Synchroniser la checkbox avec l'état réel du scatter conjugué
+            conj_visible = self.plot_widget.editor.scat_conj.get_visible()
+            ctrl.chk_conjugate.blockSignals(True)
+            ctrl.chk_conjugate.setChecked(conj_visible)
+            ctrl.chk_conjugate.blockSignals(False)
         if not is_radplot:
             ctrl.chk_model.setChecked(False)
             ctrl.chk_residuals.setChecked(False)
@@ -363,11 +400,11 @@ class MainWindow(QMainWindow):
             tb.combo_tools.addItem("None (Inspect)", None)
             tb.combo_tools.addItem("Pan (Move)", "PAN")
             tb.combo_tools.addItem("Zoom Box",   "ZOOM")
-            tb.combo_tools.addItem("Cut Box",    "CUT")
+            tb.combo_tools.addItem("Flag Box",   "CUT")
             if is_radplot:
-                tb.combo_tools.addItem("Zoom X (UV Band)", "ZOOM_X")
-                tb.combo_tools.addItem("Stats (Scalar)",   "STATS")
-                tb.combo_tools.addItem("Stats (Vector)",   "STATS_V")
+                tb.combo_tools.addItem("Zoom UV range",    "ZOOM_X")
+                tb.combo_tools.addItem("Stats (Amp/Phase)", "STATS")
+                tb.combo_tools.addItem("Stats (Real/Imag)", "STATS_V")
             idx = tb.combo_tools.findData(current_mode)
             tb.combo_tools.setCurrentIndex(idx if idx >= 0 else 0)
             tb.combo_tools.blockSignals(False)
@@ -404,8 +441,8 @@ class MainWindow(QMainWindow):
         Délègue le chargement effectif à :meth:`_load_file_logic`.
         """
         filepath, _ = QFileDialog.getOpenFileName(
-            self, "Open FITS Observation", "",
-            "FITS files (*.fits *.1 *.SPLIT);;All files (*)"
+            self, "Open UV FITS Observation", "",
+            "All files (*);;FITS files (*.fits *.1 *.SPLIT)"
         )
         if filepath:
             self._load_file_logic(filepath)
@@ -467,7 +504,7 @@ class MainWindow(QMainWindow):
           <tr><td><b>C</b></td><td>Flag rectangular area</td></tr>
           <tr><td><b>Z</b></td><td>Zoom to area</td></tr>
           <tr><td><b>W</b></td><td>Toggle flag-all-channels</td></tr>
-          <tr><td><b>U</b></td><td>Undo last flag</td></tr>
+          <tr><td><b>u</b></td><td>Undo last flag</td></tr>
           <tr><td><b>Ctrl+S</b></td><td>Save as FITS</td></tr>
         </table>
         <h4>Radplot View</h4>
@@ -476,8 +513,8 @@ class MainWindow(QMainWindow):
           <tr><td><b>M</b></td><td>Model overlay</td></tr>
           <tr><td><b>-</b></td><td>Residuals (Data − Model)</td></tr>
           <tr><td><b>E</b></td><td>Error plot (1/√w)</td></tr>
-          <tr><td><b>U</b></td><td>Zoom UV-radius range</td></tr>
-          <tr><td><b>S / V</b></td><td>Scalar / Vector statistics</td></tr>
+          <tr><td><b>Shift+U</b></td><td>Zoom UV range</td></tr>
+          <tr><td><b>S / V</b></td><td>Stats Amp/Phase / Real/Imag</td></tr>
         </table>
         <h4>UV-plane View</h4>
         <table>
@@ -692,6 +729,10 @@ class MainWindow(QMainWindow):
                     ctrl.input_search_tel.setFocus()
                 if 'show_help' in state_dict:
                     QTimer.singleShot(0, self._show_help_dialog)
+                if 'inspect_active' in state_dict:
+                    self.toolbar.action_inspect.blockSignals(True)
+                    self.toolbar.action_inspect.setChecked(state_dict['inspect_active'])
+                    self.toolbar.action_inspect.blockSignals(False)
 
                 # C6 : _refresh_layout déclenche le redécoupage du Radplot
                 # sans que l'éditeur ait besoin de connaître RadPlotWidget

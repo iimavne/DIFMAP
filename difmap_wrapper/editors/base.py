@@ -2,7 +2,7 @@
 import re
 import logging
 import numpy as np
-from matplotlib.widgets import Cursor, MultiCursor, RectangleSelector, SpanSelector
+from matplotlib.widgets import MultiCursor, RectangleSelector, SpanSelector
 
 from difmap_wrapper.enums import EditorMode
 from difmap_wrapper.gui.styles.design_system import DesignSystem
@@ -77,8 +77,9 @@ class BasePlotEditor:
         self.press_info = None
         self.pan_start = None
         self.original_limits = (self.ax.get_xlim(), self.ax.get_ylim())
-        self.current_size_idx = 0
-        self.marker_sizes = [2.5, 6.0, 15.0]
+        self.marker_size_pct = 10   # pourcentage courant (1–100)
+        self._SIZE_MIN = 1.0   # pts² à 1 %
+        self._SIZE_MAX = 50.0  # pts² à 100 %
 
         # Widgets Matplotlib
         self.rs = RectangleSelector(
@@ -103,8 +104,7 @@ class BasePlotEditor:
         self.axes_list = [self.ax]
         self.cursor = None
         self.cursor_active = False
-        self.cursor_widget = Cursor(self.ax, useblit=True, color='gray', linewidth=0.8)
-        self.cursor_widget.active = False
+        self.inspect_active = False  # True = clic gauche montre les infos de la visibilité
 
         self.raccourcis_autorises = {
             "r": self.action_home, "R": self.action_home,
@@ -122,7 +122,7 @@ class BasePlotEditor:
             "+": self.action_toggle_crosshair,
             "w": self.action_toggle_channels, "W": self.action_toggle_channels,
             "u": self.action_undo, "ctrl+z": self.action_undo,
-            "s": self.action_show_info_nearest,
+            "s": self.action_toggle_inspect,
             "S": self.action_toggle_stats,
             "v": self.action_toggle_stats_vec, "V": self.action_toggle_stats_vec,
             "ctrl+s": self.action_save,
@@ -136,6 +136,8 @@ class BasePlotEditor:
             self.fig.canvas.mpl_connect("button_press_event",   self.on_mouse_press),
             self.fig.canvas.mpl_connect("button_release_event", self.on_mouse_release),
             self.fig.canvas.mpl_connect("motion_notify_event",  self.on_mouse_motion),
+            self.fig.canvas.mpl_connect("figure_leave_event",   self._on_figure_leave),
+            self.fig.canvas.mpl_connect("figure_enter_event",   self._on_figure_enter),
         ]
 
         self.obs.register_editor(self)
@@ -306,7 +308,7 @@ class BasePlotEditor:
         if not self.press_info or event.button != 1:
             return
         dist = np.sqrt((event.x - self.press_info[0])**2 + (event.y - self.press_info[1])**2)
-        if dist < 5.0 and event.xdata is not None:
+        if dist < 5.0 and event.xdata is not None and self.inspect_active:
             self.action_show_info(event)
         self.press_info = None
 
@@ -333,8 +335,13 @@ class BasePlotEditor:
         u2, v2 = erelease.xdata, erelease.ydata
 
         if self.mode == EditorMode.ZOOM:
-            self.ax.set_xlim(min(u1, u2), max(u1, u2))
-            self.ax.set_ylim(min(v1, v2), max(v1, v2))
+            # Préserver l'orientation des axes (ex: axe X inversé dans UV plot)
+            x_inv = self.ax.get_xlim()[0] > self.ax.get_xlim()[1]
+            y_inv = self.ax.get_ylim()[0] > self.ax.get_ylim()[1]
+            xlo, xhi = min(u1, u2), max(u1, u2)
+            ylo, yhi = min(v1, v2), max(v1, v2)
+            self.ax.set_xlim(xhi if x_inv else xlo, xlo if x_inv else xhi)
+            self.ax.set_ylim(yhi if y_inv else ylo, ylo if y_inv else yhi)
             self.fig.canvas.draw_idle()
             logger.info("Zoom appliqué.")
         elif self.mode == EditorMode.CUT:
@@ -513,6 +520,35 @@ class BasePlotEditor:
         """Force un rafraîchissement du canvas. Touche ``L``."""
         self.fig.canvas.draw_idle()
 
+    def action_toggle_inspect(self, event=None):
+        """Bascule le mode Inspect (clic gauche affiche les infos de la visibilité). Touche ``s``."""
+        self.inspect_active = not self.inspect_active
+        status = "ON" if self.inspect_active else "OFF"
+        logger.info("Inspect mode : %s", status)
+        if self.sync_callback:
+            self.sync_callback({'inspect_active': self.inspect_active})
+
+    def _on_figure_leave(self, event=None):
+        """Cache les lignes du crosshair quand la souris quitte la figure."""
+        if not self.cursor_active or self.cursor is None:
+            return
+        for line in getattr(self.cursor, 'vlines', []):
+            line.set_visible(False)
+        for line in getattr(self.cursor, 'hlines', []):
+            line.set_visible(False)
+        self.cursor.set_active(False)
+        self.fig.canvas.draw()
+
+    def _on_figure_enter(self, event=None):
+        """Réaffiche les lignes du crosshair quand la souris entre dans la figure."""
+        if not self.cursor_active or self.cursor is None:
+            return
+        for line in getattr(self.cursor, 'vlines', []):
+            line.set_visible(True)
+        for line in getattr(self.cursor, 'hlines', []):
+            line.set_visible(True)
+        self.cursor.set_active(True)
+
     def action_toggle_crosshair(self, event=None):
         """
         Active ou désactive le crosshair plein écran (``MultiCursor``). Touche ``+``.
@@ -577,22 +613,20 @@ class BasePlotEditor:
 
     def action_toggle_marker_size(self, event=None):
         """
-        Cycle sur les trois tailles de marqueur disponibles (fin → moyen → gros). Touche ``.``.
+        Augmente la taille de marqueur de 10 % (boucle 100 % → 10 %). Touche ``.``.
 
         Parameters
         ----------
         event : matplotlib.backend_bases.KeyEvent, optional
             Événement clavier (ignoré).
         """
-        self.current_size_idx = (self.current_size_idx + 1) % len(self.marker_sizes)
-        self.update_marker_size(self.marker_sizes[self.current_size_idx])
+        next_pct = (self.marker_size_pct % 100) + 10
+        self.update_marker_size(next_pct)
         if self.sync_callback:
-            self.sync_callback({'marker_size': self.current_size_idx + 1})
+            self.sync_callback({'marker_size': next_pct})
 
     def set_crosshair_visible(self, visible: bool):
         """
-        ✅ CORRECTION: Synchronise crosshair via checkbox.
-        
         Appelé depuis MainWindow checkboxe (et routing).
         Utile pour basculer le crosshair sans action clavier.
         """
@@ -739,6 +773,8 @@ class BasePlotEditor:
         """
         Passe au télescope suivant dans le sous-réseau actif. Touche ``n``.
 
+        Boucle à l'intérieur du sous-réseau courant sans en changer.
+
         Parameters
         ----------
         event : optional
@@ -746,53 +782,78 @@ class BasePlotEditor:
         """
         sub_id = self.liste_subarrays[self.index_subarray_actuel]
         nb = len(self.antennes_par_subarray[sub_id])
-        self.index_antenne_actuelle += 1
-        if self.index_antenne_actuelle >= nb:
-            self.index_subarray_actuel = (self.index_subarray_actuel + 1) % len(self.liste_subarrays)
-            self.index_antenne_actuelle = 0
+        self.index_antenne_actuelle = (self.index_antenne_actuelle + 1) % nb
         self._update_colors()
 
     def action_prev_telescope(self, event=None):
         """
         Revient au télescope précédent dans le sous-réseau actif. Touche ``p``.
 
+        Boucle à l'intérieur du sous-réseau courant sans en changer.
+
         Parameters
         ----------
         event : optional
             Ignoré.
         """
-        self.index_antenne_actuelle -= 1
-        if self.index_antenne_actuelle < 0:
-            self.index_subarray_actuel = (self.index_subarray_actuel - 1) % len(self.liste_subarrays)
-            sub_id = self.liste_subarrays[self.index_subarray_actuel]
-            self.index_antenne_actuelle = len(self.antennes_par_subarray[sub_id]) - 1
+        sub_id = self.liste_subarrays[self.index_subarray_actuel]
+        nb = len(self.antennes_par_subarray[sub_id])
+        # Démarre à 0 si on était en mode exploration (-1)
+        base = self.index_antenne_actuelle if self.index_antenne_actuelle >= 0 else 0
+        self.index_antenne_actuelle = (base - 1) % nb
         self._update_colors()
 
     def action_next_subarray(self, event=None):
         """
-        Passe au sous-réseau suivant. Touche ``N``.
+        Passe au sous-réseau suivant en conservant le même télescope par nom. Touche ``N``.
+
+        Exemple : 1:Fd → 2:Fd. Si l'antenne n'existe pas dans le nouveau
+        sous-réseau, revient à l'index 0.
 
         Parameters
         ----------
         event : optional
             Ignoré.
         """
+        old_sub   = self.liste_subarrays[self.index_subarray_actuel]
+        old_ant   = (self.antennes_par_subarray[old_sub][self.index_antenne_actuelle]
+                     if self.index_antenne_actuelle >= 0 else None)
+        old_name  = self.noms_antennes.get(old_ant, "").upper() if old_ant is not None else ""
+
         self.index_subarray_actuel = (self.index_subarray_actuel + 1) % len(self.liste_subarrays)
-        self.index_antenne_actuelle = 0
+        new_sub = self.liste_subarrays[self.index_subarray_actuel]
+        self.index_antenne_actuelle = self._find_antenna_index(new_sub, old_name)
         self._update_colors()
 
     def action_prev_subarray(self, event=None):
         """
-        Revient au sous-réseau précédent. Touche ``P``.
+        Revient au sous-réseau précédent en conservant le même télescope par nom. Touche ``P``.
+
+        Exemple : 2:Fd → 1:Fd. Si l'antenne n'existe pas dans le sous-réseau
+        précédent, revient à l'index 0.
 
         Parameters
         ----------
         event : optional
             Ignoré.
         """
+        old_sub  = self.liste_subarrays[self.index_subarray_actuel]
+        old_ant  = (self.antennes_par_subarray[old_sub][self.index_antenne_actuelle]
+                    if self.index_antenne_actuelle >= 0 else None)
+        old_name = self.noms_antennes.get(old_ant, "").upper() if old_ant is not None else ""
+
         self.index_subarray_actuel = (self.index_subarray_actuel - 1) % len(self.liste_subarrays)
-        self.index_antenne_actuelle = 0
+        new_sub = self.liste_subarrays[self.index_subarray_actuel]
+        self.index_antenne_actuelle = self._find_antenna_index(new_sub, old_name)
         self._update_colors()
+
+    def _find_antenna_index(self, sub_id, name_upper: str) -> int:
+        """Retourne l'index de l'antenne dont le nom correspond dans ``sub_id``, ou 0."""
+        if name_upper:
+            for idx, ant_id in enumerate(self.antennes_par_subarray[sub_id]):
+                if self.noms_antennes.get(ant_id, "").upper() == name_upper:
+                    return idx
+        return 0
 
     def action_specific_telescope(self, event=None, target_name=None):
         """
@@ -908,6 +969,14 @@ class BasePlotEditor:
     def action_flag_nearest(self, event=None):
         """Flagge la visibilité la plus proche du curseur. Surchargée par les sous-classes."""
         logger.info("Flag nearest not yet specified for this plot.")
+
+    def update_data_alpha(self, alpha: float):
+        """Met à jour la transparence des points de données (0.0–1.0). Surchargée par les sous-classes."""
+        pass
+
+    def update_data_color(self, color: str):
+        """Met à jour la couleur des points de données. Surchargée par les sous-classes."""
+        pass
 
     # =========================================================
     # UTILITAIRE INTERNE

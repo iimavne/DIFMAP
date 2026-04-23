@@ -7865,6 +7865,52 @@ int native_invert(void) {
     return 0;
 }
 
+int native_clean(int niter, float gain) {
+    Model *clnmod;
+    Modcmp *cmp;
+    if (vlbob == NULL || vlbmap == NULL) return -1;
+    clnmod = mapclean(vlbob, vlbmap, vlbwins, niter, 0.0f, gain, 1);
+    if (!clnmod) return -1;
+    if (count_antenna_beams(vlbob->ab) > 0) {
+        for (cmp = clnmod->head; cmp; cmp = cmp->next)
+            pb_correct_delta_cmp(vlbob, cmp);
+    }
+    add_mod(vlbob->newmod, clnmod, 1, 1);
+    return 0;
+}
+
+int native_restore(void) {
+    int dosm = 1;
+    int noresid = 0;
+    if (vlbob == NULL || vlbmap == NULL) return -1;
+    if (respar.e_bmin <= 0.0f || respar.e_bmaj <= 0.0f) return -1;
+    respar.bmin = respar.e_bmin;
+    respar.bmaj = respar.e_bmaj;
+    respar.bpa  = respar.e_bpa;
+    if (respar.bmin > respar.bmaj) {
+        float ftmp = respar.bmin;
+        respar.bmin = respar.bmaj;
+        respar.bmaj = ftmp;
+    }
+    if (vlbob->model->ncmp + vlbob->newmod->ncmp < 1) return -1;
+    vlbmap->domap = MAP_IS_STALE;
+    if (vlbob->model->ncmp > 0) {
+        if (mapres(vlbob, vlbmap, vlbob->model, vlbmap->map,
+                   respar.bmaj, respar.bmin, respar.bpa * dtor,
+                   0, noresid, dosm, getfreq(vlbob, -1)) == NULL)
+            return -1;
+        dosm = 0;
+    }
+    if (vlbob->newmod->ncmp > 0) {
+        if (mapres(vlbob, vlbmap, vlbob->newmod, vlbmap->map,
+                   respar.bmaj, respar.bmin, respar.bpa * dtor,
+                   0, noresid, dosm, getfreq(vlbob, -1)) == NULL)
+            return -1;
+    }
+    vlbmap->domap = MAP_IS_CLEAN;
+    return 0;
+}
+
 int native_wfits(const char *filename) {
     if(!vlbob) return -1;
     return uvf_write(vlbob, filename, 0);
@@ -8055,11 +8101,81 @@ int save_native_wobs(const char* filepath) {
 }
 
 const char* get_observation_polarization() {
-    /* On utilise votre variable globale 'vlbob' qui contient l'observation active */
-    if (!vlbob) {
-        return "Unknown";
-    }
-
-    /* Renvoie le nom de la polarisation ("I", "RR", "LL", etc.) */
+    if (!vlbob) return "Unknown";
     return Stokes_name(vlbob->stream.pol.type);
+}
+
+/* ------------------------------------------------------------------ */
+/* Statistiques du pic et du bruit dans la carte courante             */
+/* ------------------------------------------------------------------ */
+
+static Mappix *abs_peak_pix(void) {
+    return (fabs(vlbmap->maxpix.value) >= fabs(vlbmap->minpix.value))
+           ? &vlbmap->maxpix : &vlbmap->minpix;
+}
+
+float native_get_peak_flux(void) {
+    if (!vlbmap) return 0.0f;
+    return abs_peak_pix()->value;
+}
+
+float native_get_peak_x(void) {
+    if (!vlbmap) return 0.0f;
+    return (float)radtoxy(abs_peak_pix()->xpos);
+}
+
+float native_get_peak_y(void) {
+    if (!vlbmap) return 0.0f;
+    return (float)radtoxy(abs_peak_pix()->ypos);
+}
+
+float native_get_map_rms(void) {
+    return (vlbmap) ? vlbmap->maprms : 0.0f;
+}
+
+/* ------------------------------------------------------------------ */
+/* Gestion des fenêtres CLEAN                                         */
+/* ------------------------------------------------------------------ */
+
+int native_addwin(float xa, float xb, float ya, float yb) {
+    if (!vlbmap) return -1;
+    if (vlbwins == NULL && (vlbwins = new_Mapwin()) == NULL) return -1;
+    if (add_win(vlbwins,
+                (float)xytorad(xa), (float)xytorad(xb),
+                (float)xytorad(ya), (float)xytorad(yb)) == NULL) return -1;
+    return 0;
+}
+
+int native_delwin(void) {
+    vlbwins = del_Mapwin(vlbwins);
+    return 0;
+}
+
+int native_peakwin(float size, int doabs) {
+    if (!vlbmap) return -1;
+    if (vlbwins == NULL && (vlbwins = new_Mapwin()) == NULL) return -1;
+    if (peakwin(vlbmap, vlbwins, size, doabs)) return -1;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Auto-calibration                                                   */
+/* ------------------------------------------------------------------ */
+
+int native_selfcal(int doamp, int dofloat, float solint) {
+    int flagged;
+    if (!vlbob) return -1;
+    if (vlbmap) {
+        vlbmap->domap = MAP_IS_STALE;
+        if (doamp && invpar.errpow < 0.0)
+            vlbmap->dobeam = 1;
+    }
+    int iret = slfcal(vlbob, -1, 1, slfpar.gauval, slfpar.gaurad,
+                      solint, doamp, 1, dofloat,
+                      (doamp ? slfpar.a_mintel : slfpar.p_mintel),
+                      slfpar.doflag, 0, slfpar.maxamp, slfpar.maxphs, slfpar.clip,
+                      invpar.uvmin, invpar.uvmax, &flagged);
+    if (vlbmap && flagged)
+        vlbmap->dobeam = 1;
+    return iret ? -1 : 0;
 }

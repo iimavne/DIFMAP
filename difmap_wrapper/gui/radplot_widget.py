@@ -94,13 +94,16 @@ class RadPlotWidget(BasePlotWidget):
         Sauvegarde et restaure l'état du crosshair.
         """
         if self.editor and self.data is not None:
-            # Sauvegarder l'état du crosshair
             crosshair_was_active = getattr(self.editor, 'cursor_active', False)
-            
-            # Recrée l'éditeur avec les mêmes données et observation
+            saved_size_pct = getattr(self.editor, 'marker_size_pct', 10)
+
             self.plot_data(self.data, observation=self.editor.obs)
-            
-            # Restaurer l'état du crosshair si nécessaire
+
+            # Restaurer la taille des marqueurs
+            if self.editor:
+                self.editor.update_marker_size(saved_size_pct)
+
+            # Restaurer le crosshair
             if crosshair_was_active and self.editor and hasattr(self.editor, 'cursor_active'):
                 if not self.editor.cursor_active:
                     self.editor.action_toggle_crosshair(None)
@@ -251,6 +254,10 @@ class RadPlotWidget(BasePlotWidget):
         scats : RadScatters
             Scatter plots déjà tracés sur les axes actifs.
         """
+        # Déconnecter les handlers de l'ancien éditeur pour éviter les fuites mémoire
+        if self.editor is not None:
+            self.editor.cleanup()
+
         ax_phase_arg = self.ax_phase if self.display_mode == DisplayMode.BOTH else None
 
         self.editor = RadPlotEditor(

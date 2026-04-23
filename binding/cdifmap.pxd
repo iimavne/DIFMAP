@@ -36,8 +36,24 @@ cdef extern from "difmap_api.h":
     int native_uvtaper(float gauval, float gaurad_wav)
     int native_mapsize(int nx, float cellsize)
     int native_invert()
+    int native_clean(int niter, float gain)
+    int native_restore()
 
     int native_wfits(const char* filename)
     int flag_native_data(int *indices, int num_indices)
     int save_native_wobs(const char* filepath)
     int unflag_native_data(int *indices, int num_indices)
+
+    # Statistiques du pic et bruit
+    float native_get_peak_flux()
+    float native_get_peak_x()
+    float native_get_peak_y()
+    float native_get_map_rms()
+
+    # Fenêtres CLEAN
+    int native_addwin(float xa, float xb, float ya, float yb)
+    int native_delwin()
+    int native_peakwin(float size, int doabs)
+
+    # Auto-calibration
+    int native_selfcal(int doamp, int dofloat, float solint)

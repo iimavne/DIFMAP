@@ -34,8 +34,24 @@ int native_uvweight(float uvbin, float errpow, int dorad);
 int native_uvtaper(float gauval, float gaurad_wav);
 int native_mapsize(int nx, float cellsize);
 int native_invert(void);
+int native_clean(int niter, float gain);
+int native_restore(void);
 int native_wfits(const char* filename);
 
 const char* get_observation_polarization(void);
+
+/* Statistiques de la carte courante */
+float native_get_peak_flux(void);
+float native_get_peak_x(void);
+float native_get_peak_y(void);
+float native_get_map_rms(void);
+
+/* Gestion des fenêtres CLEAN */
+int native_addwin(float xa, float xb, float ya, float yb);
+int native_delwin(void);
+int native_peakwin(float size, int doabs);
+
+/* Auto-calibration */
+int native_selfcal(int doamp, int dofloat, float solint);
 
 #endif

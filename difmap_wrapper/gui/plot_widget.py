@@ -60,7 +60,7 @@ class UVPlotWidget(BasePlotWidget):
             save_callback=self._save_callback,
             sync_callback=self._sync_callback,
         )
-        self.editor.update_marker_size(self.editor.marker_sizes[self.editor.current_size_idx])
+        self.editor.update_marker_size(self.editor.marker_size_pct)
 
     def reload_data(self, data, observation=None) -> None:
         """
@@ -69,7 +69,7 @@ class UVPlotWidget(BasePlotWidget):
         Déconnecte les écouteurs de l'ancien éditeur (cleanup()), puis recrée
         l'éditeur proprement.
         
-        ✅ CORRECTION: Restore l'état du crosshair du nouvel éditeur.
+        Restore l'état du crosshair du nouvel éditeur.
 
         Parameters
         ----------
@@ -82,7 +82,7 @@ class UVPlotWidget(BasePlotWidget):
             self.observation = observation
         self.data = data
 
-        # ✅ CORRECTION 1: Sauvegarder l'état du crosshair AVANT cleanup
+        # : Sauvegarder l'état du crosshair AVANT cleanup
         crosshair_was_active = False
         if self.editor and hasattr(self.editor, 'cursor_active'):
             crosshair_was_active = self.editor.cursor_active
@@ -94,7 +94,7 @@ class UVPlotWidget(BasePlotWidget):
         # Recréation de l'éditeur (nouvelles connexions événements, nouveau masque)
         self._draw_and_create_editor()
         
-        # ✅ CORRECTION 2: Restaurer l'état du crosshair sur le nouvel éditeur
+        # Restaurer l'état du crosshair sur le nouvel éditeur
         if crosshair_was_active and self.editor and hasattr(self.editor, 'cursor_active'):
             if not self.editor.cursor_active:
                 # Force l'activation du crosshair sur le nouvel éditeur

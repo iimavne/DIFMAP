@@ -99,7 +99,8 @@ class MainToolbar(QToolBar):
         self.combo_tools.setToolTip("Select the active mouse tool")
         self.addWidget(self.combo_tools)
 
-        self.action_inspect = act("Nearest (s)", "fa5s.info-circle", "Show info for nearest point [s]")
+        self.action_inspect = act("Inspect (s)", "fa5s.info-circle", "Toggle inspect mode — click a point to see its info [s]")
+        self.action_inspect.setCheckable(True)
         self.addAction(self.action_inspect)
 
         # ── SÉPARATEUR EXTENSIBLE ────────────────────────────────

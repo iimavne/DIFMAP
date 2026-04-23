@@ -161,31 +161,15 @@ class SignalRouter:
         
         slider = getattr(self.control_panel, slider_attr)
         
-        # ✅ SPÉCIAL: Pour slider_size, on mappe les valeurs du slider (1-3) aux tailles réelles
-        if slider_attr == 'slider_size':
-            sizes = [2.5, 6.0, 15.0]  # Match marker_sizes in base.py (fin → moyen → gros)
-            def callback(value):
-                size_value = sizes[value - 1] if 1 <= value <= 3 else sizes[0]
-                for widget in [self.window.plot_widget, self.window.radplot_widget]:
-                    if widget and hasattr(widget, 'editor') and widget.editor:
-                        editor = widget.editor
-                        if hasattr(editor, method_name):
-                            getattr(editor, method_name)(size_value)
-                # Redonner le focus au graphique
-                active_editor = self._get_active_editor()
-                if active_editor and hasattr(active_editor, 'fig') and hasattr(active_editor.fig, 'canvas'):
-                    active_editor.fig.canvas.setFocus()
-        else:
-            def callback(value):
-                for widget in [self.window.plot_widget, self.window.radplot_widget]:
-                    if widget and hasattr(widget, 'editor') and widget.editor:
-                        editor = widget.editor
-                        if hasattr(editor, method_name):
-                            getattr(editor, method_name)(float(value))
-                # Redonner le focus au graphique
-                active_editor = self._get_active_editor()
-                if active_editor and hasattr(active_editor, 'fig') and hasattr(active_editor.fig, 'canvas'):
-                    active_editor.fig.canvas.setFocus()
+        def callback(value):
+            for widget in [self.window.plot_widget, self.window.radplot_widget]:
+                if widget and hasattr(widget, 'editor') and widget.editor:
+                    editor = widget.editor
+                    if hasattr(editor, method_name):
+                        getattr(editor, method_name)(float(value))
+            active_editor = self._get_active_editor()
+            if active_editor and hasattr(active_editor, 'fig') and hasattr(active_editor.fig, 'canvas'):
+                active_editor.fig.canvas.setFocus()
         
         slider.valueChanged.connect(callback)
     

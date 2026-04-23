@@ -1,7 +1,10 @@
 # difmap_wrapper/gui/components/control_panel.py
 from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QComboBox, QLineEdit, QCheckBox,
-                             QScrollArea, QSlider, QPushButton, QMessageBox) # <-- AJOUT ICI
+                             QScrollArea, QSlider, QPushButton, QMessageBox,
+                             QColorDialog)
+from PyQt6.QtGui import QColor
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtCore import Qt
 from difmap_wrapper.gui.components.styled_buttons import PrimaryButton, SecondaryButton
 from difmap_wrapper.gui.styles.design_system import DesignSystem
@@ -159,12 +162,9 @@ class CollapsibleSection(QWidget):
 
 
 class ControlPanel(QDockWidget):
-    """
-    Panneau de contrôle gauche de DIFMAP Modern.
+    """Panneau de contrôle gauche de DIFMAP Modern."""
 
-    Regroupe cinq sections collapsibles : sélection de données, focus télescope,
-    options de flagging, options d'affichage et moteur d'imagerie.
-    """
+    data_color_changed = pyqtSignal(str)
 
     def __init__(self, session, title="Controls", parent=None):
         """
@@ -322,6 +322,7 @@ class ControlPanel(QDockWidget):
         layout.addWidget(self.sep_display)
 
         self.chk_conjugate  = QCheckBox("Conjugate points  [%]")
+        self.chk_conjugate.setChecked(True)
         self.chk_model      = QCheckBox("Model overlay  [M]")
         self.chk_residuals  = QCheckBox("Residuals (Data − Model)  [−]")
         self.chk_crosshair  = QCheckBox("Full-screen crosshair  [+]")
@@ -330,16 +331,58 @@ class ControlPanel(QDockWidget):
         for chk in (self.chk_conjugate, self.chk_model, self.chk_residuals, self.chk_crosshair, self.chk_errors):
             layout.addWidget(chk)
 
-        # On sauve le Label pour pouvoir le cacher
+        # Taille des marqueurs
+        h_size = QHBoxLayout()
         self.lbl_slider_size = QLabel("Marker size  [.]:")
-        layout.addWidget(self.lbl_slider_size)
+        self.lbl_slider_size_val = QLabel("10 %")
+        self.lbl_slider_size_val.setAlignment(Qt.AlignmentFlag.AlignRight)
+        h_size.addWidget(self.lbl_slider_size)
+        h_size.addWidget(self.lbl_slider_size_val)
+        layout.addLayout(h_size)
         self.slider_size = QSlider(Qt.Orientation.Horizontal)
         self.slider_size.setMinimum(1)
-        self.slider_size.setMaximum(3)
-        self.slider_size.setValue(1)
-        self.slider_size.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.slider_size.setTickInterval(1)
+        self.slider_size.setMaximum(100)
+        self.slider_size.setValue(10)
+        self.slider_size.setToolTip("Marker size (1–100 %)")
+        self.slider_size.valueChanged.connect(
+            lambda v: self.lbl_slider_size_val.setText(f"{v} %")
+        )
         layout.addWidget(self.slider_size)
+
+        # Transparence des points
+        layout.addWidget(QLabel("Opacity:"))
+        self.slider_alpha = QSlider(Qt.Orientation.Horizontal)
+        self.slider_alpha.setMinimum(10)
+        self.slider_alpha.setMaximum(100)
+        self.slider_alpha.setValue(50)
+        self.slider_alpha.setToolTip("Point opacity (10–100 %)")
+        layout.addWidget(self.slider_alpha)
+
+        # Couleur des points
+        h_color = QHBoxLayout()
+        h_color.addWidget(QLabel("Data color:"))
+        self.btn_data_color = QPushButton()
+        self.btn_data_color.setFixedHeight(22)
+        self.btn_data_color.setToolTip("Pick data point color")
+        self._current_data_color = "#1565C0"
+        self.btn_data_color.setStyleSheet(
+            f"background-color: {self._current_data_color}; border: 1px solid #555;"
+        )
+        h_color.addWidget(self.btn_data_color)
+
+        def _pick_color():
+            color = QColorDialog.getColor(
+                QColor(self._current_data_color), None, "Choose data point color"
+            )
+            if color.isValid():
+                self._current_data_color = color.name()
+                self.btn_data_color.setStyleSheet(
+                    f"background-color: {self._current_data_color}; border: 1px solid #555;"
+                )
+                self.data_color_changed.emit(self._current_data_color)
+
+        self.btn_data_color.clicked.connect(_pick_color)
+        layout.addLayout(h_color)
 
         self.main_layout.addWidget(self.group_display)
 
@@ -350,7 +393,7 @@ class ControlPanel(QDockWidget):
         Crée les champs mapsize, cellsize, la pondération UV, le taper gaussien
         et le bouton « Compute Dirty Map ».
         """
-        self.group_imaging = CollapsibleSection("5. IMAGING ENGINE")
+        self.group_imaging = CollapsibleSection("5. IMAGING")
         layout = self.group_imaging.content_layout
 
         h = QHBoxLayout()

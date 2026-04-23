@@ -35,12 +35,13 @@ class UVPlotEditor(BasePlotEditor):
         sync_callback : callable, optional
             Fonction de synchronisation état → MainWindow.
         """
-        self.base_color = base_color
+        self.base_color  = base_color
+        self.data_alpha  = 0.5
         u = data['u'] / 1e6
         v = data['v'] / 1e6
-        self.scat_main = ax.scatter(u,  v,  s=1, color=base_color, alpha=0.5, edgecolors='none')
-        self.scat_conj = ax.scatter(-u, -v, s=1, color=base_color, alpha=0.5, edgecolors='none')
-        self.scat_conj.set_visible(False)
+        self.scat_main = ax.scatter(u,  v,  s=1, color=base_color, alpha=self.data_alpha, edgecolors='none')
+        self.scat_conj = ax.scatter(-u, -v, s=1, color=base_color, alpha=self.data_alpha, edgecolors='none')
+        self.scat_conj.set_visible(True)  # conjugué affiché par défaut
 
         super().__init__(observation, fig, ax, data, save_callback, sync_callback)
 
@@ -154,18 +155,32 @@ class UVPlotEditor(BasePlotEditor):
     # AFFICHAGE
     # =========================================================
 
-    def update_marker_size(self, size):
+    def update_marker_size(self, pct: float):
         """
-        Met à jour la taille des marqueurs sur les deux scatters (main et conjugué).
+        Met à jour la taille des marqueurs sur les deux scatters.
 
         Parameters
         ----------
-        size : float
-            Taille en points² appliquée aux deux ``PathCollection``.
+        pct : float
+            Pourcentage (1–100). Converti en pts² via la plage ``_SIZE_MIN``–``_SIZE_MAX``.
         """
+        self.marker_size_pct = int(pct)
+        size = self._SIZE_MIN + (pct / 100.0) * (self._SIZE_MAX - self._SIZE_MIN)
         self.scat_main.set_sizes([size])
         self.scat_conj.set_sizes([size])
         self.fig.canvas.draw_idle()
+
+    def update_data_alpha(self, alpha: float):
+        """Met à jour la transparence des points (0.0–1.0)."""
+        self.data_alpha = alpha
+        self.scat_main.set_alpha(alpha)
+        self.scat_conj.set_alpha(alpha)
+        self.fig.canvas.draw_idle()
+
+    def update_data_color(self, color: str):
+        """Met à jour la couleur de base des points de données."""
+        self.base_color = color
+        self._update_colors()
 
     def set_conjugate_visible(self, visible: bool):
         """
@@ -213,7 +228,8 @@ class UVPlotEditor(BasePlotEditor):
         vis_m, vis_c = self.scat_main.get_visible(), self.scat_conj.get_visible()
         self.scat_main.set_visible(False)
         self.scat_conj.set_visible(False)
-        self.fig.canvas.draw_idle()
+        self.fig.canvas.draw_idle()        
+
         
         # Remplacement de plt.pause() par une fonction asynchrone PyQt
         def restore_visibility():
@@ -241,9 +257,16 @@ class UVPlotEditor(BasePlotEditor):
                 f"FOCUS : {sub_actif}:{vrai_nom}",
                 color=DesignSystem.PLOT_FOCUS, fontsize=10
             )
+            # D3 — signaler si aucune donnée non-flagguée pour cette paire SA:ANT
+            m_focus = (
+                (self.data["subarray"] == sub_actif)
+                & ((self.data["tel_a"] == ant_cible) | (self.data["tel_b"] == ant_cible))
+            )
+            if not np.any(m_focus & ~self.obs.masque_flagges):
+                logger.warning("No data for %s:%s", sub_actif, vrai_nom)
         else:
             self.ax.set_title(
-                f"EXPLORATION : SUBARRAY {sub_actif}",
+                f"All baselines — Subarray {sub_actif}",
                 color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10
             )
 
@@ -258,10 +281,10 @@ class UVPlotEditor(BasePlotEditor):
         self.scat_conj.set_offsets(off_c)
         self.scat_main.set_facecolors(couleurs)
         self.scat_main.set_edgecolors('none')
-        self.scat_main.set_alpha(0.5)
+        self.scat_main.set_alpha(self.data_alpha)
         self.scat_conj.set_facecolors(couleurs)
         self.scat_conj.set_edgecolors('none')
-        self.scat_conj.set_alpha(0.5)
+        self.scat_conj.set_alpha(self.data_alpha)
         self.fig.canvas.draw_idle()
 
     # =========================================================
@@ -333,7 +356,7 @@ class UVPlotEditor(BasePlotEditor):
             f"--- Quick Inspect (s) ---\n"
             f"Antennas : {sub}:{nom_a}-{nom_b}\n"
             f"Time UT  : {doy:03d}-{hh:02d}:{mm:02d}:{ss:02d}\n"
-            f"Flux     : {flux:.4f} Jy\n"
+            f"Amplitude: {flux:.4f} Jy\n"
             f"IF Band  : {if_no}\n"
             f"-------------------------"
         )

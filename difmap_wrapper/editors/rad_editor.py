@@ -46,9 +46,10 @@ class RadPlotEditor(BasePlotEditor):
         super().__init__(observation, fig, ax, data,
                          save_callback, sync_callback)
 
-        self.ax_phase = ax_phase
-        self.ax_err   = ax_err
+        self.ax_phase   = ax_phase
+        self.ax_err     = ax_err
         self.base_color = base_color
+        self.data_alpha = 0.6
 
         self.scat_amp    = scats.amp
         self.scat_phase  = scats.phase
@@ -294,6 +295,9 @@ class RadPlotEditor(BasePlotEditor):
         visible : bool
             ``True`` pour afficher ``scat_modamp`` / ``scat_modphs``.
         """
+        if visible and not np.any(self.modamp != 0):
+            logger.warning("Model is empty — no model data to display.")
+            return
         self.show_model = visible
         self._update_colors()
         self._sync_ui_state()
@@ -359,7 +363,7 @@ class RadPlotEditor(BasePlotEditor):
         - Ajuste l'échelle verticale de ``ax_err`` (M1).
         """
         couleurs, _ = self._build_focus_colors()
-        base_size = self.marker_sizes[self.current_size_idx]
+        base_size = self._SIZE_MIN + (self.marker_size_pct / 100.0) * (self._SIZE_MAX - self._SIZE_MIN)
         tailles   = np.full(len(self.data["u"]), base_size, dtype=float)
 
         d_amp, d_phs = self._get_current_y_data()
@@ -372,6 +376,7 @@ class RadPlotEditor(BasePlotEditor):
                 scat.set_offsets(off)
                 scat.set_facecolors(couleurs)
                 scat.set_sizes(tailles)
+                scat.set_alpha(self.data_alpha)
                 if label and hasattr(scat.axes, 'set_ylabel'):
                     scat.axes.set_ylabel(label)
 
@@ -380,19 +385,21 @@ class RadPlotEditor(BasePlotEditor):
         _apply(self.scat_phase, self.uv_radius, d_phs,
                "Res Phase (°)" if self.show_residuals else "Phase (°)")
 
+        has_model_data = np.any(self.modamp != 0)
+
         if self.scat_modamp:
             off_m = np.column_stack((self.uv_radius, self.modamp))
             off_m[mask] = [np.nan, np.nan]
             self.scat_modamp.set_offsets(off_m)
             self.scat_modamp.set_sizes(tailles * 0.8)
-            self.scat_modamp.set_visible(self.show_model and not self.show_residuals)
+            self.scat_modamp.set_visible(self.show_model and not self.show_residuals and has_model_data)
 
         if self.scat_modphs:
             off_m = np.column_stack((self.uv_radius, self.modphs))
             off_m[mask] = [np.nan, np.nan]
             self.scat_modphs.set_offsets(off_m)
             self.scat_modphs.set_sizes(tailles * 0.8)
-            self.scat_modphs.set_visible(self.show_model and not self.show_residuals)
+            self.scat_modphs.set_visible(self.show_model and not self.show_residuals and has_model_data)
 
         if self.scat_err:
             weight   = self.data.get('weight', np.ones_like(self.uv_radius))
@@ -411,17 +418,29 @@ class RadPlotEditor(BasePlotEditor):
 
         self.fig.canvas.draw_idle()
 
-    def update_marker_size(self, size):
+    def update_marker_size(self, pct: float):
         """
         Met à jour la taille des marqueurs et rafraîchit les couleurs.
 
         Parameters
         ----------
-        size : float
-            Taille en points² (doit correspondre à une valeur de ``marker_sizes``).
+        pct : float
+            Pourcentage (1–100). Converti en pts² via ``_SIZE_MIN``–``_SIZE_MAX``.
         """
-        if size in self.marker_sizes:
-            self.current_size_idx = self.marker_sizes.index(size)
+        self.marker_size_pct = int(pct)
+        self._update_colors()
+
+    def update_data_alpha(self, alpha: float):
+        """Met à jour la transparence des points de données (0.0–1.0)."""
+        self.data_alpha = alpha
+        for scat in (self.scat_amp, self.scat_phase, self.scat_err):
+            if scat is not None:
+                scat.set_alpha(alpha)
+        self.fig.canvas.draw_idle()
+
+    def update_data_color(self, color: str):
+        """Met à jour la couleur de base des points de données."""
+        self.base_color = color
         self._update_colors()
 
     # =========================================================
@@ -692,15 +711,23 @@ class RadPlotEditor(BasePlotEditor):
         if self.obs.masque_flagges[idx]:
             return
             
-        sub   = self.data.get("subarray", [0] * len(self.uv_radius))[idx]
-        nom_a = self.noms_antennes.get(self.data.get("tel_a", [0] * len(self.uv_radius))[idx], "?")
-        nom_b = self.noms_antennes.get(self.data.get("tel_b", [0] * len(self.uv_radius))[idx], "?")
+        sub    = self.data.get("subarray", [0] * len(self.uv_radius))[idx]
+        nom_a  = self.noms_antennes.get(self.data.get("tel_a", [0] * len(self.uv_radius))[idx], "?")
+        nom_b  = self.noms_antennes.get(self.data.get("tel_b", [0] * len(self.uv_radius))[idx], "?")
+        if_no  = self.data.get("if_no", [1] * len(self.uv_radius))[idx]
+        ut_raw = self.data.get("time", np.zeros(len(self.uv_radius)))[idx]
+        doy = int(ut_raw // 86400)
+        hh  = int((ut_raw % 86400) // 3600)
+        mm  = int((ut_raw % 3600)  // 60)
+        ss  = int(ut_raw % 60)
         lbl_a = "Res Amp" if self.show_residuals else "Amp"
         lbl_p = "Res Phs" if self.show_residuals else "Phase"
         msg = (
             f"--- Quick Inspect (s) ---\n"
             f"Antennas : {sub}:{nom_a}-{nom_b}\n"
             f"Radius   : {self.uv_radius[idx]:.2f} Mλ\n"
+            f"Time UT  : {doy:03d}-{hh:02d}:{mm:02d}:{ss:02d}\n"
+            f"IF Band  : {if_no}\n"
             f"{lbl_a:<8} : {d_amp[idx]:.4f} Jy\n"
             f"{lbl_p:<8} : {d_phs[idx]:.1f}°\n"
             f"-------------------------"
