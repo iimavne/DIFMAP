@@ -1,5 +1,5 @@
 # difmap_wrapper/gui/components/main_toolbar.py
-from PyQt6.QtWidgets import QToolBar, QLabel, QSizePolicy, QWidget, QComboBox
+from PyQt6.QtWidgets import QToolBar, QSizePolicy, QWidget
 from PyQt6.QtGui import QAction
 from PyQt6.QtCore import QSize, Qt
 
@@ -54,11 +54,11 @@ class MainToolbar(QToolBar):
 
     def add_standard_actions(self, window):
         """
-        Crée et ajoute toutes les actions standard à la toolbar.
+        Crée et ajoute les actions de la toolbar principale.
 
-        Attributs créés : ``action_load``, ``action_save``, ``action_undo``,
-        ``action_refresh``, ``action_home``, ``lbl_tools``, ``combo_tools``,
-        ``action_inspect``, ``action_terminal``.
+        Attributs créés : ``action_load``, ``action_save``, ``action_terminal``.
+        Les contrôles d'outils (undo, reset, combo) sont dans la toolbar locale
+        de chaque widget de plot.
 
         Parameters
         ----------
@@ -78,30 +78,6 @@ class MainToolbar(QToolBar):
         self.addAction(self.action_load)
         self.action_save = act("Save", "fa5s.save", "Save visibilities as FITS [Ctrl+S]")
         self.addAction(self.action_save)
-        self.addSeparator()
-
-        # ── ACTIONS VUE ──────────────────────────────────────────
-        self.action_undo = act("Undo", "fa5s.undo", "Undo last flagging operation [U]")
-        self.addAction(self.action_undo)
-        self.action_refresh = act("Refresh", "fa5s.sync", "Refresh display [L]")
-        self.addAction(self.action_refresh)
-        self.action_home = act("Reset", "fa5s.home", "Reset plot view [R]")
-        self.addAction(self.action_home)
-        self.addSeparator()
-
-        # ── OUTILS (Menu Déroulant Compact) ──────────────────────
-        self.lbl_tools = QLabel("  Tool: ")
-        self.lbl_tools.setStyleSheet("font-weight: bold; color: #4A6A8A;")
-        self.addWidget(self.lbl_tools)
-
-        self.combo_tools = QComboBox()
-        self.combo_tools.setMinimumWidth(160)
-        self.combo_tools.setToolTip("Select the active mouse tool")
-        self.addWidget(self.combo_tools)
-
-        self.action_inspect = act("Inspect (s)", "fa5s.info-circle", "Toggle inspect mode — click a point to see its info [s]")
-        self.action_inspect.setCheckable(True)
-        self.addAction(self.action_inspect)
 
         # ── SÉPARATEUR EXTENSIBLE ────────────────────────────────
         spacer = QWidget()

@@ -5,7 +5,7 @@ Classe de base pour tous les widgets Matplotlib.
 Évite la duplication de code entre UVPlotWidget, MapPlotWidget, RadPlotWidget.
 """
 
-from PyQt6.QtWidgets import QWidget, QVBoxLayout
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
 from PyQt6.QtCore import Qt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
@@ -53,34 +53,43 @@ class BasePlotWidget(QWidget):
             Type de layout Matplotlib ('constrained' ou None)
         """
         super().__init__(parent)
-        
+
         # Layout principal
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
-        
+        self.layout.setSpacing(0)
+
+        # ── Toolbar locale (peuplée par les sous-classes) ────────
+        self.plot_toolbar_row = QWidget()
+        self.plot_toolbar_row.setVisible(False)
+        self.plot_toolbar_layout = QHBoxLayout(self.plot_toolbar_row)
+        self.plot_toolbar_layout.setContentsMargins(6, 3, 6, 3)
+        self.plot_toolbar_layout.setSpacing(6)
+        self.layout.addWidget(self.plot_toolbar_row)
+
         # Figure Matplotlib
         self.fig = Figure(
-            figsize=figsize, 
-            facecolor=facecolor, 
+            figsize=figsize,
+            facecolor=facecolor,
             layout=layout_type
         )
         self.ax = self.fig.add_subplot(111)
-        
+
         # Canvas PyQt
         self.canvas = FigureCanvas(self.fig)
-        
+
         # Toolbar optionnelle
         self.toolbar = None
         if include_toolbar:
             self.toolbar = NavigationToolbar(self.canvas, self)
             self.layout.addWidget(self.toolbar)
-        
+
         # Ajout du canvas
         self.layout.addWidget(self.canvas)
-        
+
         # Setup initial des axes
         self._setup_axes()
-        
+
         # Focus policy pour les shortcuts
         self.canvas.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
     
@@ -109,23 +118,3 @@ class BasePlotWidget(QWidget):
         return self.canvas
 
 
-# Exemple de classe fille :
-# 
-# from .base_plot_widget import BasePlotWidget
-# from difmap_wrapper.editors.uv_editor import UVPlotEditor
-#
-# class UVPlotWidget(BasePlotWidget):
-#     def __init__(self, observation, data, parent=None, **kwargs):
-#         super().__init__(parent=parent, figsize=(8, 8))
-#         
-#         self.observation = observation
-#         self.data = data
-#         
-#         # Code spécifique au UV plot
-#         u = self.data['u'] / 1e6
-#         v = self.data['v'] / 1e6
-#         
-#         self.scat_main = self.ax.scatter(u, v, s=1, color='blue', alpha=0.5)
-#         # ... etc
-#         
-#         self.editor = UVPlotEditor(...)

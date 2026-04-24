@@ -1,6 +1,7 @@
 import numpy as np
 from difmap_wrapper.gui.widgets.base_plot_widget import BasePlotWidget
 from difmap_wrapper.gui.utils import MatplotlibStyler
+from difmap_wrapper.gui.styles.design_system import DesignSystem
 
 class MapPlotWidget(BasePlotWidget):
     """
@@ -19,6 +20,9 @@ class MapPlotWidget(BasePlotWidget):
         """
         # La classe parente crée le layout, l'axe ET la toolbar (grâce au True) !
         super().__init__(parent=parent, figsize=(6, 6), include_toolbar=True, layout_type='constrained')
+        self.toolbar.setMinimumHeight(32)
+        self.toolbar.setMaximumHeight(32)
+        self.toolbar.setStyleSheet(f"background-color: {DesignSystem.SURFACE_ALT}; border-bottom: 1px solid {DesignSystem.BORDER};")
         self.image = None
         self.cbar = None
 

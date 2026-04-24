@@ -1,7 +1,7 @@
 # difmap_wrapper/editors/rad_editor.py
 import logging
 import numpy as np
-from matplotlib.widgets import RectangleSelector
+from matplotlib.widgets import RectangleSelector, SpanSelector
 
 from .base import BasePlotEditor
 from difmap_wrapper.enums import EditorMode, DisplayMode
@@ -109,9 +109,32 @@ class RadPlotEditor(BasePlotEditor):
         self.show_errors    = False
         self.display_mode   = DisplayMode.AMP_ONLY
 
+        # Limites originales des axes supplémentaires (pour action_home)
+        self._orig_ylim_phase = self.ax_phase.get_ylim() if self.ax_phase else None
+        self._orig_ylim_err   = self.ax_err.get_ylim()   if self.ax_err   else None
+
+        # SpanSelectors pour zoom vertical (Y) sur chaque axe
+        _span_kw = dict(useblit=True, props=dict(alpha=0.2, facecolor=DesignSystem.PLOT_FOCUS))
+        self.span_y_amp = SpanSelector(
+            self.ax,
+            lambda vmin, vmax: self._on_zoom_y(self.ax, vmin, vmax),
+            'vertical', **_span_kw
+        )
+        self.span_y_amp.set_active(False)
+
+        self.span_y_phase = None
+        if self.ax_phase:
+            self.span_y_phase = SpanSelector(
+                self.ax_phase,
+                lambda vmin, vmax: self._on_zoom_y(self.ax_phase, vmin, vmax),
+                'vertical', **_span_kw
+            )
+            self.span_y_phase.set_active(False)
+
         self.raccourcis_autorises.update({
             "+": self.action_toggle_crosshair,
             "U": lambda _e: self._set_mode(EditorMode.ZOOM_X),
+            "y": self.action_toggle_zoom_y, "Y": self.action_toggle_zoom_y,
             "m": self.action_toggle_model,    "M": self.action_toggle_model,
             "-": self.action_toggle_residuals,
             "e": self.action_toggle_errors,   "E": self.action_toggle_errors,
@@ -123,42 +146,86 @@ class RadPlotEditor(BasePlotEditor):
 
     def _set_mode(self, new_mode) -> None:
         """
-        Surcharge de BasePlotEditor._set_mode pour gérer les RectangleSelectors multiples.
-        
-        Appelle d'abord le parent, puis active/désactive les RectangleSelectors
-        supplémentaires pour ax_phase et ax_err.
+        Surcharge de BasePlotEditor._set_mode pour gérer tous les Selectors multiples.
         """
         super()._set_mode(new_mode)
-        
-        # Gérer les RectangleSelectors supplémentaires pour le mode INTERACTIVE_FLAG
-        if self.mode == EditorMode.INTERACTIVE_FLAG:
-            if self.rs_flag_phase:
-                self.rs_flag_phase.set_active(True)
-            if self.rs_flag_err:
-                self.rs_flag_err.set_active(True)
-        else:
-            if self.rs_flag_phase:
-                self.rs_flag_phase.set_active(False)
-            if self.rs_flag_err:
-                self.rs_flag_err.set_active(False)
+
+        # RectangleSelectors interactifs (ax_phase, ax_err)
+        flag_active = (self.mode == EditorMode.INTERACTIVE_FLAG)
+        if self.rs_flag_phase:
+            self.rs_flag_phase.set_active(flag_active)
+        if self.rs_flag_err:
+            self.rs_flag_err.set_active(flag_active)
+
+        # SpanSelectors zoom Y
+        zoom_y_active = (self.mode == EditorMode.ZOOM_Y)
+        self.span_y_amp.set_active(zoom_y_active)
+        if self.span_y_phase:
+            self.span_y_phase.set_active(zoom_y_active)
 
     def cleanup(self) -> None:
-        """
-        Surcharge de BasePlotEditor.cleanup pour nettoyer les RectangleSelectors multiples.
-        """
-        # Nettoyer les RectangleSelectors supplémentaires
-        if self.rs_flag_phase:
+        """Surcharge pour nettoyer tous les Selectors supplémentaires."""
+        for sel in (self.rs_flag_phase, self.rs_flag_err,
+                    self.span_y_amp, self.span_y_phase):
+            if sel is None:
+                continue
             try:
-                self.fig.canvas.mpl_disconnect(id(self.rs_flag_phase))
+                sel.set_active(False)
+                if hasattr(sel, 'disconnect_events'):
+                    sel.disconnect_events()
             except Exception:
                 pass
-        if self.rs_flag_err:
-            try:
-                self.fig.canvas.mpl_disconnect(id(self.rs_flag_err))
-            except Exception:
-                pass
-        # Appeler le parent cleanup
         super().cleanup()
+
+    # =========================================================
+    # ZOOM Y
+    # =========================================================
+
+    def _on_zoom_y(self, ax, vmin, vmax) -> None:
+        """Callback SpanSelector vertical : zoom l'axe Y de ``ax``."""
+        if self.mode == EditorMode.ZOOM_Y and abs(vmax - vmin) > 1e-10:
+            ax.set_ylim(vmin, vmax)
+            self.fig.canvas.draw_idle()
+            logger.info("Zoom Y appliqué.")
+
+    def action_toggle_zoom_y(self, _event=None):
+        """Active le mode ZOOM_Y (sélection verticale). Touche ``Y`` (Shift+Y)."""
+        self._set_mode(EditorMode.ZOOM_Y)
+
+    def action_dezoom(self, event=None):
+        """Dézoom 50 % sur tous les axes (X partagé + Y indépendants). Touche ``O``."""
+        # X est partagé : on agit sur l'axe principal
+        xl, xr = self.ax.get_xlim()
+        cx = (xl + xr) / 2
+        dx = (xr - xl) * 0.75
+        self.ax.set_xlim(cx - dx, cx + dx)
+        # Y : chaque axe indépendamment
+        for ax in self.axes_list:
+            yl, yr = ax.get_ylim()
+            cy = (yl + yr) / 2
+            dy = (yr - yl) * 0.75
+            ax.set_ylim(cy - dy, cy + dy)
+        self.fig.canvas.draw_idle()
+        logger.info("Dézoom appliqué.")
+
+    def action_home(self, event=None):
+        """
+        Réinitialise la vue de tous les axes et supprime le focus antenne. Touche ``R``.
+        Émet ``reset_all`` pour synchroniser le graphique UV.
+        """
+        if self.original_limits:
+            self.ax.set_xlim(self.original_limits[0])
+            self.ax.set_ylim(self.original_limits[1])
+        if self.ax_phase and self._orig_ylim_phase:
+            self.ax_phase.set_ylim(self._orig_ylim_phase)
+        if self.ax_err and self._orig_ylim_err:
+            self.ax_err.set_ylim(self._orig_ylim_err)
+        self.index_antenne_actuelle = -1
+        self._update_colors()
+        self.fig.canvas.draw_idle()
+        logger.info("Vue réinitialisée.", extra={'difmap_level': 'success'})
+        if self.sync_callback:
+            self.sync_callback({'reset_all': True})
 
     # =========================================================
     # SYNC UI
@@ -362,9 +429,42 @@ class RadPlotEditor(BasePlotEditor):
         - Gère la visibilité du modèle, des résidus et des erreurs.
         - Ajuste l'échelle verticale de ``ax_err`` (M1).
         """
-        couleurs, _ = self._build_focus_colors()
+        couleurs, sub_actif = self._build_focus_colors()
         base_size = self._SIZE_MIN + (self.marker_size_pct / 100.0) * (self._SIZE_MAX - self._SIZE_MIN)
         tailles   = np.full(len(self.data["u"]), base_size, dtype=float)
+
+        # Label focus sur l'axe principal (comme UVPlotEditor)
+        if self.ax:
+            sub_has_data = sub_actif in self.antennes_par_subarray
+            ants = self.antennes_par_subarray.get(sub_actif, [])
+
+            if not sub_has_data:
+                label = self._nom_antenne_courante or "—"
+                self.ax.set_title(
+                    f"FOCUS : {sub_actif}:{label}  [vide]",
+                    color=DesignSystem.PLOT_FOCUS, fontsize=10
+                )
+            elif self.index_antenne_actuelle >= 0 and self.index_antenne_actuelle < len(ants):
+                ant_cible = ants[self.index_antenne_actuelle]
+                vrai_nom  = self.noms_antennes.get(ant_cible, f"Ant {ant_cible}")
+                self.ax.set_title(
+                    f"FOCUS : {sub_actif}:{vrai_nom}",
+                    color=DesignSystem.PLOT_FOCUS, fontsize=10
+                )
+                m_focus = (
+                    (self.data["subarray"] == sub_actif)
+                    & ((self.data["tel_a"] == ant_cible) | (self.data["tel_b"] == ant_cible))
+                )
+                if not np.any(m_focus & ~self.obs.masque_flagges):
+                    logger.warning("No data for %s:%s", sub_actif, vrai_nom)
+            elif self._nom_antenne_courante:
+                self.ax.set_title(
+                    f"FOCUS : {sub_actif}:{self._nom_antenne_courante}  [pas de visibilités]",
+                    color=DesignSystem.PLOT_FOCUS, fontsize=10
+                )
+            else:
+                ax_title = "Phase" if self.display_mode == DisplayMode.PHASE_ONLY else "Amplitude"
+                self.ax.set_title(ax_title, color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10)
 
         d_amp, d_phs = self._get_current_y_data()
         mask = self.obs.masque_flagges
@@ -391,14 +491,14 @@ class RadPlotEditor(BasePlotEditor):
             off_m = np.column_stack((self.uv_radius, self.modamp))
             off_m[mask] = [np.nan, np.nan]
             self.scat_modamp.set_offsets(off_m)
-            self.scat_modamp.set_sizes(tailles * 0.8)
+            self.scat_modamp.set_sizes(tailles)
             self.scat_modamp.set_visible(self.show_model and not self.show_residuals and has_model_data)
 
         if self.scat_modphs:
             off_m = np.column_stack((self.uv_radius, self.modphs))
             off_m[mask] = [np.nan, np.nan]
             self.scat_modphs.set_offsets(off_m)
-            self.scat_modphs.set_sizes(tailles * 0.8)
+            self.scat_modphs.set_sizes(tailles)
             self.scat_modphs.set_visible(self.show_model and not self.show_residuals and has_model_data)
 
         if self.scat_err:
@@ -724,12 +824,11 @@ class RadPlotEditor(BasePlotEditor):
         lbl_p = "Res Phs" if self.show_residuals else "Phase"
         msg = (
             f"--- Quick Inspect (s) ---\n"
-            f"Antennas : {sub}:{nom_a}-{nom_b}\n"
-            f"Radius   : {self.uv_radius[idx]:.2f} Mλ\n"
+            f"Antennas : {sub}:{nom_a}-{nom_b} (IF {if_no})\n"
             f"Time UT  : {doy:03d}-{hh:02d}:{mm:02d}:{ss:02d}\n"
-            f"IF Band  : {if_no}\n"
             f"{lbl_a:<8} : {d_amp[idx]:.4f} Jy\n"
             f"{lbl_p:<8} : {d_phs[idx]:.1f}°\n"
+            f"UV Radius: {self.uv_radius[idx]:.2f} Mλ\n"
             f"-------------------------"
         )
         logger.info(msg, extra={'difmap_level': 'inspect'})

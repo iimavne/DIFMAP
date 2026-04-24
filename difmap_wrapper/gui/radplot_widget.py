@@ -6,12 +6,87 @@ from typing import Optional
 
 import numpy as np
 from matplotlib.collections import PathCollection
+from PyQt6.QtCore import QSize
+from PyQt6.QtWidgets import QLabel, QComboBox, QPushButton
+try:
+    import qtawesome as qta
+    _HAS_QTA = True
+except ImportError:
+    _HAS_QTA = False
 
 from difmap_wrapper.gui.widgets.base_plot_widget import BasePlotWidget
 from difmap_wrapper.editors.rad_editor import RadPlotEditor
 from difmap_wrapper.gui.utils import MatplotlibStyler
 from difmap_wrapper.gui.styles.design_system import DesignSystem
 from difmap_wrapper.enums import DisplayMode
+
+_TOOLBAR_QSS = f"""
+QWidget#PlotToolbar {{
+    background-color: {DesignSystem.SURFACE_ALT};
+    border-bottom: 1px solid {DesignSystem.BORDER};
+    padding: 4px 0;
+    height: 32px;
+}}
+QPushButton {{
+    background-color: {DesignSystem.SURFACE};
+    color: {DesignSystem.TEXT};
+    border: 1px solid {DesignSystem.BORDER};
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 10px;
+    min-height: 26px;
+    min-width: 70px;
+}}
+QPushButton:hover  {{
+    background-color: {DesignSystem.SURFACE_ALT};
+    border-color: {DesignSystem.PRIMARY};
+    color: {DesignSystem.TEXT};
+}}
+QPushButton:pressed {{
+    background-color: {DesignSystem.BORDER_LIGHT};
+    border-color: {DesignSystem.PRIMARY_ACTIVE};
+    color: {DesignSystem.TEXT};
+}}
+QLabel {{
+    color: {DesignSystem.TEXT_MUTED};
+    font-size: 10px;
+    font-weight: bold;
+    background: transparent;
+    padding-left: 4px;
+}}
+QComboBox {{
+    background-color: {DesignSystem.SURFACE};
+    color: {DesignSystem.TEXT};
+    border: 1px solid {DesignSystem.BORDER};
+    border-radius: 5px;
+    padding: 3px 8px;
+    font-size: 10px;
+    min-width: 180px;
+    min-height: 26px;
+}}
+QComboBox:hover {{ border-color: {DesignSystem.PRIMARY}; }}
+QComboBox::drop-down {{ border: none; width: 18px; }}
+QComboBox::down-arrow {{ width: 10px; height: 10px; }}
+"""
+
+
+def _icon(name: str, color: str = "#C8DCF0"):
+    if not _HAS_QTA:
+        return None
+    try:
+        return qta.icon(name, color=color)
+    except Exception:
+        return None
+
+
+def _make_button(text: str, icon_name: str = None) -> QPushButton:
+    btn = QPushButton(text)
+    if icon_name:
+        ico = _icon(icon_name)
+        if ico:
+            btn.setIcon(ico)
+            btn.setIconSize(QSize(14, 14))
+    return btn
 
 
 @dataclass
@@ -53,6 +128,108 @@ class RadPlotWidget(BasePlotWidget):
         self.editor: Optional[RadPlotEditor] = None
         self._sync_callback = sync_callback
         super().__init__(parent=parent, figsize=(8, 6), layout_type='constrained')
+        self._build_local_toolbar()
+
+    # =========================================================
+    # TOOLBAR LOCALE
+    # =========================================================
+
+    _RAD_TOOLS = [
+        ("Inspect  [s]",            "INSPECT"),
+        ("Pan  [M]",                "PAN"),
+        ("Zoom Box  [Z]",           "ZOOM"),
+        ("Flag Box  [C]",           "CUT"),
+        ("Zoom X (UV range)  [U]",  "ZOOM_X"),
+        ("Zoom Y (vertical)  [Y]",  "ZOOM_Y"),
+        ("Stats Amp/Phase  [S]",    "STATS"),
+        ("Stats Re/Im  [V]",        "STATS_V"),
+    ]
+
+    def _build_local_toolbar(self) -> None:
+        """Crée la mini-toolbar au-dessus du canvas Radplot."""
+        row = self.plot_toolbar_row
+        row.setObjectName("PlotToolbar")
+        row.setStyleSheet(_TOOLBAR_QSS)
+        row.setFixedHeight(32)
+        row.setVisible(True)
+        lay = self.plot_toolbar_layout
+
+        lay.addWidget(QLabel("  Tools:"))
+        self._tool_combo = QComboBox()
+        self._tool_combo.setToolTip("Tool active (Keyboard shortcut)")
+        for label, data in self._RAD_TOOLS:
+            self._tool_combo.addItem(label, data)
+        lay.addWidget(self._tool_combo)
+
+        lay.addSpacing(10)
+
+        self._btn_undo    = _make_button("Undo Flag [U]",    "fa5s.undo")
+        self._btn_reset   = _make_button("Reset [R]",   "fa5s.expand-arrows-alt")
+        self._btn_dezoom  = _make_button("Dézoom [O]",  "fa5s.search-minus")
+        self._btn_refresh = _make_button("Refresh [L]", "fa5s.sync-alt")
+        for btn, tip in [
+            (self._btn_undo,    "Annuler le dernier flagging"),
+            (self._btn_reset,   "Réinitialiser la vue (tous les graphiques)"),
+            (self._btn_dezoom,  "Dézoomer de 50 %"),
+            (self._btn_refresh, "Rafraîchir l'affichage"),
+        ]:
+            btn.setToolTip(tip)
+            lay.addWidget(btn)
+
+        lay.addStretch()
+
+        self._tool_combo.currentIndexChanged.connect(self._on_tool_changed)
+        self._btn_undo.clicked.connect(
+            lambda: self._on_button_click(self.editor.action_undo, None) if self.editor else None)
+        self._btn_reset.clicked.connect(
+            lambda: self._on_button_click(self.editor.action_home, None) if self.editor else None)
+        self._btn_dezoom.clicked.connect(
+            lambda: self._on_button_click(self.editor.action_dezoom, None) if self.editor else None)
+        self._btn_refresh.clicked.connect(
+            lambda: self._on_button_click(self.editor.action_redisplay, None) if self.editor else None)
+
+    def _on_tool_changed(self, index: int) -> None:
+        """Applique le mode sélectionné dans le combo à l'éditeur actif."""
+        if index < 0 or not self.editor:
+            return
+        mode = self._tool_combo.itemData(index)
+        if mode == "INSPECT":
+            self.editor.inspect_active = True
+            self.editor._set_mode(None)
+        else:
+            self.editor.inspect_active = False
+            self.editor._set_mode(mode)
+        self.canvas.setFocus()
+
+    def _on_button_click(self, func, arg=None):
+        """Exécute l'action du bouton et remet le focus sur le canvas pour les raccourcis clavier."""
+        if func:
+            func(arg)
+        self.canvas.setFocus()
+
+    def sync_inspect_state(self, active: bool) -> None:
+        """Synchronise le combo quand l'état inspect change via raccourci clavier."""
+        if not hasattr(self, '_tool_combo'):
+            return
+        if active:
+            self._tool_combo.blockSignals(True)
+            self._tool_combo.setCurrentIndex(0)
+            self._tool_combo.blockSignals(False)
+
+    def sync_tool_state(self, tool: str) -> None:
+        """Synchronise le combo de la toolbar locale avec le mode actif de l'éditeur."""
+        if not hasattr(self, '_tool_combo') or tool is None:
+            return
+        if tool == "INSPECT":
+            target_index = 0
+        else:
+            target_index = next((i for i in range(self._tool_combo.count())
+                                 if self._tool_combo.itemData(i) == tool), -1)
+        if target_index < 0:
+            return
+        self._tool_combo.blockSignals(True)
+        self._tool_combo.setCurrentIndex(target_index)
+        self._tool_combo.blockSignals(False)
 
     # =========================================================
     # API publique
@@ -273,3 +450,6 @@ class RadPlotWidget(BasePlotWidget):
         )
         self.editor.show_errors = self.show_errors
         self.editor._update_colors()
+        # Appliquer le mode courant du combo au nouvel éditeur
+        if hasattr(self, '_tool_combo'):
+            self._on_tool_changed(self._tool_combo.currentIndex())

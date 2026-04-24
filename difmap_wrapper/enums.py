@@ -17,7 +17,8 @@ class EditorMode:
     STATS           = "STATS"
     STATS_V         = "STATS_V"
     ZOOM_X          = "ZOOM_X"
-    INTERACTIVE_FLAG = "INTERACTIVE_FLAG"  # Nouveau : flagging souris (gauche=flag, droit=unflag)
+    INTERACTIVE_FLAG = "INTERACTIVE_FLAG"  # flagging souris (gauche=flag, droit=unflag)
+    ZOOM_Y           = "ZOOM_Y"            # zoom vertical axe Y (radplot)
 
     # Ensemble des modes qui activent le RectangleSelector
     ALL_RECT = frozenset(["ZOOM", "CUT", "STATS", "STATS_V"])

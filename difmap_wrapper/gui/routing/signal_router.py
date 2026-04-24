@@ -204,8 +204,7 @@ class SignalRouter:
         
         self.control_panel.btn_search_tel.clicked.connect(search_callback)
         
-        # FLAGGING & DISPLAY
-        self.route_checkbox_both('chk_all_channels', 'set_flag_all_channels')
+        # DISPLAY
         self.route_checkbox_both('chk_conjugate', 'set_conjugate_visible')
         # self.route_checkbox_both('chk_crosshair', 'set_crosshair_visible')  # Double-exécution avec connecteur personnalisé MainWindow
         self.route_slider_both('slider_size', 'update_marker_size')

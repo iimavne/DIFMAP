@@ -52,6 +52,7 @@ class MainWindow(QMainWindow):
         self.toolbar.add_standard_actions(self)
         self.addToolBar(self.toolbar)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea,  self.control_panel)
+        self.control_panel.setMinimumWidth(250)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.log_console)
         self._create_menu_bar()
 
@@ -68,6 +69,8 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(QWidget(),               "UVplot")  # TabIndex.UV
         self.tabs.addTab(self.radplot_widget,      "Radplot")      # TabIndex.RADPLOT
         self.tabs.addTab(self.map_widget,          "Dirty Map")    # TabIndex.MAP
+
+        self._help_dialog_open = False   # garde anti-ouvertures multiples
 
         # 4. Signaux
         self._connect_signals()
@@ -165,8 +168,9 @@ class MainWindow(QMainWindow):
         """
         Câble tous les signaux PyQt6 aux slots correspondants.
 
-        Connecte les actions toolbar, les boutons et checkboxes du panneau
-        de contrôle, et les sliders via le :class:`SignalRouter`.
+        Les actions vue (Undo/Reset/Refresh/Tool) sont désormais dans la toolbar
+        locale de chaque widget de plot. Ici on câble uniquement : Load/Save,
+        Terminal, panneau de contrôle et signaux cross-plot.
         """
         router = SignalRouter(self)
         tb = self.toolbar
@@ -179,43 +183,6 @@ class MainWindow(QMainWindow):
                 editor.save_callback = self._handle_save_dialog
                 editor.action_save()
         tb.action_save.triggered.connect(handle_save)
-
-        # ✅ CORRECTION 2: Utiliser SafeEditor pour les toolbar actions
-        def safe_editor_action(method_name, *args):
-            """Pattern SafeEditor: vérifie l'existence avant d'appeler"""
-            def _action():
-                editor = self._get_active_editor()
-                if editor and hasattr(editor, method_name):
-                    method = getattr(editor, method_name)
-                    if args:
-                        method(*args)
-                    else:
-                        method(None)
-            return _action
-
-        tb.action_home.triggered.connect(safe_editor_action('action_home'))
-        tb.action_undo.triggered.connect(safe_editor_action('action_undo'))
-        tb.action_refresh.triggered.connect(self._sync_all_plots)
-
-        def _on_tool_changed(index):
-            if index < 0:
-                return
-            mode   = tb.combo_tools.itemData(index)
-            editor = self._get_active_editor()
-            if editor:
-                editor._set_mode(mode)
-            if editor and hasattr(editor, 'fig'):
-                editor.fig.canvas.setFocus()
-
-        tb.combo_tools.currentIndexChanged.connect(_on_tool_changed)
-
-        def _toggle_inspect(checked):
-            editor = self._get_active_editor()
-            if editor and hasattr(editor, 'action_toggle_inspect'):
-                # Synchroniser l'état editor avec l'état du bouton
-                if editor.inspect_active != checked:
-                    editor.action_toggle_inspect(None)
-        tb.action_inspect.toggled.connect(_toggle_inspect)
 
         tb.action_terminal.triggered.connect(self._toggle_terminal)
 
@@ -231,43 +198,41 @@ class MainWindow(QMainWindow):
             for widget in [self.plot_widget, self.radplot_widget]:
                 if widget and getattr(widget, 'editor', None):
                     widget.editor.action_specific_telescope(None, target)
-                    break  # Chercher dans le première widget actif seulement
+                    break
 
         self.control_panel.btn_search_tel.clicked.connect(search_callback)
         self.control_panel.input_search_tel.returnPressed.connect(search_callback)
 
-        # ✅ CORRECTION 3: SYNC CROSSHAIR SUR CHANGEMENT D'ONGLET + CHECKBOX
-        # Le crosshair doit être APPLIQUÉ au nouvel onglet quand on change de tab
+        def clear_telescope_focus():
+            for widget in [self.plot_widget, self.radplot_widget]:
+                if widget and getattr(widget, 'editor', None):
+                    widget.editor.action_clear_focus()
+
+        self.control_panel.btn_clear_focus.clicked.connect(clear_telescope_focus)
+
         def _handle_crosshair_changed(checked):
-            """Applique le crosshair à TOUS les éditeurs actifs"""
             for widget in [self.plot_widget, self.radplot_widget]:
                 if not widget or not hasattr(widget, 'editor'):
                     continue
                 editor = widget.editor
                 if not editor or not hasattr(editor, 'cursor_active'):
-                    continue  # ✅ Skip si cursor_active n'existe pas
-                
+                    continue
                 try:
                     if not checked and getattr(editor, 'cursor_active', False):
                         editor.action_toggle_crosshair(None)
                     elif checked and not getattr(editor, 'cursor_active', False):
                         editor.action_toggle_crosshair(None)
                 except Exception:
-                    pass  # ✅ Silencieusement ignorer les erreurs crosshair
-        
-        # Maintenant brancher le routeur CUSTOM crosshair (pas le generic route_checkbox_both)
+                    pass
+
         self.control_panel.chk_crosshair.toggled.connect(_handle_crosshair_changed)
 
-        # Les autres checkboxes peuvent utiliser le routeur générique
-        router.route_checkbox_both('chk_all_channels', 'set_flag_all_channels')
-        router.route_checkbox_both('chk_conjugate',    'set_conjugate_visible')
-        # crosshair est géré au-dessus (custom handler)
-        router.route_slider_both  ('slider_size',      'update_marker_size')
-        router.route_checkbox_both('chk_model',        'set_model_visible')
-        router.route_checkbox_both('chk_residuals',    'set_residuals_visible')
-        router.route_checkbox_both('chk_errors',       'set_show_errors')
+        router.route_checkbox_both('chk_conjugate',  'set_conjugate_visible')
+        router.route_slider_both  ('slider_size',    'update_marker_size')
+        router.route_checkbox_both('chk_model',      'set_model_visible')
+        router.route_checkbox_both('chk_residuals',  'set_residuals_visible')
+        router.route_checkbox_both('chk_errors',     'set_show_errors')
 
-        # Transparence des points — appliquée à tous les éditeurs actifs
         def _on_alpha_changed(val):
             alpha = val / 100.0
             for editor in (
@@ -278,7 +243,6 @@ class MainWindow(QMainWindow):
                     editor.update_data_alpha(alpha)
         self.control_panel.slider_alpha.valueChanged.connect(_on_alpha_changed)
 
-        # Couleur des points — appliquée à tous les éditeurs actifs dès la sélection
         def _on_color_selected(color: str):
             for editor in (
                 self.plot_widget.editor if self.plot_widget else None,
@@ -295,9 +259,9 @@ class MainWindow(QMainWindow):
             lambda idx: self.radplot_widget.set_display_mode(idx)
             if self.radplot_widget else None
         )
-        
+
         def _sync_ui_on_tab_change(index):
-            """Synchronise les checkboxes et boutons toolbar avec l'état du nouvel onglet actif."""
+            """Synchronise les checkboxes avec l'état du nouvel onglet actif."""
             try:
                 editor = self._get_active_editor()
                 if not editor:
@@ -306,12 +270,9 @@ class MainWindow(QMainWindow):
                 ctrl.chk_crosshair.blockSignals(True)
                 ctrl.chk_crosshair.setChecked(getattr(editor, 'cursor_active', False))
                 ctrl.chk_crosshair.blockSignals(False)
-                self.toolbar.action_inspect.blockSignals(True)
-                self.toolbar.action_inspect.setChecked(getattr(editor, 'inspect_active', False))
-                self.toolbar.action_inspect.blockSignals(False)
             except Exception:
                 pass
-        
+
         self.tabs.currentChanged.connect(_sync_ui_on_tab_change)
 
     # =========================================================
@@ -330,8 +291,6 @@ class MainWindow(QMainWindow):
         index : int
             Index du nouvel onglet sélectionné (voir :class:`TabIndex`).
         """
-        # M7 : TabIndex remplace les magic ints
-        # ✅ CORRECTION 1: Force le focus ET utilise QTimer pour assurer la propagation
         def set_focus_delayed():
             try:
                 if index == TabIndex.UV and self.plot_widget and hasattr(self.plot_widget, 'fig'):
@@ -343,9 +302,8 @@ class MainWindow(QMainWindow):
                     canvas.setFocus()
                     canvas.raise_()
             except Exception:
-                pass  # ✅ Ignorer les erreurs de focus
-        
-        # ✅ Force le focus après 50ms pour permettre au Qt de finir le changement d'onglet
+                pass  
+            
         QTimer.singleShot(50, set_focus_delayed)
 
         ctrl = self.control_panel
@@ -357,7 +315,6 @@ class MainWindow(QMainWindow):
 
         ctrl.group_data_selection.setEnabled(has_data)
         ctrl.group_telescope.setVisible(has_data and not is_map)
-        ctrl.group_flagging.setVisible(has_data and not is_map)
         ctrl.group_display.setVisible(has_data and not is_map)
         ctrl.group_imaging.setVisible(has_data and is_map)
 
@@ -373,9 +330,10 @@ class MainWindow(QMainWindow):
             ctrl.chk_conjugate.setVisible(has_data and is_uv)
 
         if is_radplot:
+            ctrl.chk_conjugate.blockSignals(True)
             ctrl.chk_conjugate.setChecked(False)
+            ctrl.chk_conjugate.blockSignals(False)
         elif is_uv and self.plot_widget and self.plot_widget.editor:
-            # Synchroniser la checkbox avec l'état réel du scatter conjugué
             conj_visible = self.plot_widget.editor.scat_conj.get_visible()
             ctrl.chk_conjugate.blockSignals(True)
             ctrl.chk_conjugate.setChecked(conj_visible)
@@ -386,31 +344,6 @@ class MainWindow(QMainWindow):
             ctrl.chk_errors.setChecked(False)
 
         tb.action_save.setVisible(has_data)
-        tb.action_home.setVisible(has_data and not is_map)
-        tb.action_undo.setVisible(has_data and not is_map)
-        tb.action_refresh.setVisible(has_data and not is_map)
-        tb.action_inspect.setVisible(has_data and not is_map)
-        tb.lbl_tools.setVisible(has_data and not is_map)
-        tb.combo_tools.setVisible(has_data and not is_map)
-
-        if has_data and not is_map:
-            current_mode = tb.combo_tools.currentData()
-            tb.combo_tools.blockSignals(True)
-            tb.combo_tools.clear()
-            tb.combo_tools.addItem("None (Inspect)", None)
-            tb.combo_tools.addItem("Pan (Move)", "PAN")
-            tb.combo_tools.addItem("Zoom Box",   "ZOOM")
-            tb.combo_tools.addItem("Flag Box",   "CUT")
-            if is_radplot:
-                tb.combo_tools.addItem("Zoom UV range",    "ZOOM_X")
-                tb.combo_tools.addItem("Stats (Amp/Phase)", "STATS")
-                tb.combo_tools.addItem("Stats (Real/Imag)", "STATS_V")
-            idx = tb.combo_tools.findData(current_mode)
-            tb.combo_tools.setCurrentIndex(idx if idx >= 0 else 0)
-            tb.combo_tools.blockSignals(False)
-            editor = self._get_active_editor()
-            if editor:
-                editor._set_mode(tb.combo_tools.currentData())
 
     def _create_menu_bar(self):
         """
@@ -470,9 +403,12 @@ class MainWindow(QMainWindow):
         """
         Affiche une boîte de dialogue récapitulant tous les raccourcis clavier.
 
-        La fenêtre est stylisée avec le thème sombre de l'application et
-        organisée par catégorie (Navigation, Telescope, Flagging, Radplot, UV, Style).
+        Un garde empêche l'ouverture de plusieurs fenêtres simultanées.
         """
+        if self._help_dialog_open:
+            return
+        self._help_dialog_open = True
+
         TBG = "#2a2a2a"
         help_text = f"""
         <style>
@@ -488,53 +424,55 @@ class MainWindow(QMainWindow):
         <h3>DIFMAP Modern — Keyboard Shortcuts</h3>
         <h4>Navigation & Display</h4>
         <table>
-          <tr><td width="90"><b>X / Q</b></td><td>Close plot</td></tr>
-          <tr><td><b>R / L</b></td><td>Reset / Refresh view</td></tr>
-          <tr><td><b>H</b></td><td>This help dialog</td></tr>
+          <tr><td width="90"><b>X / Q</b></td><td>Fermer le graphique</td></tr>
+          <tr><td><b>R</b></td><td>Reset vue (tous les graphiques)</td></tr>
+          <tr><td><b>L</b></td><td>Rafraîchir l'affichage</td></tr>
+          <tr><td><b>O</b></td><td>Dézoomer de 50 %</td></tr>
+          <tr><td><b>H</b></td><td>Cette fenêtre d'aide</td></tr>
         </table>
-        <h4>Telescope Focus</h4>
+        <h4>Focus Télescope</h4>
         <table>
-          <tr><td width="90"><b>n / p</b></td><td>Next / Prev antenna</td></tr>
-          <tr><td><b>N / P</b></td><td>Next / Prev subarray</td></tr>
-          <tr><td><b>T</b></td><td>Search telescope by name/ID</td></tr>
+          <tr><td width="90"><b>n / p</b></td><td>Antenne suivante / précédente</td></tr>
+          <tr><td><b>N / P</b></td><td>Sous-réseau suivant / précédent</td></tr>
+          <tr><td><b>T</b></td><td>Rechercher télescope par nom/ID</td></tr>
         </table>
-        <h4>Editing & Flagging</h4>
+        <h4>Édition & Flagging</h4>
         <table>
-          <tr><td width="90"><b>A</b></td><td>Flag nearest point</td></tr>
-          <tr><td><b>C</b></td><td>Flag rectangular area</td></tr>
-          <tr><td><b>Z</b></td><td>Zoom to area</td></tr>
-          <tr><td><b>W</b></td><td>Toggle flag-all-channels</td></tr>
-          <tr><td><b>u</b></td><td>Undo last flag</td></tr>
-          <tr><td><b>Ctrl+S</b></td><td>Save as FITS</td></tr>
+          <tr><td width="90"><b>A</b></td><td>Flagguer le point le plus proche</td></tr>
+          <tr><td><b>C</b></td><td>Flagguer zone rectangulaire</td></tr>
+          <tr><td><b>F</b></td><td>Flagging interactif (gauche=flag, droit=unflag)</td></tr>
+          <tr><td><b>Z</b></td><td>Zoom sur zone</td></tr>
+          <tr><td><b>u / Ctrl+Z</b></td><td>Annuler le dernier flagging</td></tr>
+          <tr><td><b>Ctrl+S</b></td><td>Sauvegarder en FITS</td></tr>
         </table>
-        <h4>Radplot View</h4>
+        <h4>Radplot</h4>
         <table>
-          <tr><td width="90"><b>1 / 2 / 3</b></td><td>Amplitude / Phase / Both</td></tr>
-          <tr><td><b>M</b></td><td>Model overlay</td></tr>
-          <tr><td><b>-</b></td><td>Residuals (Data − Model)</td></tr>
-          <tr><td><b>E</b></td><td>Error plot (1/√w)</td></tr>
-          <tr><td><b>Shift+U</b></td><td>Zoom UV range</td></tr>
-          <tr><td><b>S / V</b></td><td>Stats Amp/Phase / Real/Imag</td></tr>
+          <tr><td width="90"><b>1 / 2 / 3</b></td><td>Amplitude / Phase / Les deux</td></tr>
+          <tr><td><b>M</b></td><td>Superposition du modèle</td></tr>
+          <tr><td><b>-</b></td><td>Résidus (Data − Modèle)</td></tr>
+          <tr><td><b>E</b></td><td>Graphe d'erreurs (1/√w)</td></tr>
+          <tr><td><b>U (Shift+U)</b></td><td>Zoom X — plage UV (horizontal)</td></tr>
+          <tr><td><b>Y (Shift+Y)</b></td><td>Zoom Y — axe vertical</td></tr>
+          <tr><td><b>S / V</b></td><td>Stats Amp/Phase / Réel/Imag</td></tr>
         </table>
-        <h4>UV-plane View</h4>
+        <h4>Plan UV</h4>
         <table>
-          <tr><td width="90"><b>%</b></td><td>Toggle conjugate points</td></tr>
-          <tr><td><b>Z</b></td><td>Zoom to area</td></tr>
-          <tr><td><b>S</b></td><td>Show nearest point info</td></tr>
+          <tr><td width="90"><b>%</b></td><td>Afficher/masquer conjugués</td></tr>
+          <tr><td><b>s</b></td><td>Mode Inspect (clic = info point)</td></tr>
         </table>
         <h4>Style</h4>
         <table>
-          <tr><td width="90"><b>+</b></td><td>Toggle crosshair</td></tr>
-          <tr><td><b>.</b></td><td>Cycle marker size</td></tr>
-          <tr><td><b>M (Pan)</b></td><td>Pan mode</td></tr>
+          <tr><td width="90"><b>+</b></td><td>Crosshair plein écran</td></tr>
+          <tr><td><b>.</b></td><td>Taille des marqueurs</td></tr>
+          <tr><td><b>M</b></td><td>Mode Pan (déplacement vue)</td></tr>
         </table>
         <br><hr>
-        <i>Most actions are also accessible via the toolbar and left panel.</i>
+        <i>La plupart des actions sont aussi accessibles via la toolbar locale au-dessus de chaque graphique.</i>
         """
         from PyQt6.QtWidgets import QTextBrowser, QDialog, QVBoxLayout
         dialog = QDialog(self)
         dialog.setWindowTitle("Keyboard Shortcuts")
-        dialog.resize(520, 620)
+        dialog.resize(520, 650)
         text_browser = QTextBrowser()
         text_browser.setStyleSheet("""
             QTextBrowser {
@@ -546,6 +484,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.addWidget(text_browser)
+        dialog.finished.connect(lambda _: setattr(self, '_help_dialog_open', False))
         dialog.exec()
 
     # =========================================================
@@ -697,11 +636,29 @@ class MainWindow(QMainWindow):
         if state_dict:
             ctrl = self.control_panel
 
+            # ── Reset tous les graphiques ──────────────────────────
+            if state_dict.get('reset_all'):
+                for widget in [self.plot_widget, self.radplot_widget]:
+                    editor = getattr(widget, 'editor', None) if widget else None
+                    if not editor or not editor.original_limits:
+                        continue
+                    editor.ax.set_xlim(editor.original_limits[0])
+                    editor.ax.set_ylim(editor.original_limits[1])
+                    if hasattr(editor, '_orig_ylim_phase') and getattr(editor, 'ax_phase', None):
+                        if editor._orig_ylim_phase:
+                            editor.ax_phase.set_ylim(editor._orig_ylim_phase)
+                    if hasattr(editor, '_orig_ylim_err') and getattr(editor, 'ax_err', None):
+                        if editor._orig_ylim_err:
+                            editor.ax_err.set_ylim(editor._orig_ylim_err)
+                    editor.index_antenne_actuelle = -1
+                    editor._nom_antenne_courante = ""
+                    editor._update_colors()
+                return  # le redraw est déjà fait dans _update_colors
+
             # Blocage de tous les signaux avant mise à jour
             signals_to_block = [
                 ctrl.chk_errors, ctrl.chk_model, ctrl.chk_residuals,
                 ctrl.combo_rad_mode, ctrl.chk_crosshair, ctrl.chk_conjugate,
-                ctrl.chk_all_channels,
             ]
             saved = {w: w.blockSignals(True) for w in signals_to_block}
 
@@ -719,8 +676,6 @@ class MainWindow(QMainWindow):
                     ctrl.chk_crosshair.setChecked(state_dict['crosshair'])
                 if 'show_conjugate' in state_dict:
                     ctrl.chk_conjugate.setChecked(state_dict['show_conjugate'])
-                if 'flag_all_channels' in state_dict:
-                    ctrl.chk_all_channels.setChecked(state_dict['flag_all_channels'])
                 if 'marker_size' in state_dict:
                     ctrl.slider_size.blockSignals(True)
                     ctrl.slider_size.setValue(state_dict['marker_size'])
@@ -730,12 +685,16 @@ class MainWindow(QMainWindow):
                 if 'show_help' in state_dict:
                     QTimer.singleShot(0, self._show_help_dialog)
                 if 'inspect_active' in state_dict:
-                    self.toolbar.action_inspect.blockSignals(True)
-                    self.toolbar.action_inspect.setChecked(state_dict['inspect_active'])
-                    self.toolbar.action_inspect.blockSignals(False)
+                    # Synchronise le combo de la toolbar locale
+                    for widget in [self.plot_widget, self.radplot_widget]:
+                        if widget and hasattr(widget, 'sync_inspect_state'):
+                            widget.sync_inspect_state(state_dict['inspect_active'])
 
-                # C6 : _refresh_layout déclenche le redécoupage du Radplot
-                # sans que l'éditeur ait besoin de connaître RadPlotWidget
+                if 'active_tool' in state_dict:
+                    for widget in [self.plot_widget, self.radplot_widget]:
+                        if widget and hasattr(widget, 'sync_tool_state'):
+                            widget.sync_tool_state(state_dict['active_tool'])
+
                 if state_dict.get('_refresh_layout'):
                     if 'show_errors' in state_dict:
                         self.radplot_widget.set_show_errors(state_dict['show_errors'])

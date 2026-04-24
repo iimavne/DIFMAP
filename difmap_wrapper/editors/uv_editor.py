@@ -250,23 +250,38 @@ class UVPlotEditor(BasePlotEditor):
         """
         couleurs, sub_actif = self._build_focus_colors()
 
-        if self.index_antenne_actuelle >= 0:
-            ant_cible = self.antennes_par_subarray[sub_actif][self.index_antenne_actuelle]
+        sub_has_data = sub_actif in self.antennes_par_subarray
+        ants = self.antennes_par_subarray.get(sub_actif, [])
+
+        if not sub_has_data:
+            # Subarray vide : titre avec nom antenne gardé si disponible
+            label = self._nom_antenne_courante or "—"
+            self.ax.set_title(
+                f"FOCUS : {sub_actif}:{label}  [vide]",
+                color=DesignSystem.PLOT_FOCUS, fontsize=10
+            )
+            logger.info("Subarray %s : aucune visibilité.", sub_actif)
+        elif self.index_antenne_actuelle >= 0 and self.index_antenne_actuelle < len(ants):
+            ant_cible = ants[self.index_antenne_actuelle]
             vrai_nom  = self.noms_antennes.get(ant_cible, f"Ant {ant_cible}")
             self.ax.set_title(
                 f"FOCUS : {sub_actif}:{vrai_nom}",
                 color=DesignSystem.PLOT_FOCUS, fontsize=10
             )
-            # D3 — signaler si aucune donnée non-flagguée pour cette paire SA:ANT
             m_focus = (
                 (self.data["subarray"] == sub_actif)
                 & ((self.data["tel_a"] == ant_cible) | (self.data["tel_b"] == ant_cible))
             )
             if not np.any(m_focus & ~self.obs.masque_flagges):
                 logger.warning("No data for %s:%s", sub_actif, vrai_nom)
+        elif self._nom_antenne_courante:
+            self.ax.set_title(
+                f"FOCUS : {sub_actif}:{self._nom_antenne_courante}  [pas de visibilités]",
+                color=DesignSystem.PLOT_FOCUS, fontsize=10
+            )
         else:
             self.ax.set_title(
-                f"All baselines — Subarray {sub_actif}",
+                "All baselines",
                 color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10
             )
 
@@ -346,6 +361,8 @@ class UVPlotEditor(BasePlotEditor):
         if_no = self.data.get("if_no", [1] * len(u_d))[idx]
         ut_raw = self.data.get("time", np.zeros(len(u_d)))[idx]
         flux   = self.data.get("amp",  np.zeros(len(u_d)))[idx]
+        phs    = self.data.get("phase", np.zeros(len(u_d)))[idx]
+        radius = np.sqrt(u_d[idx]**2 + v_d[idx]**2)
 
         doy = int(ut_raw // 86400)
         hh  = int((ut_raw % 86400) // 3600)
@@ -354,10 +371,11 @@ class UVPlotEditor(BasePlotEditor):
 
         info_text = (
             f"--- Quick Inspect (s) ---\n"
-            f"Antennas : {sub}:{nom_a}-{nom_b}\n"
+            f"Antennas : {sub}:{nom_a}-{nom_b} (IF {if_no})\n"
             f"Time UT  : {doy:03d}-{hh:02d}:{mm:02d}:{ss:02d}\n"
             f"Amplitude: {flux:.4f} Jy\n"
-            f"IF Band  : {if_no}\n"
+            f"Phase    : {phs:.1f}°\n"
+            f"UV Radius: {radius:.2f} Mλ\n"
             f"-------------------------"
         )
         logger.info(info_text, extra={'difmap_level': 'inspect'})

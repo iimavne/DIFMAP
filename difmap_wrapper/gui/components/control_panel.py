@@ -193,7 +193,6 @@ class ControlPanel(QDockWidget):
 
         self._build_data_selection()
         self._build_telescope_focus()
-        self._build_flagging_options()
         self._build_display_options()
         self._build_imaging()
 
@@ -271,7 +270,9 @@ class ControlPanel(QDockWidget):
         self.input_search_tel = QLineEdit()
         self.input_search_tel.setPlaceholderText("e.g. 1:BR  [T]")
         self.btn_search_tel = SecondaryButton("Search")
-        h.addWidget(self.input_search_tel); h.addWidget(self.btn_search_tel)
+        self.btn_clear_focus = SecondaryButton("Reset focus")
+        self.btn_clear_focus.setToolTip("Remove telescope focus / no highlight")
+        h.addWidget(self.input_search_tel); h.addWidget(self.btn_search_tel); h.addWidget(self.btn_clear_focus)
         layout.addLayout(h)
 
         layout.addWidget(QLabel("Subarray  [N / P]:"))
@@ -290,14 +291,6 @@ class ControlPanel(QDockWidget):
 
         self.main_layout.addWidget(self.group_telescope)
 
-    def _build_flagging_options(self):
-        """Construit la section « 3. FLAGGING » avec la checkbox "flag ALL channels"."""
-        self.group_flagging = CollapsibleSection("3. FLAGGING")
-        layout = self.group_flagging.content_layout
-        self.chk_all_channels = QCheckBox("Flag ALL channels in IF  [W]")
-        layout.addWidget(self.chk_all_channels)
-        self.main_layout.addWidget(self.group_flagging)
-
     def _build_display_options(self):
         """
         Construit la section « 4. DISPLAY OPTIONS ».
@@ -305,7 +298,7 @@ class ControlPanel(QDockWidget):
         Crée le sélecteur de mode Radplot, les checkboxes d'affichage
         (modèle, résidus, crosshair, erreurs, conjuguées) et le slider de taille.
         """
-        self.group_display = CollapsibleSection("4. DISPLAY OPTIONS")
+        self.group_display = CollapsibleSection("3. DISPLAY OPTIONS")
         layout = self.group_display.content_layout
 
         # On sauve le Label pour pouvoir le cacher
@@ -393,7 +386,7 @@ class ControlPanel(QDockWidget):
         Crée les champs mapsize, cellsize, la pondération UV, le taper gaussien
         et le bouton « Compute Dirty Map ».
         """
-        self.group_imaging = CollapsibleSection("5. IMAGING")
+        self.group_imaging = CollapsibleSection("4. IMAGING")
         layout = self.group_imaging.content_layout
 
         h = QHBoxLayout()

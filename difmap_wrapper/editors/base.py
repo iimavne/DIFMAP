@@ -3,6 +3,7 @@ import re
 import logging
 import numpy as np
 from matplotlib.widgets import MultiCursor, RectangleSelector, SpanSelector
+from PyQt6.QtCore import Qt
 
 from difmap_wrapper.enums import EditorMode
 from difmap_wrapper.gui.styles.design_system import DesignSystem
@@ -60,15 +61,28 @@ class BasePlotEditor:
         self.flag_all_channels = False
 
         # Navigation antennes / sous-réseaux
+        # antennes_par_subarray : seuls les subarrays ayant des données
         self.antennes_par_subarray: dict = {}
         for sub in np.unique(data["subarray"]):
             masque = data["subarray"] == sub
-            self.antennes_par_subarray[sub] = list(
-                np.unique(np.concatenate([data["tel_a"][masque], data["tel_b"][masque]]))
-            )
-        self.liste_subarrays = list(self.antennes_par_subarray.keys())
+            tel_ids = np.concatenate([data["tel_a"][masque], data["tel_b"][masque]])
+            # Conserver l'ordre d'apparition des télescopes dans les données,
+            # pour que la navigation n/p corresponde mieux au comportement de Difmap.
+            _, indices = np.unique(tel_ids, return_index=True)
+            order = np.argsort(indices)
+            self.antennes_par_subarray[sub] = list(np.unique(tel_ids)[order])
+        # liste_subarrays : TOUS les subarrays (y compris vides) via obs.nsub()
+        try:
+            n_sub = observation.nsub()
+            # Les subarrays difmap sont 1-indexés
+            self.liste_subarrays = list(range(1, n_sub + 1))
+        except Exception:
+            self.liste_subarrays = list(self.antennes_par_subarray.keys())
         self.index_subarray_actuel = 0
         self.index_antenne_actuelle = -1
+        # Nom de l'antenne courante — permet de retrouver la même antenne
+        # dans un autre subarray (les index peuvent différer)
+        self._nom_antenne_courante: str = ""
 
         self._refresh_telescope_names()
 
@@ -104,7 +118,7 @@ class BasePlotEditor:
         self.axes_list = [self.ax]
         self.cursor = None
         self.cursor_active = False
-        self.inspect_active = False  # True = clic gauche montre les infos de la visibilité
+        self.inspect_active = True   # True = clic gauche montre les infos de la visibilité
 
         self.raccourcis_autorises = {
             "r": self.action_home, "R": self.action_home,
@@ -120,7 +134,7 @@ class BasePlotEditor:
             "a": self.action_flag_nearest, "A": self.action_flag_nearest,
             ".": self.action_toggle_marker_size,
             "+": self.action_toggle_crosshair,
-            "w": self.action_toggle_channels, "W": self.action_toggle_channels,
+            "o": self.action_dezoom, "O": self.action_dezoom,
             "u": self.action_undo, "ctrl+z": self.action_undo,
             "s": self.action_toggle_inspect,
             "S": self.action_toggle_stats,
@@ -242,13 +256,16 @@ class BasePlotEditor:
         couleurs = np.full(len(self.data["u"]), self.base_color, dtype=object)
         sub_actif = self.liste_subarrays[self.index_subarray_actuel]
 
-        if self.index_antenne_actuelle >= 0:
-            ant_cible = self.antennes_par_subarray[sub_actif][self.index_antenne_actuelle]
-            m = (
-                (self.data["subarray"] == sub_actif)
-                & ((self.data["tel_a"] == ant_cible) | (self.data["tel_b"] == ant_cible))
-            )
-            couleurs[m] = DesignSystem.PLOT_FOCUS
+        # Subarray vide ou antenne sélectionnée absente → pas de highlight
+        if sub_actif in self.antennes_par_subarray and self.index_antenne_actuelle >= 0:
+            ants = self.antennes_par_subarray[sub_actif]
+            if self.index_antenne_actuelle < len(ants):
+                ant_cible = ants[self.index_antenne_actuelle]
+                m = (
+                    (self.data["subarray"] == sub_actif)
+                    & ((self.data["tel_a"] == ant_cible) | (self.data["tel_b"] == ant_cible))
+                )
+                couleurs[m] = DesignSystem.PLOT_FOCUS
 
         return couleurs, sub_actif
 
@@ -388,15 +405,37 @@ class BasePlotEditor:
         
         if not key:
             return
-        
-        # Normalise les raccourcis Shift: 'shift+m' -> 'M', 'shift+=' -> '+'
-        if key.startswith('shift+'):
+
+        # Normalise les raccourcis de touche pour Qt/Matplotlib
+        if key in ("period", "decimal"):
+            key = "."
+        elif key == "shift+period":
+            key = ">"
+        elif key.startswith('shift+'):
             base_key = key[6:]  # Enlève 'shift+'
             if base_key == '=':  # Particularité : Shift+= = +
                 key = '+'
             elif len(base_key) == 1:  # Caractère simple comme 'a'
                 key = base_key.upper()  # 'a' -> 'A'
-        
+
+        gui_event = getattr(event, 'guiEvent', None)
+        if gui_event is not None:
+            try:
+                text = gui_event.text()
+                if text:
+                    key = text
+                else:
+                    modifiers = gui_event.modifiers()
+                    if modifiers & Qt.KeyboardModifier.ShiftModifier:
+                        if isinstance(key, str) and len(key) == 1 and key.isalpha():
+                            key = key.upper()
+                        elif key == '=':
+                            key = '+'
+                        elif key == '.':
+                            key = '>'
+            except Exception:
+                pass
+
         # Cherche le raccourci dans le dictionnaire (exact d'abord, puis minuscule)
         if key in self.raccourcis_autorises:
             logger.debug(f"Raccourci clavier '{original_key}' → '{key}' trouvé")
@@ -432,6 +471,8 @@ class BasePlotEditor:
     def _set_mode(self, new_mode) -> None:
         """Définit le mode et gère l'activation des widgets Matplotlib."""
         self.mode = new_mode
+        if new_mode is not None:
+            self.inspect_active = False
         if hasattr(self, 'rs'):
             self.rs.set_active(False)
         if hasattr(self, 'rs_flag'):
@@ -449,6 +490,12 @@ class BasePlotEditor:
         etat = self.mode if self.mode else "Inspection"
         logger.info("Mode : %s", etat)
         self.fig.canvas.draw_idle()
+        if self.sync_callback:
+            tool_state = self.mode if self.mode else ("INSPECT" if self.inspect_active else None)
+            state = {'inspect_active': self.inspect_active}
+            if tool_state is not None:
+                state['active_tool'] = tool_state
+            self.sync_callback(state)
 
     def action_toggle_zoom(self, _event=None):
         """Active le mode ZOOM (sélection rectangulaire pour zoomer). Touche ``Z``."""
@@ -502,6 +549,8 @@ class BasePlotEditor:
         """
         Réinitialise la vue aux limites d'origine et supprime le focus antenne. Touche ``R``.
 
+        Émet ``reset_all`` via ``sync_callback`` pour réinitialiser tous les graphiques.
+
         Parameters
         ----------
         event : matplotlib.backend_bases.KeyEvent, optional
@@ -511,22 +560,38 @@ class BasePlotEditor:
             self.ax.set_xlim(self.original_limits[0])
             self.ax.set_ylim(self.original_limits[1])
             self.index_antenne_actuelle = -1
+            self._nom_antenne_courante = ""
             self._update_colors()
             self.fig.canvas.draw_idle()
-            logger.info("Vue réinitialisée. Focus antenne reset.",
-                        extra={'difmap_level': 'success'})
+            logger.info("Vue réinitialisée.", extra={'difmap_level': 'success'})
+        if self.sync_callback:
+            self.sync_callback({'reset_all': True})
 
     def action_redisplay(self, event=None):
         """Force un rafraîchissement du canvas. Touche ``L``."""
         self.fig.canvas.draw_idle()
 
+    def action_dezoom(self, event=None):
+        """Dézoom de 50 % — élargit la vue courante. Touche ``O``."""
+        xl, xr = self.ax.get_xlim()
+        yl, yr = self.ax.get_ylim()
+        cx, cy = (xl + xr) / 2, (yl + yr) / 2
+        dx, dy = (xr - xl) * 0.75, (yr - yl) * 0.75
+        self.ax.set_xlim(cx - dx, cx + dx)
+        self.ax.set_ylim(cy - dy, cy + dy)
+        self.fig.canvas.draw_idle()
+        logger.info("Dézoom appliqué.")
+
+    def action_toggle_zoom_y(self, _event=None):
+        """Active le mode ZOOM_Y (sélection verticale sur axe Y). Surchargé par RadPlotEditor."""
+        pass
+
     def action_toggle_inspect(self, event=None):
         """Bascule le mode Inspect (clic gauche affiche les infos de la visibilité). Touche ``s``."""
         self.inspect_active = not self.inspect_active
+        self._set_mode(None)
         status = "ON" if self.inspect_active else "OFF"
         logger.info("Inspect mode : %s", status)
-        if self.sync_callback:
-            self.sync_callback({'inspect_active': self.inspect_active})
 
     def _on_figure_leave(self, event=None):
         """Cache les lignes du crosshair quand la souris quitte la figure."""
@@ -773,7 +838,9 @@ class BasePlotEditor:
         """
         Passe au télescope suivant dans le sous-réseau actif. Touche ``n``.
 
-        Boucle à l'intérieur du sous-réseau courant sans en changer.
+        Boucle dans les antennes du sous-réseau courant en gardant le numéro
+        de sous-réseau constant.  Affiche même si vide (log si aucune visibilité).
+        Sur le premier appui après reset, démarre sur la première antenne.
 
         Parameters
         ----------
@@ -781,15 +848,24 @@ class BasePlotEditor:
             Ignoré.
         """
         sub_id = self.liste_subarrays[self.index_subarray_actuel]
-        nb = len(self.antennes_par_subarray[sub_id])
-        self.index_antenne_actuelle = (self.index_antenne_actuelle + 1) % nb
+        ants = self.antennes_par_subarray.get(sub_id, [])
+        if not ants:
+            logger.info("Subarray %s : aucune antenne disponible.", sub_id)
+            return
+        if self.index_antenne_actuelle < 0 or not self._nom_antenne_courante:
+            self.index_antenne_actuelle = 0
+        else:
+            self.index_antenne_actuelle = (self.index_antenne_actuelle + 1) % len(ants)
+        self._nom_antenne_courante = self.noms_antennes.get(ants[self.index_antenne_actuelle], "")
         self._update_colors()
 
     def action_prev_telescope(self, event=None):
         """
         Revient au télescope précédent dans le sous-réseau actif. Touche ``p``.
 
-        Boucle à l'intérieur du sous-réseau courant sans en changer.
+        Boucle dans les antennes du sous-réseau courant en gardant le numéro
+        de sous-réseau constant.  Affiche même si vide (log si aucune visibilité).
+        Sur le premier appui après reset, démarre sur la première antenne.
 
         Parameters
         ----------
@@ -797,63 +873,138 @@ class BasePlotEditor:
             Ignoré.
         """
         sub_id = self.liste_subarrays[self.index_subarray_actuel]
-        nb = len(self.antennes_par_subarray[sub_id])
-        # Démarre à 0 si on était en mode exploration (-1)
-        base = self.index_antenne_actuelle if self.index_antenne_actuelle >= 0 else 0
-        self.index_antenne_actuelle = (base - 1) % nb
+        ants = self.antennes_par_subarray.get(sub_id, [])
+        if not ants:
+            logger.info("Subarray %s : aucune antenne disponible.", sub_id)
+            return
+        if self.index_antenne_actuelle < 0 or not self._nom_antenne_courante:
+            self.index_antenne_actuelle = 0
+        else:
+            self.index_antenne_actuelle = (self.index_antenne_actuelle - 1) % len(ants)
+        self._nom_antenne_courante = self.noms_antennes.get(ants[self.index_antenne_actuelle], "")
         self._update_colors()
 
     def action_next_subarray(self, event=None):
         """
-        Passe au sous-réseau suivant en conservant le même télescope par nom. Touche ``N``.
+        Passe au sous-réseau suivant en gardant le même NOM d'antenne. Touche ``N``.
 
-        Exemple : 1:Fd → 2:Fd. Si l'antenne n'existe pas dans le nouveau
-        sous-réseau, revient à l'index 0.
+        Règle : on incrémente le numéro de sous-réseau sur TOUS les sous-réseaux
+        (y compris ceux sans visibilités).  Le nom de l'antenne est conservé et
+        recherché dans le nouveau sous-réseau ; un log indique si le sous-réseau
+        est vide ou si l'antenne est absente.
+        Si on est déjà au dernier subarray, on boucle sur le subarray 1 et on
+        passe à l'antenne suivante dans le subarray 1.
 
         Parameters
         ----------
         event : optional
             Ignoré.
         """
-        old_sub   = self.liste_subarrays[self.index_subarray_actuel]
-        old_ant   = (self.antennes_par_subarray[old_sub][self.index_antenne_actuelle]
-                     if self.index_antenne_actuelle >= 0 else None)
-        old_name  = self.noms_antennes.get(old_ant, "").upper() if old_ant is not None else ""
-
-        self.index_subarray_actuel = (self.index_subarray_actuel + 1) % len(self.liste_subarrays)
-        new_sub = self.liste_subarrays[self.index_subarray_actuel]
-        self.index_antenne_actuelle = self._find_antenna_index(new_sub, old_name)
+        if not self._nom_antenne_courante:
+            self.index_subarray_actuel = 0
+            self._sync_antenna_after_subarray_change()
+        elif self.index_subarray_actuel < len(self.liste_subarrays) - 1:
+            self.index_subarray_actuel += 1
+            self._sync_antenna_after_subarray_change()
+        else:
+            # Dernier subarray atteint : revenir au subarray 1 et avancer l'antenne.
+            premier_sub = self.liste_subarrays[0]
+            premiers_ants = self.antennes_par_subarray.get(premier_sub, [])
+            if premiers_ants:
+                idx = self._find_antenna_index_by_name(premier_sub, self._nom_antenne_courante)
+                if idx < 0 or idx + 1 >= len(premiers_ants):
+                    idx = 0
+                else:
+                    idx += 1
+                self._nom_antenne_courante = self.noms_antennes.get(premiers_ants[idx], "")
+            self.index_subarray_actuel = 0
+            self._sync_antenna_after_subarray_change()
         self._update_colors()
 
     def action_prev_subarray(self, event=None):
         """
-        Revient au sous-réseau précédent en conservant le même télescope par nom. Touche ``P``.
+        Revient au sous-réseau précédent en gardant le même NOM d'antenne. Touche ``P``.
 
-        Exemple : 2:Fd → 1:Fd. Si l'antenne n'existe pas dans le sous-réseau
-        précédent, revient à l'index 0.
+        Règle : on décrémente le numéro de sous-réseau sur TOUS les sous-réseaux
+        (y compris ceux sans visibilités).  Le nom de l'antenne est conservé et
+        recherché dans le nouveau sous-réseau ; un log indique si le sous-réseau
+        est vide ou si l'antenne est absente.
+        Si on est déjà au premier subarray, on boucle sur le dernier subarray et on
+        recule l'antenne dans le subarray 1.
 
         Parameters
         ----------
         event : optional
             Ignoré.
         """
-        old_sub  = self.liste_subarrays[self.index_subarray_actuel]
-        old_ant  = (self.antennes_par_subarray[old_sub][self.index_antenne_actuelle]
-                    if self.index_antenne_actuelle >= 0 else None)
-        old_name = self.noms_antennes.get(old_ant, "").upper() if old_ant is not None else ""
-
-        self.index_subarray_actuel = (self.index_subarray_actuel - 1) % len(self.liste_subarrays)
-        new_sub = self.liste_subarrays[self.index_subarray_actuel]
-        self.index_antenne_actuelle = self._find_antenna_index(new_sub, old_name)
+        if not self._nom_antenne_courante:
+            self.index_subarray_actuel = 0
+            self._sync_antenna_after_subarray_change()
+        elif self.index_subarray_actuel > 0:
+            self.index_subarray_actuel -= 1
+            self._sync_antenna_after_subarray_change()
+        else:
+            dernier_sub = self.liste_subarrays[-1]
+            premier_sub = self.liste_subarrays[0]
+            premiers_ants = self.antennes_par_subarray.get(premier_sub, [])
+            if premiers_ants:
+                idx = self._find_antenna_index_by_name(premier_sub, self._nom_antenne_courante)
+                if idx <= 0:
+                    idx = len(premiers_ants) - 1
+                else:
+                    idx -= 1
+                self._nom_antenne_courante = self.noms_antennes.get(premiers_ants[idx], "")
+            self.index_subarray_actuel = len(self.liste_subarrays) - 1
+            self._sync_antenna_after_subarray_change()
         self._update_colors()
+
+    def _sync_antenna_after_subarray_change(self) -> None:
+        """
+        Après un changement de sous-réseau, retrouve l'antenne courante par son NOM.
+
+        Si le sous-réseau est vide, l'index est mis à -1 et un message est loggé.
+        Si l'antenne n'existe pas dans ce sous-réseau, on se rabat sur la première antenne.
+        """
+        new_sub = self.liste_subarrays[self.index_subarray_actuel]
+        ants = self.antennes_par_subarray.get(new_sub, [])
+
+        if not ants:
+            self.index_antenne_actuelle = -1
+            logger.info("Subarray %s : aucune visibilité.", new_sub)
+            return
+
+        if self._nom_antenne_courante:
+            idx = self._find_antenna_index_by_name(new_sub, self._nom_antenne_courante)
+            if idx >= 0:
+                self.index_antenne_actuelle = idx
+                logger.info("Subarray %s : focus sur %s.", new_sub, self._nom_antenne_courante)
+                return
+            self.index_antenne_actuelle = -1
+            logger.info(
+                "Subarray %s : antenne '%s' absente — focus gardé sur %s sans visibilité.",
+                new_sub, self._nom_antenne_courante, self._nom_antenne_courante,
+            )
+            return
+
+        self.index_antenne_actuelle = 0
+        self._nom_antenne_courante = self.noms_antennes.get(ants[0], "")
+        logger.info("Subarray %s : focus automatique sur %s.", new_sub, self._nom_antenne_courante)
 
     def _find_antenna_index(self, sub_id, name_upper: str) -> int:
         """Retourne l'index de l'antenne dont le nom correspond dans ``sub_id``, ou 0."""
         if name_upper:
-            for idx, ant_id in enumerate(self.antennes_par_subarray[sub_id]):
+            for idx, ant_id in enumerate(self.antennes_par_subarray.get(sub_id, [])):
                 if self.noms_antennes.get(ant_id, "").upper() == name_upper:
                     return idx
         return 0
+
+    def _find_antenna_index_by_name(self, sub_id, nom: str) -> int:
+        """Retourne l'index de l'antenne dont le nom correspond dans ``sub_id``, ou -1 si absent."""
+        nom_up = nom.upper()
+        for idx, ant_id in enumerate(self.antennes_par_subarray.get(sub_id, [])):
+            if self.noms_antennes.get(ant_id, "").upper() == nom_up:
+                return idx
+        return -1
 
     def action_specific_telescope(self, event=None, target_name=None):
         """
@@ -879,6 +1030,15 @@ class BasePlotEditor:
         if not recherche:
             return
 
+        if recherche in {"ALL", "NONE", "RESET", "RESET VIEW", "CLEAR", "NO HIGHLIGHT"}:
+            self.index_antenne_actuelle = -1
+            self._nom_antenne_courante = ""
+            if self.sync_callback:
+                self.sync_callback({'inspect_active': self.inspect_active})
+            self._update_colors()
+            logger.info("Telescope focus cleared.")
+            return
+
         sub_target = None
         if ":" in recherche:
             parts = recherche.split(":")
@@ -892,10 +1052,11 @@ class BasePlotEditor:
         for s_idx, sub_id in enumerate(self.liste_subarrays):
             if sub_target and str(sub_id) != sub_target:
                 continue
-            for a_idx, ant_id in enumerate(self.antennes_par_subarray[sub_id]):
+            for a_idx, ant_id in enumerate(self.antennes_par_subarray.get(sub_id, [])):
                 nom_ant = self.noms_antennes.get(ant_id, "").upper()
                 if recherche == nom_ant or recherche == str(ant_id) or recherche in nom_ant:
                     self.index_subarray_actuel, self.index_antenne_actuelle = s_idx, a_idx
+                    self._nom_antenne_courante = self.noms_antennes.get(ant_id, "")
                     found = True
                     break
             if found:
@@ -903,13 +1064,26 @@ class BasePlotEditor:
 
         if found:
             sub_id = self.liste_subarrays[self.index_subarray_actuel]
-            nom = self.noms_antennes.get(
-                self.antennes_par_subarray[sub_id][self.index_antenne_actuelle], "?"
-            )
-            logger.info("Focus sur %s:%s.", sub_id, nom)
+            logger.info("Focus sur %s:%s.", sub_id, self._nom_antenne_courante)
             self._update_colors()
         else:
             logger.warning("Télescope '%s' introuvable.", target_name)
+
+    def action_clear_focus(self, event=None):
+        """
+        Clear the telescope focus / highlight and return to the default view.
+
+        Parameters
+        ----------
+        event : optional
+            Ignored.
+        """
+        self.index_antenne_actuelle = -1
+        self._nom_antenne_courante = ""
+        self._update_colors()
+        if self.sync_callback:
+            self.sync_callback({'inspect_active': self.inspect_active})
+        logger.info("Telescope focus cleared.")
 
     def action_help(self, event=None):
         """
