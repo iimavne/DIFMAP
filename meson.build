@@ -192,6 +192,7 @@ py3.install_sources(
     'difmap_wrapper/gui/radplot_widget.py',
     'difmap_wrapper/gui/constants.py',
     'difmap_wrapper/gui/log_handler.py',
+    'difmap_wrapper/gui/header_widget.py',
     subdir: 'difmap_wrapper/gui'
 )
 

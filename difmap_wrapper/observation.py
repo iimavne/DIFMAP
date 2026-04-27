@@ -247,7 +247,73 @@ class Observation:
             )
             
         return pol_reelle # On retourne la vraie valeur à l'interface
- 
+
+    def set_if_range(self, if_beg: int, if_end: int) -> None:
+        """
+        Restreint l'extraction UV à la plage d'IFs ``[if_beg, if_end]``
+        **sans** relire le fichier scratch (pas de ``ob_select``).
+
+        À utiliser quand seul le filtre IF change — beaucoup plus rapide que
+        ``select()``. Appeler ``get_data()`` ensuite pour obtenir les données
+        filtrées.
+
+        Parameters
+        ----------
+        if_beg : int
+            Premier IF souhaité (1-indexed). ``1`` = début.
+        if_end : int
+            Dernier IF souhaité (1-indexed). ``0`` = jusqu'au dernier.
+
+        Raises
+        ------
+        DifmapStateError
+            Si aucune observation n'est chargée.
+        DifmapError
+            Si l'appel C échoue.
+        """
+        if not self._session.uv_loaded:
+            raise DifmapStateError("Aucune observation chargée.")
+        if self._native.set_if_range(if_beg, if_end) != 0:
+            raise DifmapError(f"Échec de set_if_range({if_beg}, {if_end})")
+        self.masque_flagges = None
+        self.historique_coupes.clear()
+
+    @property
+    def nif(self) -> int:
+        """Nombre total d'IFs dans l'observation courante (0 si rien de chargé)."""
+        if not self._session.uv_loaded:
+            return 0
+        return self._native.get_nif()
+
+    def header(self) -> str:
+        """
+        Retourne le header complet de l'observation sous forme de texte.
+
+        Équivalent de la commande interactive ``header`` de difmap.
+        Inclut : mots-clés FITS, sous-réseaux, table des IFs, source,
+        polarisations disponibles, dimensions et paramètres temporels.
+
+        Returns
+        -------
+        str
+            Texte formaté du header, prêt à afficher ou à logger.
+
+        Raises
+        ------
+        DifmapStateError
+            Si aucune observation n'est chargée.
+
+        Examples
+        --------
+        >>> print(session.obs.header())
+        UV FITS miscellaneous header keyword values:
+          OBSERVER = "..."
+          ...
+        """
+        if not self._session.uv_loaded:
+            raise DifmapStateError("Aucune observation chargée.")
+        return self._native.get_header_text()
+
     def flag_data(self, indices) -> int:
         """
         Marque les visibilités aux indices donnés comme exclues (flaguées).

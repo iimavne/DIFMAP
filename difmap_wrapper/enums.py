@@ -38,3 +38,4 @@ class TabIndex:
     UV      = 0
     RADPLOT = 1
     MAP     = 2
+    HEADER  = 3

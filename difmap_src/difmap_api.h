@@ -28,6 +28,9 @@ float* get_native_mod_phs(void);
 int native_observe(const char* filepath);
 int native_nsub(void);
 int native_select(const char* pol, int if_beg, int if_end, int ch_beg, int ch_end);
+int native_set_if_range(int if_beg, int if_end);
+int native_get_nif(void);
+const char *native_get_header_text(void);
 
 /* Paramètres d'imagerie complets*/
 int native_uvweight(float uvbin, float errpow, int dorad);

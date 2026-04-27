@@ -14,6 +14,7 @@ from .components.main_toolbar import MainToolbar
 from .map_widget import MapPlotWidget
 from .radplot_widget import RadPlotWidget
 from .routing.signal_router import SignalRouter
+from .header_widget import HeaderWidget
 
 
 
@@ -40,6 +41,7 @@ class MainWindow(QMainWindow):
         # 1. Moteur C
         self.session = DifmapSession()
         self.data    = None
+        self._bulk_reloading = False  # bloque _sync_all_plots pendant les rechargements
 
         # 2. Composants UI
         self.log_console  = ImprovedLogConsole(parent=self)
@@ -65,10 +67,12 @@ class MainWindow(QMainWindow):
             parent=self,
             sync_callback=self._sync_all_plots,
         )
+        self.header_widget  = HeaderWidget(self.session, parent=self)
 
-        self.tabs.addTab(QWidget(),               "UVplot")  # TabIndex.UV
-        self.tabs.addTab(self.radplot_widget,      "Radplot")      # TabIndex.RADPLOT
-        self.tabs.addTab(self.map_widget,          "Dirty Map")    # TabIndex.MAP
+        self.tabs.addTab(QWidget(),               "UVplot")    # TabIndex.UV
+        self.tabs.addTab(self.radplot_widget,      "Radplot")   # TabIndex.RADPLOT
+        self.tabs.addTab(self.map_widget,          "Dirty Map") # TabIndex.MAP
+        self.tabs.addTab(self.header_widget,       "Header")    # TabIndex.HEADER
 
         self._help_dialog_open = False   # garde anti-ouvertures multiples
 
@@ -91,21 +95,30 @@ class MainWindow(QMainWindow):
         try:
             self.log_console.log(f"Loading: {filepath}...")
             self.session.observe(filepath)
-            self.session.obs.select(pol="I")
+            # Sélection initiale : on tente "I", on récupère la pol réellement active
+            actual_pol = self.session.obs.select(pol="I")
 
             self.data = self.session.obs.get_data()
 
+            # Mettre le combo sur la pol réelle (pas forcément "I")
             self.control_panel.combo_pol.blockSignals(True)
-            self.control_panel.combo_pol.setCurrentIndex(0)
+            self.control_panel.combo_pol.setCurrentText(actual_pol)
             self.control_panel.combo_pol.blockSignals(False)
 
+            # Configurer le sélecteur d'IFs (obs.nif évite de scanner data['if_no'])
+            n_ifs = self.session.obs.nif
+            if n_ifs:
+                self.control_panel.set_if_range(n_ifs)
+
             self._reload_all_plots()
+            self.header_widget.refresh()
 
             n = len(self.data['u'])
             n_sub = len(set(self.data.get('subarray', [])))
             n_ant = len(set(list(self.data.get('tel_a', [])) + list(self.data.get('tel_b', []))))
             self.log_console.log(
-                f"Loaded {n:,} visibilities — {n_ant} antennas, {n_sub} subarray(s) — Stokes I."
+                f"Loaded {n:,} visibilities — {n_ant} antennas, {n_sub} subarray(s), "
+                f"{n_ifs} IF(s) — {actual_pol}."
             )
             self.setWindowTitle(f"DIFMAP Modern - {filepath.split('/')[-1]}")
 
@@ -117,32 +130,37 @@ class MainWindow(QMainWindow):
         """
         Premier chargement : crée UVPlotWidget et l'insère dans le bon onglet.
         Rechargements suivants : appelle reload_data() sur le widget existant.
+
+        _bulk_reloading bloque _sync_all_plots pendant que les deux widgets
+        sont mis à jour, évitant les IndexError de masque_flagges.
         """
-        current_idx = self.tabs.currentIndex()
-        if current_idx not in (TabIndex.UV, TabIndex.RADPLOT):
-            current_idx = TabIndex.UV
+        self._bulk_reloading = True
+        try:
+            current_idx = self.tabs.currentIndex()
+            if current_idx not in (TabIndex.UV, TabIndex.RADPLOT):
+                current_idx = TabIndex.UV
 
-        if self.plot_widget is None:
-            # Premier chargement : créer le widget UV et remplacer le placeholder
-            self.plot_widget = UVPlotWidget(
-                observation=self.session.obs,
+            if self.plot_widget is None:
+                self.plot_widget = UVPlotWidget(
+                    observation=self.session.obs,
+                    data=self.data,
+                    save_callback=self._handle_save_dialog,
+                    sync_callback=self._sync_all_plots,
+                )
+                self.tabs.removeTab(TabIndex.UV)
+                self.tabs.insertTab(TabIndex.UV, self.plot_widget, "UV Coverage")
+            else:
+                self.plot_widget.reload_data(self.data, self.session.obs)
+
+            self.radplot_widget.plot_data(
                 data=self.data,
-                save_callback=self._handle_save_dialog,
-                sync_callback=self._sync_all_plots,
+                observation=self.session.obs,
             )
-            self.tabs.removeTab(TabIndex.UV)
-            self.tabs.insertTab(TabIndex.UV, self.plot_widget, "UV Coverage")
-        else:
-            self.plot_widget.reload_data(self.data, self.session.obs)
 
-        # Radplot : plot_data() gère le cas d'un rechargement correctement
-        self.radplot_widget.plot_data(
-            data=self.data,
-            observation=self.session.obs,
-        )
-
-        self.tabs.setCurrentIndex(current_idx)
-        self._on_tab_changed(current_idx)
+            self.tabs.setCurrentIndex(current_idx)
+            self._on_tab_changed(current_idx)
+        finally:
+            self._bulk_reloading = False
 
     # =========================================================
     # CÂBLAGE SIGNAUX
@@ -254,6 +272,7 @@ class MainWindow(QMainWindow):
 
         self.control_panel.btn_compute.clicked.connect(self._compute_dirty_map)
         self.control_panel.combo_pol.currentTextChanged.connect(self._change_polarization)
+        self.control_panel.ifs_range_changed.connect(self._on_ifs_range_changed)
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.control_panel.combo_rad_mode.currentIndexChanged.connect(
             lambda idx: self.radplot_widget.set_display_mode(idx)
@@ -312,10 +331,15 @@ class MainWindow(QMainWindow):
         is_map     = (index == TabIndex.MAP)
         is_radplot = (index == TabIndex.RADPLOT)
         is_uv      = (index == TabIndex.UV)
+        is_header  = (index == TabIndex.HEADER)
 
-        ctrl.group_data_selection.setEnabled(has_data)
-        ctrl.group_telescope.setVisible(has_data and not is_map)
-        ctrl.group_display.setVisible(has_data and not is_map)
+        # Rafraîchissement automatique quand on bascule sur l'onglet Header
+        if is_header:
+            self.header_widget.refresh()
+
+        ctrl.group_data_selection.setEnabled(has_data and not is_header)
+        ctrl.group_telescope.setVisible(has_data and not is_map and not is_header)
+        ctrl.group_display.setVisible(has_data and not is_map and not is_header)
         ctrl.group_imaging.setVisible(has_data and is_map)
 
         if hasattr(ctrl, 'lbl_rad_mode'):
@@ -554,24 +578,50 @@ class MainWindow(QMainWindow):
         """
         try:
             pol = "I" if "Stokes I" in pol_text else pol_text.split(" ")[0]
-            self.session.obs.select(pol=pol)
+            actual_pol = self.session.obs.select(pol=pol)
 
-            # M6 : get_data() remplace difmap_native.get_uv_data()
+            # Si fallback, resynchroniser le combo sans déclencher de signal
+            if actual_pol != pol:
+                self.control_panel.combo_pol.blockSignals(True)
+                self.control_panel.combo_pol.setCurrentText(actual_pol)
+                self.control_panel.combo_pol.blockSignals(False)
+
             self.data = self.session.obs.get_data()
 
             if not self.data or len(self.data.get('u', [])) == 0:
-                self._log_event(f"No data for {pol}", level='warning')
+                self._log_event(f"No data for {actual_pol}", level='warning')
                 return
 
+            # ob_select remet g_if_beg=0/g_if_end=-1 → resync spinners
+            self.control_panel.set_if_range(self.session.obs.nif)
+
             base_title = self.windowTitle().split(" [")[0]
-            self.setWindowTitle(f"{base_title} [{pol}]")
+            self.setWindowTitle(f"{base_title} [{actual_pol}]")
 
             if self.plot_widget:
                 self._reload_all_plots()
 
-            self._log_event(f"Switched to {pol}", level='success')
+            self._log_event(f"Switched to {actual_pol}", level='success')
         except Exception as e:
             self._log_event(f"Fail: {e}", level='error')
+
+    def _on_ifs_range_changed(self, if_beg: int, if_end: int) -> None:
+        """Applique la plage d'IFs via obs.set_if_range() (pas d'ob_select côté C)."""
+        if self.data is None or not self.plot_widget:
+            return
+        try:
+            # set_if_range : juste met à jour g_if_beg/g_if_end — zéro I/O disque
+            self.session.obs.set_if_range(if_beg, if_end)
+            self.data = self.session.obs.get_data()
+            self._reload_all_plots()
+            n = len(self.data.get('u', []))
+            n_tot = self.control_panel._n_ifs_total
+            end_str = str(if_end) if if_end != 0 else f"{n_tot} (all)"
+            self.log_console.log(
+                f"IF range: {if_beg} → {end_str} — {n:,} visibilities."
+            )
+        except Exception as e:
+            self.log_console.log(f"IF selection error: {e}")
 
     def _toggle_terminal(self):
         """Bascule la visibilité du panneau de logs (console terminale droite)."""
@@ -626,13 +676,11 @@ class MainWindow(QMainWindow):
         """
         Synchronise l'UI depuis l'état de l'éditeur.
 
-        C5 — Le flux est strictement unidirectionnel : éditeur → MainWindow → UI.
-        blockSignals() empêche que la mise à jour des checkboxes
-        déclenche à nouveau les callbacks vers l'éditeur.
-
-        C6 — La clé '_refresh_layout' déclenche le redécoupage des axes
-        du Radplot (remplace la remontée d'arbre Qt dans rad_editor.py).
+        Ignoré pendant _bulk_reloading (les deux widgets ne sont pas encore
+        tous les deux à jour — évite les IndexError de masque_flagges).
         """
+        if self._bulk_reloading:
+            return
         if state_dict:
             ctrl = self.control_panel
 

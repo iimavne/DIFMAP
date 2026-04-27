@@ -16,6 +16,21 @@ def select(pol: str, if_beg: int, if_end: int, ch_beg: int, ch_end: int) -> int:
     cdef bytes pol_bytes = pol.encode('utf-8')
     return cdifmap.native_select(pol_bytes, if_beg, if_end, ch_beg, ch_end)
 
+def set_if_range(if_beg: int, if_end: int) -> int:
+    """Met à jour la plage d'IFs sans relire le fichier scratch (pas d'ob_select)."""
+    return cdifmap.native_set_if_range(if_beg, if_end)
+
+def get_nif() -> int:
+    """Retourne le nombre total d'IFs dans l'observation courante."""
+    return cdifmap.native_get_nif()
+
+def get_header_text() -> str:
+    """Retourne le header complet de l'observation (équivalent commande 'header')."""
+    cdef const char *raw = cdifmap.native_get_header_text()
+    if raw == NULL:
+        return ""
+    return raw.decode('utf-8', errors='replace')
+
 def nsub() -> int:
     return cdifmap.native_nsub()
 

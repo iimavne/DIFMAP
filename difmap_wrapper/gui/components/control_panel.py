@@ -2,7 +2,7 @@
 from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QComboBox, QLineEdit, QCheckBox,
                              QScrollArea, QSlider, QPushButton, QMessageBox,
-                             QColorDialog)
+                             QColorDialog, QSpinBox)
 from PyQt6.QtGui import QColor
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtCore import Qt
@@ -87,6 +87,44 @@ QSlider::handle:horizontal:hover {{ background: {D.PRIMARY_HOVER}; }}
 QScrollArea {{ border: none; background-color: {D.ASTRAL_BG}; }}
 """
 
+class _IFRangeBar(QWidget):
+    """Barre horizontale indiquant visuellement la plage d'IFs sélectionnée."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(10)
+        self._beg = 1
+        self._end = 1
+        self._total = 1
+
+    def update_range(self, beg: int, end: int, total: int):
+        self._beg   = beg
+        self._end   = end
+        self._total = max(1, total)
+        self.update()
+
+    def paintEvent(self, event):
+        from PyQt6.QtGui import QPainter, QColor, QPen
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+
+        # Fond
+        p.fillRect(0, 0, w, h, QColor(D.ASTRAL_DEEP))
+
+        # Zone sélectionnée
+        x1 = int((self._beg - 1) / self._total * w)
+        x2 = int(self._end        / self._total * w)
+        p.fillRect(x1, 1, max(2, x2 - x1), h - 2, QColor(D.ASTRAL_ACCENT))
+
+        # Bordure
+        pen = QPen(QColor(D.ASTRAL_BORDER))
+        pen.setWidth(1)
+        p.setPen(pen)
+        p.drawRect(0, 0, w - 1, h - 1)
+        p.end()
+
+
 class CollapsibleSection(QWidget):
     """
     Section accordéon déroulante remplaçant le ``QGroupBox`` standard.
@@ -165,6 +203,7 @@ class ControlPanel(QDockWidget):
     """Panneau de contrôle gauche de DIFMAP Modern."""
 
     data_color_changed = pyqtSignal(str)
+    ifs_range_changed  = pyqtSignal(int, int)   # (if_beg, if_end) — 1-indexed, 0=last
 
     def __init__(self, session, title="Controls", parent=None):
         """
@@ -207,19 +246,176 @@ class ControlPanel(QDockWidget):
         self.setWidget(scroll)
 
     def _build_data_selection(self):
-        """Construit la section « 1. DATA SELECTION » avec le sélecteur de polarisation."""
+        """Construit la section « 1. DATA SELECTION » avec polarisation et plage d'IFs."""
         self.group_data_selection = CollapsibleSection("1. DATA SELECTION")
         layout = self.group_data_selection.content_layout
+
         layout.addWidget(QLabel("Polarization:"))
-        
-        # On utilise bien combo_pol partout pour que MainWindow le trouve
-        self.combo_pol = QComboBox() 
+        self.combo_pol = QComboBox()
         self.combo_pol.addItems(["I", "RR", "LL", "RL", "LR"])
         layout.addWidget(self.combo_pol)
-        
+
+        # --- Séparateur ---
+        sep = QWidget()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 2px 0;")
+        layout.addWidget(sep)
+
+        # --- Sélecteur de plage d'IFs ---
+        spin_style = f"""
+            QSpinBox {{
+                background-color: {D.ASTRAL_SURFACE};
+                border: 1px solid {D.ASTRAL_BORDER};
+                border-radius: {D.RADIUS_SM};
+                padding: 2px 4px;
+                color: {D.ASTRAL_TEXT};
+                font-size: {D.FONT_SIZE_BASE};
+                min-height: 20px;
+            }}
+            QSpinBox:focus {{ border: 1px solid {D.ASTRAL_ACCENT}; }}
+            QSpinBox::up-button, QSpinBox::down-button {{
+                width: 14px;
+                background-color: {D.ASTRAL_DEEP};
+                border: none;
+            }}
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {{
+                background-color: {D.ASTRAL_HOVER};
+            }}
+        """
+        btn_all_style = f"""
+            QPushButton {{
+                background-color: {D.ASTRAL_SURFACE};
+                border: 1px solid {D.ASTRAL_BORDER};
+                border-radius: 3px;
+                color: {D.ASTRAL_DIM};
+                font-size: 9px;
+                padding: 2px 6px;
+            }}
+            QPushButton:hover {{ background-color: {D.ASTRAL_HOVER}; color: {D.ASTRAL_TEXT}; }}
+        """
+
+        # Ligne "IFs:   [1] → [4]   [All]"
+        h_ifs = QHBoxLayout()
+        h_ifs.setSpacing(4)
+        h_ifs.addWidget(QLabel("IFs:"))
+
+        self.spin_if_start = QSpinBox()
+        self.spin_if_start.setMinimum(1)
+        self.spin_if_start.setMaximum(1)
+        self.spin_if_start.setValue(1)
+        self.spin_if_start.setEnabled(False)
+        self.spin_if_start.setStyleSheet(spin_style)
+        self.spin_if_start.setFixedWidth(46)
+        self.spin_if_start.setToolTip("Premier IF (1 = début)")
+
+        lbl_arrow = QLabel("→")
+        lbl_arrow.setStyleSheet(f"color: {D.ASTRAL_MUTED}; font-size: 11px;")
+        lbl_arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.spin_if_end = QSpinBox()
+        self.spin_if_end.setMinimum(1)
+        self.spin_if_end.setMaximum(1)
+        self.spin_if_end.setValue(1)
+        self.spin_if_end.setEnabled(False)
+        self.spin_if_end.setStyleSheet(spin_style)
+        self.spin_if_end.setFixedWidth(46)
+        self.spin_if_end.setToolTip("Dernier IF")
+
+        self._btn_ifs_all = QPushButton("All")
+        self._btn_ifs_all.setFixedWidth(36)
+        self._btn_ifs_all.setFixedHeight(22)
+        self._btn_ifs_all.setEnabled(False)
+        self._btn_ifs_all.setStyleSheet(btn_all_style)
+        self._btn_ifs_all.setToolTip("Sélectionner tous les IFs")
+
+        h_ifs.addWidget(self.spin_if_start)
+        h_ifs.addWidget(lbl_arrow)
+        h_ifs.addWidget(self.spin_if_end)
+        h_ifs.addStretch()
+        h_ifs.addWidget(self._btn_ifs_all)
+        layout.addLayout(h_ifs)
+
+        # Barre de progression visuelle indiquant la plage sélectionnée
+        self._if_range_bar = _IFRangeBar()
+        layout.addWidget(self._if_range_bar)
+
+        self._n_ifs_total = 1
+
+        self.spin_if_start.valueChanged.connect(self._on_if_spin_changed)
+        self.spin_if_end  .valueChanged.connect(self._on_if_spin_changed)
+        self._btn_ifs_all .clicked.connect(self._select_all_ifs)
+
         self.main_layout.addWidget(self.group_data_selection)
-        
-        self.combo_pol.currentTextChanged.connect(self.on_polarization_changed)
+        # NB : combo_pol est géré exclusivement par MainWindow._change_polarization
+        # (pas de double connexion ici pour éviter les doubles appels obs.select)
+
+    def set_if_range(self, n_ifs: int) -> None:
+        """
+        Configure le sélecteur pour *n_ifs* IFs disponibles et remet à all.
+
+        Parameters
+        ----------
+        n_ifs : int
+            Nombre total d'IFs dans l'observation (≥ 1).
+        """
+        self._n_ifs_total = max(1, n_ifs)
+        for spin in (self.spin_if_start, self.spin_if_end):
+            spin.blockSignals(True)
+            spin.setMinimum(1)
+            spin.setMaximum(self._n_ifs_total)
+            spin.blockSignals(False)
+        self.spin_if_start.blockSignals(True)
+        self.spin_if_start.setValue(1)
+        self.spin_if_start.blockSignals(False)
+        self.spin_if_end.blockSignals(True)
+        self.spin_if_end.setValue(self._n_ifs_total)
+        self.spin_if_end.blockSignals(False)
+
+        for w in (self.spin_if_start, self.spin_if_end, self._btn_ifs_all):
+            w.setEnabled(True)
+
+        self._if_range_bar.update_range(1, self._n_ifs_total, self._n_ifs_total)
+
+    def get_if_range(self) -> tuple[int, int]:
+        """Retourne ``(if_beg, if_end)`` prêt pour ``obs.select(ifs=...)``.
+
+        Retourne ``(1, 0)`` si tout est sélectionné (convention difmap = all).
+        """
+        beg = self.spin_if_start.value()
+        end = self.spin_if_end.value()
+        if beg == 1 and end == self._n_ifs_total:
+            return (1, 0)
+        return (beg, end)
+
+    def _select_all_ifs(self):
+        self.spin_if_start.blockSignals(True)
+        self.spin_if_end  .blockSignals(True)
+        self.spin_if_start.setValue(1)
+        self.spin_if_end  .setValue(self._n_ifs_total)
+        self.spin_if_start.blockSignals(False)
+        self.spin_if_end  .blockSignals(False)
+        self._if_range_bar.update_range(1, self._n_ifs_total, self._n_ifs_total)
+        self.ifs_range_changed.emit(1, 0)
+
+    def _on_if_spin_changed(self):
+        beg = self.spin_if_start.value()
+        end = self.spin_if_end.value()
+        # Contrainte : beg ≤ end
+        if beg > end:
+            sender = self.sender()
+            if sender is self.spin_if_start:
+                self.spin_if_end.blockSignals(True)
+                self.spin_if_end.setValue(beg)
+                self.spin_if_end.blockSignals(False)
+                end = beg
+            else:
+                self.spin_if_start.blockSignals(True)
+                self.spin_if_start.setValue(end)
+                self.spin_if_start.blockSignals(False)
+                beg = end
+        self._if_range_bar.update_range(beg, end, self._n_ifs_total)
+        if_beg, if_end = (1, 0) if (beg == 1 and end == self._n_ifs_total) else (beg, end)
+        self.ifs_range_changed.emit(if_beg, if_end)
         
     def on_polarization_changed(self, requested_pol: str):
         """

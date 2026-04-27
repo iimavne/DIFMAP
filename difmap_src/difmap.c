@@ -7802,6 +7802,10 @@ const char* get_native_telescope_name(int isub, int itel) {
     return sub->tel[itel].name;
 }
 
+/* Plage d'IFs sélectionnée (0-indexed, g_if_end=-1 = dernier IF disponible) */
+static int g_if_beg = 0;
+static int g_if_end = -1;
+
 int native_observe(const char* filepath) {
     obs_end();
     vlbob = new_Observation((char*)filepath, 0.0, 0, 1, NULL, NO_POL, fix_visibility_weights);
@@ -7809,6 +7813,7 @@ int native_observe(const char* filepath) {
     vlbspec = new_Specattr(vlbob);
     if(!vlbspec) { obs_end(); return -1; }
     invpar = invdef; respar = resdef; slfpar = slfdef;
+    g_if_beg = 0; g_if_end = -1;  /* reset : tous les IFs visibles */
     return 0;
 }
 
@@ -7822,8 +7827,155 @@ int native_select(const char* pol, int if_beg, int if_end, int ch_beg, int ch_en
     Stokes stokes = Stokes_id((char*)pol);
     if (stokes == NO_POL) return -1;
     if (vlbmap) vlbmap->domap = vlbmap->dobeam = MAP_IS_STALE;
-    if (ob_select(vlbob, 0, NULL, stokes)) return -1; 
+    /*
+     * Changement de polarisation = re-sélection complète.
+     * Les paramètres IF/channel sont acceptés mais on remet la plage IF
+     * aux valeurs demandées (1-indexed → 0-indexed, 0 = dernier).
+     */
+    g_if_beg = (if_beg > 0) ? if_beg - 1 : 0;
+    g_if_end = (if_end > 0) ? if_end - 1 : -1;
+    if (ob_select(vlbob, 0, NULL, stokes)) return -1;
     return 0;
+}
+
+/*
+ * Met à jour uniquement la plage d'IFs visible sans relire le fichier scratch.
+ * À utiliser quand seul le filtre IF change (pas la polarisation).
+ * Beaucoup plus rapide que native_select : pas d'ob_select(), pas d'I/O disque.
+ */
+int native_set_if_range(int if_beg, int if_end) {
+    if (vlbob == NULL) return -1;
+    g_if_beg = (if_beg > 0) ? if_beg - 1 : 0;
+    g_if_end = (if_end > 0) ? if_end - 1 : -1;
+    return 0;
+}
+
+/* Retourne le nombre total d'IFs dans l'observation courante. */
+int native_get_nif(void) {
+    if (vlbob == NULL) return 0;
+    return vlbob->nif;
+}
+
+/* ------------------------------------------------------------------ */
+/* Header complet (équivalent de la commande 'header' de difmap)       */
+/* Ecrit dans un buffer statique, retourne un pointeur sur ce buffer.  */
+/* ------------------------------------------------------------------ */
+static char hdr_buf[65536];
+
+const char *native_get_header_text(void) {
+    char *p = hdr_buf;
+    int   rem = (int)sizeof(hdr_buf);
+    int   n;
+    char  ctmpa[32], ctmpb[32];
+    long  jd;
+    double jdfrc, je;
+    long  scansum = 0L;
+    int   i, isub;
+
+#define HDR_APPEND(...) \
+    do { n = snprintf(p, (size_t)rem, __VA_ARGS__); \
+         if (n > 0 && n < rem) { p += n; rem -= n; } } while(0)
+
+    if (vlbob == NULL) {
+        snprintf(hdr_buf, sizeof(hdr_buf), "(no observation loaded)\n");
+        return hdr_buf;
+    }
+
+    Obhead *misc = &vlbob->misc;
+
+    /* ---- Mots-clés FITS ---- */
+    HDR_APPEND("UV FITS miscellaneous header keyword values:\n");
+    HDR_APPEND("  OBSERVER = \"%s\"\n", misc->observer ? misc->observer : "(N/A)");
+    HDR_APPEND("  DATE-OBS = \"%s\"\n", misc->date_obs ? misc->date_obs : "(N/A)");
+    HDR_APPEND("  ORIGIN   = \"%s\"\n", misc->origin   ? misc->origin   : "(N/A)");
+    HDR_APPEND("  TELESCOP = \"%s\"\n", misc->telescop ? misc->telescop : "(N/A)");
+    HDR_APPEND("  INSTRUME = \"%s\"\n", misc->instrume ? misc->instrume : "(N/A)");
+    HDR_APPEND("  EQUINOX  = %.2f\n",   misc->equinox);
+
+    /* ---- Sous-réseaux ---- */
+    Subarray *sub = vlbob->sub;
+    for (isub = 0; isub < vlbob->nsub; isub++, sub++) {
+        HDR_APPEND("\nSub-array %d contains:\n", isub + 1);
+        HDR_APPEND("  %3d baselines   %2d stations\n", sub->nbase, sub->nstat);
+        HDR_APPEND("  %3d integrations   %2d scans\n",
+                   sub->ntime, nscans(sub, sub->scangap));
+        HDR_APPEND("\n  Station  Name               X (m)            Y (m)             Z (m)\n");
+        for (i = 0; i < sub->nstat; i++) {
+            Station *tel = sub->tel + i;
+            if (tel->type == GROUND) {
+                HDR_APPEND("    %2d     %-10.10s  %15e  %15e  %15e\n",
+                           tel->antno, tel->name,
+                           tel->geo.gnd.x, tel->geo.gnd.y, tel->geo.gnd.z);
+            }
+        }
+        scansum += timescans(sub, sub->scangap);
+    }
+
+    /* ---- Table des IFs ---- */
+    HDR_APPEND("\nThere %s %d IF%s, and a total of %d channel%s:\n",
+               vlbob->nif > 1 ? "are" : "is", vlbob->nif,
+               vlbob->nif > 1 ? "s"   : "",
+               vlbob->nctotal, vlbob->nctotal > 1 ? "s" : "");
+    HDR_APPEND("\n  IF  Chan.orig    Freq (Hz)    dFreq (Hz)  Nchannels  Bandwidth (Hz)\n");
+    HDR_APPEND("  -----------------------------------------------------------------\n");
+    for (i = 0; i < vlbob->nif; i++) {
+        If *ifp = &vlbob->ifs[i];
+        HDR_APPEND("  %2d  %7d  %12g  %12g    %7d  %12g\n",
+                   i + 1, ifp->coff + 1, ifp->freq, ifp->df,
+                   vlbob->nchan, ifp->bw);
+    }
+
+    /* ---- Source ---- */
+    HDR_APPEND("\nSource parameters:\n");
+    HDR_APPEND("  Source : %s\n", vlbob->source.name);
+    HDR_APPEND("  RA     = %s (%.1f)   %s (apparent)\n",
+               sradhms(vlbob->source.ra,     3, 0, ctmpa), vlbob->source.epoch,
+               sradhms(vlbob->source.app_ra, 3, 0, ctmpb));
+    HDR_APPEND("  DEC    = %s   %s\n",
+               sraddms(vlbob->source.dec,     3, 0, ctmpa),
+               sraddms(vlbob->source.app_dec, 3, 0, ctmpb));
+    if (vlbob->source.have_obs) {
+        HDR_APPEND("\n  OBSRA  = %s (%.1f)\n",
+                   sradhms(vlbob->source.obsra, 3, 0, ctmpa), vlbob->source.epoch);
+        HDR_APPEND("  OBSDEC = %s\n",
+                   sraddms(vlbob->source.obsdec, 3, 0, ctmpa));
+    }
+
+    /* ---- Caractéristiques des données ---- */
+    HDR_APPEND("\nData characteristics:\n");
+    HDR_APPEND("  Recorded units : %s\n", misc->bunit ? misc->bunit : "Jy");
+    HDR_APPEND("  Polarizations  :");
+    for (i = 0; i < vlbob->npol; i++)
+        HDR_APPEND(" %s", Stokes_name(vlbob->pols[i]));
+    HDR_APPEND("\n");
+    HDR_APPEND("  Scale factor on FITS weights : %g\n", vlbob->geom.wtscale);
+    HDR_APPEND("  UVW rotation : %.4g deg clockwise\n",
+               vlbob->geom.uvangle * rtod);
+
+    /* ---- Résumé des dimensions ---- */
+    HDR_APPEND("\nSummary of overall dimensions:\n");
+    HDR_APPEND("  %d sub-array(s), %d IF(s), %d channel(s), %d integration(s)\n",
+               vlbob->nsub, vlbob->nif, vlbob->nctotal, vlbob->nrec);
+    HDR_APPEND("  %d polarization(s), up to %d baselines per sub-array\n",
+               vlbob->npol, vlbob->nbmax);
+
+    /* ---- Paramètres temporels ---- */
+    HDR_APPEND("\nTime related parameters:\n");
+    write_ut(vlbob->date.ut, sizeof(ctmpa), ctmpa);
+    HDR_APPEND("  Reference date : %d day %s  (%s)\n",
+               vlbob->date.year, ctmpa,
+               sutdate(vlbob->date.year, vlbob->date.ut, ctmpb));
+    julday(vlbob->date.ut, vlbob->date.year, &jd, &jdfrc, &je);
+    HDR_APPEND("  Julian Date    : %ld.%02d  Epoch J%.3f\n",
+               jd, (int)(jdfrc * 100.0), je);
+    HDR_APPEND("  GAST at ref date : %s\n",
+               sradhms(vlbob->date.app_st, 3, 0, ctmpa));
+    HDR_APPEND("  Coherent integration   : %.1f s\n", vlbob->date.cav_tim);
+    HDR_APPEND("  Incoherent integration : %.1f s\n", vlbob->date.iav_tim);
+    HDR_APPEND("  Sum of scan durations  : %ld s\n", scansum);
+
+#undef HDR_APPEND
+    return hdr_buf;
 }
 
 int native_uvweight(float uvbin, float errpow, int dorad) {
@@ -7960,9 +8112,12 @@ float* get_native_mod_phs(void) { return flat_modphs; }
 int l_extract_uv(void) {
     int isub, itime, ibase, cif;
     int count = 0;
+    int eff_if_end;  /* borne haute effective (0-indexed) */
 
     if(vlbob == NULL) return -1;
-    
+
+    eff_if_end = (g_if_end >= 0) ? g_if_end : vlbob->nif - 1;
+
     if(vlbob->model->ncmp + vlbob->newmod->ncmp + vlbob->cmodel->ncmp + vlbob->cnewmod->ncmp > 0) {
         Moddif md;
         /* La fonction moddif calcule et injecte modamp et modphs dans la RAM */
@@ -7971,7 +8126,8 @@ int l_extract_uv(void) {
 
     /* 1. COMPTAGE */
     for(cif=0; (cif=nextIF(vlbob, cif, 1, 1)) >= 0; cif++) {
-        if(getIF(vlbob, cif)) continue; 
+        if(cif < g_if_beg || cif > eff_if_end) continue;
+        if(getIF(vlbob, cif)) continue;
         for(isub=0; isub < vlbob->nsub; isub++) {
             Subarray *sub = &vlbob->sub[isub];
             for(itime=0; itime < sub->ntime; itime++) {
@@ -8012,6 +8168,7 @@ int l_extract_uv(void) {
     /* 3. REMPLISSAGE */
     int index = 0;
     for(cif=0; (cif=nextIF(vlbob, cif, 1, 1)) >= 0; cif++) {
+        if(cif < g_if_beg || cif > eff_if_end) continue;
         getIF(vlbob, cif);
         double if_freq = vlbob->ifs[cif].freq; 
 

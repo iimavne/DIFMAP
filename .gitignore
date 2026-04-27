@@ -54,7 +54,7 @@ scrfil_src/scrfile*
 *.md
 !README.md
 !CHANGELOG.md
-
+graphify-out/
 # ==========================================
 # Fichiers de données et sorties VLBI/Difmap
 # ==========================================
