@@ -60,17 +60,60 @@ class BasePlotEditor:
 
         self.flag_all_channels = False
 
+        def _header_station_names() -> list[str]:
+            try:
+                header_text = observation.header()
+            except Exception:
+                return []
+            pattern = re.compile(
+                r"^\s*\d+\s+([A-Za-z0-9_+\-]+)\s+[-+0-9.eE]+\s+[-+0-9.eE]+\s+[-+0-9.eE]+\s*$"
+            )
+            names = []
+            for line in header_text.splitlines():
+                match = pattern.match(line)
+                if match:
+                    names.append(match.group(1).strip())
+            return names
+
         # Navigation antennes / sous-réseaux
-        # antennes_par_subarray : seuls les subarrays ayant des données
+        # Construire noms_antennes depuis le moteur C (TOUTES les antennes, y compris sans données)
+        # get_telescope_name(isub, itel) retourne "INCONNU" quand itel >= sub->nstat → sentinel
+        self.noms_antennes = {}
+        
+        # On ne demande au C que les antennes dont on est 100% sûr qu'elles
+        # existent en RAM, en respectant leur sous-réseau (subarray) d'appartenance.
+        if len(data["tel_a"]) > 0:
+            for sub in np.unique(data["subarray"]):
+                # data["subarray"] est 1-indexé dans les tableaux Python.
+                c_isub = max(0, int(sub) - 1)
+
+                # On isole les antennes de CE subarray spécifique
+                mask = data["subarray"] == sub
+                antennas = np.unique(np.concatenate([data["tel_a"][mask], data["tel_b"][mask]]))
+
+                for itel in antennas:
+                    c_itel = int(itel)
+                    try:
+                        name = observation._native.get_telescope_name(c_isub, c_itel)
+                        if name and name != "INCONNU":
+                            self.noms_antennes[c_itel] = name.strip()
+                    except Exception:
+                        pass
+                
+        # antennes_par_subarray : seuls les subarrays ayant des données, triés alphabétiquement
         self.antennes_par_subarray: dict = {}
         for sub in np.unique(data["subarray"]):
             masque = data["subarray"] == sub
-            tel_ids = np.concatenate([data["tel_a"][masque], data["tel_b"][masque]])
-            # Conserver l'ordre d'apparition des télescopes dans les données,
-            # pour que la navigation n/p corresponde mieux au comportement de Difmap.
-            _, indices = np.unique(tel_ids, return_index=True)
-            order = np.argsort(indices)
-            self.antennes_par_subarray[sub] = list(np.unique(tel_ids)[order])
+            tel_ids = np.unique(np.concatenate([data["tel_a"][masque], data["tel_b"][masque]]))
+            self.antennes_par_subarray[sub] = sorted(
+                tel_ids.tolist(),
+                key=lambda aid: self.noms_antennes.get(aid, str(aid))
+            )
+
+        # Liste globale du focus : noms de stations du fichier complet, y compris
+        # celles absentes de la selection courante de visibilites.
+        self.toutes_antennes_sorted = sorted(set(_header_station_names()) | set(self.noms_antennes.values()))
+
         # liste_subarrays : TOUS les subarrays (y compris vides) via obs.nsub()
         try:
             n_sub = observation.nsub()
@@ -83,8 +126,6 @@ class BasePlotEditor:
         # Nom de l'antenne courante — permet de retrouver la même antenne
         # dans un autre subarray (les index peuvent différer)
         self._nom_antenne_courante: str = ""
-
-        self._refresh_telescope_names()
 
         # État souris / vue
         self.mode = None
@@ -231,15 +272,11 @@ class BasePlotEditor:
         """
         Recharge le cache des noms de télescopes depuis le moteur C.
 
+        Scanne toutes les stations du subarray 0 jusqu'au sentinel "INCONNU"
+        pour inclure même les antennes sans visibilités dans le jeu de données.
         Construit ``self.noms_antennes`` (dict ``id → nom``).
-        Appelé à l'initialisation et après tout changement de donnée
         """
-        all_ids = np.unique(np.concatenate([self.data["tel_a"], self.data["tel_b"]]))
-        self.noms_antennes = {
-            num: self.obs._native.get_telescope_name(0, num)
-            for num in all_ids
-        }
-
+        
     def _build_focus_colors(self) -> tuple[np.ndarray, object]:
         """
         Construit le tableau de couleurs selon le focus antenne actuel.
@@ -256,11 +293,10 @@ class BasePlotEditor:
         couleurs = np.full(len(self.data["u"]), self.base_color, dtype=object)
         sub_actif = self.liste_subarrays[self.index_subarray_actuel]
 
-        # Subarray vide ou antenne sélectionnée absente → pas de highlight
-        if sub_actif in self.antennes_par_subarray and self.index_antenne_actuelle >= 0:
-            ants = self.antennes_par_subarray[sub_actif]
-            if self.index_antenne_actuelle < len(ants):
-                ant_cible = ants[self.index_antenne_actuelle]
+        if self.index_antenne_actuelle >= 0 and self.index_antenne_actuelle < len(self.toutes_antennes_sorted):
+            nom_cible = self.toutes_antennes_sorted[self.index_antenne_actuelle]
+            ant_cible = self._find_local_antenna_id(sub_actif, nom_cible)
+            if ant_cible is not None:
                 m = (
                     (self.data["subarray"] == sub_actif)
                     & ((self.data["tel_a"] == ant_cible) | (self.data["tel_b"] == ant_cible))
@@ -268,6 +304,14 @@ class BasePlotEditor:
                 couleurs[m] = DesignSystem.PLOT_FOCUS
 
         return couleurs, sub_actif
+
+    def _find_local_antenna_id(self, sub_id: int, antenna_name: str) -> int | None:
+        """Retourne l'ID local de l'antenne dans ``sub_id`` a partir de son nom."""
+        target = antenna_name.upper()
+        for ant_id in self.antennes_par_subarray.get(sub_id, []):
+            if self.noms_antennes.get(ant_id, "").upper() == target:
+                return ant_id
+        return None
 
     # =========================================================
     # LOGIQUE SOURIS
@@ -836,52 +880,50 @@ class BasePlotEditor:
 
     def action_next_telescope(self, event=None):
         """
-        Passe au télescope suivant dans le sous-réseau actif. Touche ``n``.
+        Passe à l'antenne suivante dans la liste globale triée alphabétiquement. Touche ``n``.
 
-        Boucle dans les antennes du sous-réseau courant en gardant le numéro
-        de sous-réseau constant.  Affiche même si vide (log si aucune visibilité).
-        Sur le premier appui après reset, démarre sur la première antenne.
+        Boucle sur TOUTES les antennes connues (pas seulement celles avec des visibilités
+        dans le subarray courant). Affiche "[pas de visibilités]" si l'antenne est absente
+        du subarray. Sur le premier appui après reset, démarre sur la première antenne.
 
         Parameters
         ----------
         event : optional
             Ignoré.
         """
-        sub_id = self.liste_subarrays[self.index_subarray_actuel]
-        ants = self.antennes_par_subarray.get(sub_id, [])
-        if not ants:
-            logger.info("Subarray %s : aucune antenne disponible.", sub_id)
+        n = len(self.toutes_antennes_sorted)
+        if n == 0:
+            logger.info("Aucune antenne disponible.")
             return
         if self.index_antenne_actuelle < 0 or not self._nom_antenne_courante:
             self.index_antenne_actuelle = 0
         else:
-            self.index_antenne_actuelle = (self.index_antenne_actuelle + 1) % len(ants)
-        self._nom_antenne_courante = self.noms_antennes.get(ants[self.index_antenne_actuelle], "")
+            self.index_antenne_actuelle = (self.index_antenne_actuelle + 1) % n
+        self._nom_antenne_courante = self.toutes_antennes_sorted[self.index_antenne_actuelle]
         self._update_colors()
 
     def action_prev_telescope(self, event=None):
         """
-        Revient au télescope précédent dans le sous-réseau actif. Touche ``p``.
+        Revient à l'antenne précédente dans la liste globale triée alphabétiquement. Touche ``p``.
 
-        Boucle dans les antennes du sous-réseau courant en gardant le numéro
-        de sous-réseau constant.  Affiche même si vide (log si aucune visibilité).
-        Sur le premier appui après reset, démarre sur la première antenne.
+        Boucle sur TOUTES les antennes connues (pas seulement celles avec des visibilités
+        dans le subarray courant). Affiche "[pas de visibilités]" si l'antenne est absente
+        du subarray. Sur le premier appui après reset, démarre sur la première antenne.
 
         Parameters
         ----------
         event : optional
             Ignoré.
         """
-        sub_id = self.liste_subarrays[self.index_subarray_actuel]
-        ants = self.antennes_par_subarray.get(sub_id, [])
-        if not ants:
-            logger.info("Subarray %s : aucune antenne disponible.", sub_id)
+        n = len(self.toutes_antennes_sorted)
+        if n == 0:
+            logger.info("Aucune antenne disponible.")
             return
         if self.index_antenne_actuelle < 0 or not self._nom_antenne_courante:
             self.index_antenne_actuelle = 0
         else:
-            self.index_antenne_actuelle = (self.index_antenne_actuelle - 1) % len(ants)
-        self._nom_antenne_courante = self.noms_antennes.get(ants[self.index_antenne_actuelle], "")
+            self.index_antenne_actuelle = (self.index_antenne_actuelle - 1) % n
+        self._nom_antenne_courante = self.toutes_antennes_sorted[self.index_antenne_actuelle]
         self._update_colors()
 
     def action_next_subarray(self, event=None):
@@ -907,16 +949,14 @@ class BasePlotEditor:
             self.index_subarray_actuel += 1
             self._sync_antenna_after_subarray_change()
         else:
-            # Dernier subarray atteint : revenir au subarray 1 et avancer l'antenne.
-            premier_sub = self.liste_subarrays[0]
-            premiers_ants = self.antennes_par_subarray.get(premier_sub, [])
-            if premiers_ants:
-                idx = self._find_antenna_index_by_name(premier_sub, self._nom_antenne_courante)
-                if idx < 0 or idx + 1 >= len(premiers_ants):
-                    idx = 0
+            # Dernier subarray atteint : revenir au subarray 1 et avancer l'antenne globalement.
+            n = len(self.toutes_antennes_sorted)
+            if n > 0:
+                if self.index_antenne_actuelle < 0:
+                    self.index_antenne_actuelle = 0
                 else:
-                    idx += 1
-                self._nom_antenne_courante = self.noms_antennes.get(premiers_ants[idx], "")
+                    self.index_antenne_actuelle = (self.index_antenne_actuelle + 1) % n
+                self._nom_antenne_courante = self.toutes_antennes_sorted[self.index_antenne_actuelle]
             self.index_subarray_actuel = 0
             self._sync_antenna_after_subarray_change()
         self._update_colors()
@@ -944,65 +984,68 @@ class BasePlotEditor:
             self.index_subarray_actuel -= 1
             self._sync_antenna_after_subarray_change()
         else:
-            dernier_sub = self.liste_subarrays[-1]
-            premier_sub = self.liste_subarrays[0]
-            premiers_ants = self.antennes_par_subarray.get(premier_sub, [])
-            if premiers_ants:
-                idx = self._find_antenna_index_by_name(premier_sub, self._nom_antenne_courante)
-                if idx <= 0:
-                    idx = len(premiers_ants) - 1
+            # Premier subarray atteint : aller au dernier et reculer l'antenne globalement.
+            n = len(self.toutes_antennes_sorted)
+            if n > 0:
+                if self.index_antenne_actuelle < 0:
+                    self.index_antenne_actuelle = 0
                 else:
-                    idx -= 1
-                self._nom_antenne_courante = self.noms_antennes.get(premiers_ants[idx], "")
+                    self.index_antenne_actuelle = (self.index_antenne_actuelle - 1) % n
+                self._nom_antenne_courante = self.toutes_antennes_sorted[self.index_antenne_actuelle]
             self.index_subarray_actuel = len(self.liste_subarrays) - 1
             self._sync_antenna_after_subarray_change()
         self._update_colors()
 
     def _sync_antenna_after_subarray_change(self) -> None:
         """
-        Après un changement de sous-réseau, retrouve l'antenne courante par son NOM.
-
-        Si le sous-réseau est vide, l'index est mis à -1 et un message est loggé.
-        Si l'antenne n'existe pas dans ce sous-réseau, on se rabat sur la première antenne.
+        Après un changement de sous-réseau, retrouve l'antenne courante par son NOM
+        dans toutes_antennes_sorted. L'index reste valide même si l'antenne n'a pas de
+        visibilités dans le nouveau sous-réseau (affichage "[pas de visibilités]").
         """
         new_sub = self.liste_subarrays[self.index_subarray_actuel]
-        ants = self.antennes_par_subarray.get(new_sub, [])
+        ants_in_sub = self.antennes_par_subarray.get(new_sub, [])
 
-        if not ants:
-            self.index_antenne_actuelle = -1
+        if self._nom_antenne_courante:
+            nom_up = self._nom_antenne_courante.upper()
+            for a_idx, ant_name in enumerate(self.toutes_antennes_sorted):
+                if ant_name.upper() == nom_up:
+                    self.index_antenne_actuelle = a_idx
+                    ant_id = self._find_local_antenna_id(new_sub, self._nom_antenne_courante)
+                    if not ants_in_sub:
+                        logger.info("Subarray %s : aucune visibilité.", new_sub)
+                    elif ant_id is not None:
+                        logger.info("Subarray %s : focus sur %s.", new_sub, self._nom_antenne_courante)
+                    else:
+                        logger.info(
+                            "Subarray %s : antenne '%s' absente — pas de visibilités.",
+                            new_sub, self._nom_antenne_courante,
+                        )
+                    return
+            logger.warning("Antenne '%s' introuvable dans la liste globale.", self._nom_antenne_courante)
+            return
+
+        if not ants_in_sub:
             logger.info("Subarray %s : aucune visibilité.", new_sub)
             return
 
-        if self._nom_antenne_courante:
-            idx = self._find_antenna_index_by_name(new_sub, self._nom_antenne_courante)
-            if idx >= 0:
-                self.index_antenne_actuelle = idx
-                logger.info("Subarray %s : focus sur %s.", new_sub, self._nom_antenne_courante)
-                return
-            self.index_antenne_actuelle = -1
-            logger.info(
-                "Subarray %s : antenne '%s' absente — focus gardé sur %s sans visibilité.",
-                new_sub, self._nom_antenne_courante, self._nom_antenne_courante,
-            )
-            return
-
-        self.index_antenne_actuelle = 0
-        self._nom_antenne_courante = self.noms_antennes.get(ants[0], "")
-        logger.info("Subarray %s : focus automatique sur %s.", new_sub, self._nom_antenne_courante)
+        if self.toutes_antennes_sorted:
+            self.index_antenne_actuelle = 0
+            self._nom_antenne_courante = self.toutes_antennes_sorted[0]
+            logger.info("Subarray %s : focus automatique sur %s.", new_sub, self._nom_antenne_courante)
 
     def _find_antenna_index(self, sub_id, name_upper: str) -> int:
-        """Retourne l'index de l'antenne dont le nom correspond dans ``sub_id``, ou 0."""
+        """Retourne l'index dans toutes_antennes_sorted de l'antenne par nom dans sub_id, ou 0."""
         if name_upper:
-            for idx, ant_id in enumerate(self.antennes_par_subarray.get(sub_id, [])):
-                if self.noms_antennes.get(ant_id, "").upper() == name_upper:
+            for idx, ant_name in enumerate(self.toutes_antennes_sorted):
+                if ant_name.upper() == name_upper:
                     return idx
         return 0
 
     def _find_antenna_index_by_name(self, sub_id, nom: str) -> int:
-        """Retourne l'index de l'antenne dont le nom correspond dans ``sub_id``, ou -1 si absent."""
+        """Retourne l'index dans toutes_antennes_sorted de l'antenne par nom dans sub_id, ou -1."""
         nom_up = nom.upper()
-        for idx, ant_id in enumerate(self.antennes_par_subarray.get(sub_id, [])):
-            if self.noms_antennes.get(ant_id, "").upper() == nom_up:
+        for idx, ant_name in enumerate(self.toutes_antennes_sorted):
+            if ant_name.upper() == nom_up:
                 return idx
         return -1
 
@@ -1052,15 +1095,23 @@ class BasePlotEditor:
         for s_idx, sub_id in enumerate(self.liste_subarrays):
             if sub_target and str(sub_id) != sub_target:
                 continue
-            for a_idx, ant_id in enumerate(self.antennes_par_subarray.get(sub_id, [])):
+            for ant_id in self.antennes_par_subarray.get(sub_id, []):
                 nom_ant = self.noms_antennes.get(ant_id, "").upper()
                 if recherche == nom_ant or recherche == str(ant_id) or recherche in nom_ant:
-                    self.index_subarray_actuel, self.index_antenne_actuelle = s_idx, a_idx
+                    self.index_subarray_actuel = s_idx
+                    self.index_antenne_actuelle = self._find_antenna_index(sub_id, nom_ant)
                     self._nom_antenne_courante = self.noms_antennes.get(ant_id, "")
                     found = True
                     break
             if found:
                 break
+
+        if not found:
+            idx = self._find_antenna_index_by_name(self.liste_subarrays[0], recherche)
+            if idx >= 0:
+                self.index_antenne_actuelle = idx
+                self._nom_antenne_courante = self.toutes_antennes_sorted[idx]
+                found = True
 
         if found:
             sub_id = self.liste_subarrays[self.index_subarray_actuel]
@@ -1073,6 +1124,9 @@ class BasePlotEditor:
         """
         Clear the telescope focus / highlight and return to the default view.
 
+        Remet le subarray et l'antenne à leur état initial (aucun focus).
+        Le prochain appui sur n/p repartira depuis la première antenne.
+
         Parameters
         ----------
         event : optional
@@ -1080,6 +1134,7 @@ class BasePlotEditor:
         """
         self.index_antenne_actuelle = -1
         self._nom_antenne_courante = ""
+        self.index_subarray_actuel = 0
         self._update_colors()
         if self.sync_callback:
             self.sync_callback({'inspect_active': self.inspect_active})

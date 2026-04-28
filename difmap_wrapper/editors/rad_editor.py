@@ -221,6 +221,8 @@ class RadPlotEditor(BasePlotEditor):
         if self.ax_err and self._orig_ylim_err:
             self.ax_err.set_ylim(self._orig_ylim_err)
         self.index_antenne_actuelle = -1
+        self._nom_antenne_courante = ""
+        self.index_subarray_actuel = 0
         self._update_colors()
         self.fig.canvas.draw_idle()
         logger.info("Vue réinitialisée.", extra={'difmap_level': 'success'})
@@ -435,36 +437,35 @@ class RadPlotEditor(BasePlotEditor):
 
         # Label focus sur l'axe principal (comme UVPlotEditor)
         if self.ax:
-            sub_has_data = sub_actif in self.antennes_par_subarray
-            ants = self.antennes_par_subarray.get(sub_actif, [])
-
-            if not sub_has_data:
+            if self.index_antenne_actuelle < 0:
+                ax_title = "Phase" if self.display_mode == DisplayMode.PHASE_ONLY else "Amplitude"
+                self.ax.set_title(ax_title, color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10)
+            elif sub_actif not in self.antennes_par_subarray:
                 label = self._nom_antenne_courante or "—"
                 self.ax.set_title(
                     f"FOCUS : {sub_actif}:{label}  [vide]",
                     color=DesignSystem.PLOT_FOCUS, fontsize=10
                 )
-            elif self.index_antenne_actuelle >= 0 and self.index_antenne_actuelle < len(ants):
-                ant_cible = ants[self.index_antenne_actuelle]
-                vrai_nom  = self.noms_antennes.get(ant_cible, f"Ant {ant_cible}")
-                self.ax.set_title(
-                    f"FOCUS : {sub_actif}:{vrai_nom}",
-                    color=DesignSystem.PLOT_FOCUS, fontsize=10
-                )
-                m_focus = (
-                    (self.data["subarray"] == sub_actif)
-                    & ((self.data["tel_a"] == ant_cible) | (self.data["tel_b"] == ant_cible))
-                )
-                if not np.any(m_focus & ~self.obs.masque_flagges):
-                    logger.warning("No data for %s:%s", sub_actif, vrai_nom)
-            elif self._nom_antenne_courante:
-                self.ax.set_title(
-                    f"FOCUS : {sub_actif}:{self._nom_antenne_courante}  [pas de visibilités]",
-                    color=DesignSystem.PLOT_FOCUS, fontsize=10
-                )
-            else:
-                ax_title = "Phase" if self.display_mode == DisplayMode.PHASE_ONLY else "Amplitude"
-                self.ax.set_title(ax_title, color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10)
+            elif self.index_antenne_actuelle < len(self.toutes_antennes_sorted):
+                vrai_nom = self.toutes_antennes_sorted[self.index_antenne_actuelle]
+                ant_cible = self._find_local_antenna_id(sub_actif, vrai_nom)
+                if ant_cible is not None:
+                    self.ax.set_title(
+                        f"FOCUS : {sub_actif}:{vrai_nom}",
+                        color=DesignSystem.PLOT_FOCUS, fontsize=10
+                    )
+                    m_focus = (
+                        (self.data["subarray"] == sub_actif)
+                        & ((self.data["tel_a"] == ant_cible) | (self.data["tel_b"] == ant_cible))
+                    )
+                    if not np.any(m_focus & ~self.obs.masque_flagges):
+                        logger.warning("No data for %s:%s", sub_actif, vrai_nom)
+                else:
+                    self.ax.set_title(
+                        f"FOCUS : {sub_actif}:{vrai_nom}  [pas de visibilités]",
+                        color=DesignSystem.PLOT_FOCUS, fontsize=10
+                    )
+                    logger.info("Pas de visibilités pour %s dans le subarray %s.", vrai_nom, sub_actif)
 
         d_amp, d_phs = self._get_current_y_data()
         mask = self.obs.masque_flagges
@@ -913,4 +914,3 @@ class RadPlotEditor(BasePlotEditor):
         self.phase  = self.data.get("phase",  np.zeros_like(self.uv_radius))
         self.modamp = self.data.get("modamp", np.zeros_like(self.uv_radius))
         self.modphs = self.data.get("modphs", np.zeros_like(self.uv_radius))
-

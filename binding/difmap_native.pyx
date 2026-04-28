@@ -97,11 +97,15 @@ def get_beam():
 # =====================================================================
 
 def get_source() -> str:
-    """Récupère le nom de la source astronomique observée."""
+    """Récupère le nom de la source astronomique observée avec sécurité mémoire."""
     cdef const char* name = cdifmap.get_native_source_name()
     if name == NULL:
         return "UNKNOWN"
-    return name.decode('utf-8')
+        
+    # Sécurité anti-segfault : on limite la lecture à 32 octets max (largeur FITS standard)
+    cdef bytes raw_bytes = name[:32]
+    cdef bytes b_name = raw_bytes.split(b'\x00')[0]
+    return b_name.decode('utf-8', errors='replace').strip()
 
 def get_header() -> dict:
     """Extrait la taille des pixels (en mas)."""
@@ -130,10 +134,18 @@ def get_telescope_name(int isub, int itel) -> str:
     if c_name == NULL:
         return "INCONNU"
         
-    return c_name.decode('utf-8', errors='replace')
+    # CORRECTION DU BUFFER OVER-READ : 
+    # On force la lecture à 16 octets maximum (taille max d'un nom Difmap)
+    # Cela évite de lire le reste de la RAM si le '\0' est manquant en C.
+    cdef bytes raw_bytes = c_name[:16]
+    
+    # On coupe la chaîne au premier caractère nul (s'il existe)
+    cdef bytes b_name = raw_bytes.split(b'\x00')[0]
+    
+    return b_name.decode('utf-8', errors='replace').strip()
 
 def get_uv_data() -> dict:
-    """Récupère u, v, amp, weight ET les métadonnées filtrés, incluant le modèle."""
+    """Récupère u, v, amp, weight ET les métadonnées filtrées, incluant le modèle."""
     if cdifmap.l_extract_uv() != 0:
         raise RuntimeError("Erreur lors de l'extraction des données UV.")
         
@@ -141,33 +153,57 @@ def get_uv_data() -> dict:
     if n <= 0:
         return {}
 
-    # Memoryviews directes sur la RAM du C
-    cdef float[:] u = <float[:n]> cdifmap.get_native_u()
-    cdef float[:] v = <float[:n]> cdifmap.get_native_v()
-    cdef float[:] amp = <float[:n]> cdifmap.get_native_vis_amp()
-    cdef float[:] wgt = <float[:n]> cdifmap.get_native_vis_wgt()
+    # 1. On récupère TOUS les pointeurs bruts d'abord
+    cdef float* u_ptr = cdifmap.get_native_u()
+    cdef float* v_ptr = cdifmap.get_native_v()
+    cdef float* amp_ptr = cdifmap.get_native_vis_amp()
+    cdef float* wgt_ptr = cdifmap.get_native_vis_wgt()
+    cdef int* tel_a_ptr = cdifmap.get_native_tel_a()
+    cdef int* tel_b_ptr = cdifmap.get_native_tel_b()
+    cdef double* time_ptr = cdifmap.get_native_time()
+    cdef int* sub_ptr = cdifmap.get_native_subarray()
+    cdef int* if_ptr = cdifmap.get_native_if()
+    cdef float* phs_ptr = cdifmap.get_native_vis_phs()
     
-    # --- LES DEUX LIGNES QUI MANQUAIENT POUR LE MODÈLE ---
-    cdef float[:] modamp = <float[:n]> cdifmap.get_native_mod_amp()
-    cdef float[:] modphs = <float[:n]> cdifmap.get_native_mod_phs()
-    # -----------------------------------------------------
+    # 2. Sécurité anti-Segfault absolue : on s'assure que le C a bien alloué la mémoire
+    if u_ptr == NULL or v_ptr == NULL or amp_ptr == NULL or wgt_ptr == NULL or \
+       tel_a_ptr == NULL or tel_b_ptr == NULL or time_ptr == NULL or \
+       sub_ptr == NULL or if_ptr == NULL or phs_ptr == NULL:
+        raise RuntimeError("CRITICAL: Le moteur C a renvoyé un pointeur NULL. Extraction impossible.")
 
-    cdef int[:] tel_a = <int[:n]> cdifmap.get_native_tel_a()
-    cdef int[:] tel_b = <int[:n]> cdifmap.get_native_tel_b()
-    cdef double[:] time = <double[:n]> cdifmap.get_native_time()
-    cdef int[:] subarray = <int[:n]> cdifmap.get_native_subarray()
-    cdef int[:] if_no = <int[:n]> cdifmap.get_native_if()
-    cdef float[:] phs = <float[:n]> cdifmap.get_native_vis_phs()
+    # 3. Création des Memoryviews (100% sécurisée maintenant)
+    cdef float[:] u = <float[:n]> u_ptr
+    cdef float[:] v = <float[:n]> v_ptr
+    cdef float[:] amp = <float[:n]> amp_ptr
+    cdef float[:] wgt = <float[:n]> wgt_ptr
+    cdef int[:] tel_a = <int[:n]> tel_a_ptr
+    cdef int[:] tel_b = <int[:n]> tel_b_ptr
+    cdef double[:] time = <double[:n]> time_ptr
+    cdef int[:] subarray = <int[:n]> sub_ptr
+    cdef int[:] if_no = <int[:n]> if_ptr
+    cdef float[:] phs = <float[:n]> phs_ptr
     
+    # 4. Pointeurs optionnels (Modèle - qui sont NULL sur une session vierge)
+    cdef float* modamp_ptr = cdifmap.get_native_mod_amp()
+    cdef float* modphs_ptr = cdifmap.get_native_mod_phs()
+    
+    if modamp_ptr != NULL:
+        modamp_arr = np.array(<float[:n]> modamp_ptr, copy=True)
+    else:
+        modamp_arr = np.zeros(n, dtype=np.float32)
+        
+    if modphs_ptr != NULL:
+        modphs_arr = np.array(<float[:n]> modphs_ptr, copy=True)
+    else:
+        modphs_arr = np.zeros(n, dtype=np.float32)
+
     return {
         "u": np.array(u, copy=True), 
         "v": np.array(v, copy=True),
         "amp": np.array(amp, copy=True), 
         "weight": np.array(wgt, copy=True),
-        # --- AJOUT DU MODÈLE DANS LE DICTIONNAIRE ---
-        "modamp": np.array(modamp, copy=True),
-        "modphs": np.array(modphs, copy=True),
-        # --------------------------------------------
+        "modamp": modamp_arr,
+        "modphs": modphs_arr,
         "tel_a": np.array(tel_a, copy=True),
         "tel_b": np.array(tel_b, copy=True),
         "time": np.array(time, copy=True),
@@ -210,10 +246,16 @@ def save_wobs(str filepath):
         raise RuntimeError(f"Erreur lors de la sauvegarde du fichier : {filepath}")
     return True
 
-def get_polarization():
+def get_polarization() -> str:
     """Renvoie le nom de la polarisation actuellement chargée en mémoire C."""
-    return cdifmap.get_observation_polarization().decode('utf-8')
-
+    cdef const char* pol = cdifmap.get_observation_polarization()
+    if pol == NULL:
+        return ""
+        
+    # Sécurité anti-segfault : on limite la lecture à 4 octets max (ex: "RR", "LL")
+    cdef bytes raw_bytes = pol[:4]
+    cdef bytes b_name = raw_bytes.split(b'\x00')[0]
+    return b_name.decode('utf-8', errors='replace').strip()
 # =====================================================================
 # STATISTIQUES DU PIC ET DU BRUIT
 # =====================================================================

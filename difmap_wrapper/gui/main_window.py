@@ -1,4 +1,6 @@
 # difmap_wrapper/gui/main_window.py
+import re
+
 from PyQt6.QtWidgets import QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox
 from PyQt6.QtCore import Qt, QTimer
 
@@ -114,8 +116,48 @@ class MainWindow(QMainWindow):
             self.header_widget.refresh()
 
             n = len(self.data['u'])
-            n_sub = len(set(self.data.get('subarray', [])))
-            n_ant = len(set(list(self.data.get('tel_a', [])) + list(self.data.get('tel_b', []))))
+            subarrays = self.data.get('subarray', [])
+            tel_a = self.data.get('tel_a', [])
+            tel_b = self.data.get('tel_b', [])
+
+            # Les IDs tel_a/tel_b sont locaux a chaque subarray.
+            # Pour afficher un nombre coherent avec le tableau des stations
+            # du header UVFITS, on compte d'abord les stations physiques
+            # directement dans le texte du header.
+            station_names = set()
+            station_fallback = set()
+            station_line = re.compile(
+                r"^\s*\d+\s+([A-Za-z0-9_+\-]+)\s+[-+0-9.eE]+\s+[-+0-9.eE]+\s+[-+0-9.eE]+\s*$"
+            )
+
+            try:
+                header_text = self.session.obs.header()
+            except Exception:
+                header_text = ""
+
+            for line in header_text.splitlines():
+                match = station_line.match(line)
+                if match:
+                    station_names.add(match.group(1))
+
+            unique_subarrays = sorted({int(sub) for sub in subarrays})
+
+            # Fallback si le header ne fournit pas le tableau complet.
+            if not station_names:
+                for sub in unique_subarrays:
+                    mask = subarrays == sub
+                    antennas = set(int(ta) for ta in tel_a[mask]) | set(int(tb) for tb in tel_b[mask])
+                    for ant in antennas:
+                        station_fallback.add((sub, ant))
+                        try:
+                            name = self.session.obs._native.get_telescope_name(sub - 1, ant).strip()
+                        except Exception:
+                            name = ""
+                        if name and name != "INCONNU":
+                            station_names.add(name)
+
+            n_sub = len(unique_subarrays)
+            n_ant = len(station_names) if station_names else len(station_fallback)
             self.log_console.log(
                 f"Loaded {n:,} visibilities — {n_ant} antennas, {n_sub} subarray(s), "
                 f"{n_ifs} IF(s) — {actual_pol}."
@@ -700,6 +742,7 @@ class MainWindow(QMainWindow):
                             editor.ax_err.set_ylim(editor._orig_ylim_err)
                     editor.index_antenne_actuelle = -1
                     editor._nom_antenne_courante = ""
+                    editor.index_subarray_actuel = 0
                     editor._update_colors()
                 return  # le redraw est déjà fait dans _update_colors
 

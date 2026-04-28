@@ -250,40 +250,38 @@ class UVPlotEditor(BasePlotEditor):
         """
         couleurs, sub_actif = self._build_focus_colors()
 
-        sub_has_data = sub_actif in self.antennes_par_subarray
-        ants = self.antennes_par_subarray.get(sub_actif, [])
-
-        if not sub_has_data:
-            # Subarray vide : titre avec nom antenne gardé si disponible
+        if self.index_antenne_actuelle < 0:
+            self.ax.set_title(
+                "All baselines",
+                color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10
+            )
+        elif sub_actif not in self.antennes_par_subarray:
             label = self._nom_antenne_courante or "—"
             self.ax.set_title(
                 f"FOCUS : {sub_actif}:{label}  [vide]",
                 color=DesignSystem.PLOT_FOCUS, fontsize=10
             )
             logger.info("Subarray %s : aucune visibilité.", sub_actif)
-        elif self.index_antenne_actuelle >= 0 and self.index_antenne_actuelle < len(ants):
-            ant_cible = ants[self.index_antenne_actuelle]
-            vrai_nom  = self.noms_antennes.get(ant_cible, f"Ant {ant_cible}")
-            self.ax.set_title(
-                f"FOCUS : {sub_actif}:{vrai_nom}",
-                color=DesignSystem.PLOT_FOCUS, fontsize=10
-            )
-            m_focus = (
-                (self.data["subarray"] == sub_actif)
-                & ((self.data["tel_a"] == ant_cible) | (self.data["tel_b"] == ant_cible))
-            )
-            if not np.any(m_focus & ~self.obs.masque_flagges):
-                logger.warning("No data for %s:%s", sub_actif, vrai_nom)
-        elif self._nom_antenne_courante:
-            self.ax.set_title(
-                f"FOCUS : {sub_actif}:{self._nom_antenne_courante}  [pas de visibilités]",
-                color=DesignSystem.PLOT_FOCUS, fontsize=10
-            )
-        else:
-            self.ax.set_title(
-                "All baselines",
-                color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10
-            )
+        elif self.index_antenne_actuelle < len(self.toutes_antennes_sorted):
+            vrai_nom = self.toutes_antennes_sorted[self.index_antenne_actuelle]
+            ant_cible = self._find_local_antenna_id(sub_actif, vrai_nom)
+            if ant_cible is not None:
+                self.ax.set_title(
+                    f"FOCUS : {sub_actif}:{vrai_nom}",
+                    color=DesignSystem.PLOT_FOCUS, fontsize=10
+                )
+                m_focus = (
+                    (self.data["subarray"] == sub_actif)
+                    & ((self.data["tel_a"] == ant_cible) | (self.data["tel_b"] == ant_cible))
+                )
+                if not np.any(m_focus & ~self.obs.masque_flagges):
+                    logger.warning("No data for %s:%s", sub_actif, vrai_nom)
+            else:
+                self.ax.set_title(
+                    f"FOCUS : {sub_actif}:{vrai_nom}  [pas de visibilités]",
+                    color=DesignSystem.PLOT_FOCUS, fontsize=10
+                )
+                logger.info("Pas de visibilités pour %s dans le subarray %s.", vrai_nom, sub_actif)
 
         u = self.data["u"] / 1e6
         v = self.data["v"] / 1e6
