@@ -1,5 +1,6 @@
 # difmap_wrapper/observation.py
 import logging
+import re
 import numpy as np
 import difmap_native
 
@@ -313,6 +314,29 @@ class Observation:
         if not self._session.uv_loaded:
             raise DifmapStateError("Aucune observation chargée.")
         return self._native.get_header_text()
+
+    def available_polarizations(self) -> list[str]:
+        """
+        Retourne les polarisations disponibles pour l'observation courante.
+
+        La liste est extraite du header texte généré par le moteur Difmap,
+        par exemple ``"RR"``, ``"RR LL"`` ou ``"RR, LL, RL, LR"``.
+        """
+        if not self._session.uv_loaded:
+            return []
+
+        match = re.search(r"^\s*Polarizations\s*:\s*(.+?)\s*$", self.header(), re.MULTILINE)
+        if not match:
+            return []
+
+        tokens = [tok.strip().upper() for tok in re.split(r"[\s,]+", match.group(1)) if tok.strip()]
+        seen = set()
+        values = []
+        for tok in tokens:
+            if tok not in seen:
+                seen.add(tok)
+                values.append(tok)
+        return values
 
     def flag_data(self, indices) -> int:
         """

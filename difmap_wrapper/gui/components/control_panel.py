@@ -245,6 +245,18 @@ class ControlPanel(QDockWidget):
         scroll.setWidget(self.container)
         self.setWidget(scroll)
 
+    def set_available_polarizations(self, polarizations: list[str], current: str | None = None) -> None:
+        """Met à jour le combo avec les seules polarisations proposées par le fichier."""
+        values = [pol for pol in polarizations if pol]
+        if not values:
+            values = ["I", "RR", "LL", "RL", "LR"]
+
+        self.combo_pol.blockSignals(True)
+        self.combo_pol.clear()
+        self.combo_pol.addItems(values)
+        self.combo_pol.setCurrentText(current if current in values else values[0])
+        self.combo_pol.blockSignals(False)
+
     def _build_data_selection(self):
         """Construit la section « 1. DATA SELECTION » avec polarisation et plage d'IFs."""
         self.group_data_selection = CollapsibleSection("1. DATA SELECTION")

@@ -3,11 +3,6 @@ import difmap_native
 import numpy as np
 from matplotlib import pyplot as plt
 
-# C2 : UVPlotEditor N'EST PLUS importé ici.
-# La couche Core (visualizer) ne doit pas connaître la couche Editors (Matplotlib).
-# L'éditeur interactif est créé exclusivement dans gui/plot_widget.py (Couche GUI).
-
-
 class Visualizer:
     """
     Graphiques statiques pour explorer les données UV et les images.
@@ -27,7 +22,7 @@ class Visualizer:
         self._native = difmap_native
 
     def uvplot(self, ax=None, figsize=(8, 8), color='blue', s=1, alpha=0.5,
-               title=None, edgecolors='none', **kwargs):
+               title=None, edgecolors='none', save_path: str = None, show: bool = True, **kwargs):
         """
         Affiche la couverture du plan UV (U en abscisse, V en ordonnée).
 
@@ -76,11 +71,11 @@ class Visualizer:
         u = data['u'] / 1e6
         v = data['v'] / 1e6
 
+        # Suivi de la création de la figure
+        created_fig = False
         if ax is None:
             fig, ax = plt.subplots(figsize=figsize)
-            show = True
-        else:
-            show = False
+            created_fig = True
 
         ax.scatter(u,  v,  s=s, color=color, alpha=alpha, edgecolors=edgecolors, **kwargs)
         ax.scatter(-u, -v, s=s, color=color, alpha=alpha, edgecolors=edgecolors, **kwargs)
@@ -93,13 +88,21 @@ class Visualizer:
         ax.set_aspect('equal')
         ax.grid(True, linestyle=':', alpha=0.6)
 
-        if show:
-            plt.show()
+        # Sauvegarde de la figure si demandée (avant l'affichage potentiel)
+        if save_path:
+            ax.get_figure().savefig(save_path, bbox_inches='tight')
+
+        # Gestion de l'affichage et de la mémoire
+        if created_fig:
+            if show:
+                plt.show()
+            else:
+                plt.close(ax.get_figure())
 
         return ax
 
     def radplot(self, ax=None, figsize=(10, 6), color='black', alpha=0.5, s=1,
-                title=None, **kwargs):
+                title=None, save_path: str = None, show: bool = True, **kwargs):
         """
         Affiche l'amplitude des visibilités en fonction de leur rayon UV.
 
@@ -142,11 +145,11 @@ class Visualizer:
         amp = data['amp']
         uv_radius = np.sqrt(u**2 + v**2) / 1e6
 
+        # Suivi de la création de la figure
+        created_fig = False
         if ax is None:
             fig, ax = plt.subplots(figsize=figsize)
-            show = True
-        else:
-            show = False
+            created_fig = True
 
         ax.scatter(uv_radius, amp, s=s, color=color, alpha=alpha, **kwargs)
         ax.set_xlabel(r"Rayon UV ($M\lambda$)")
@@ -156,14 +159,23 @@ class Visualizer:
         ax.set_ylim(bottom=0)
         ax.grid(True, linestyle=':', alpha=0.6)
 
-        if show:
-            plt.show()
+        # Sauvegarde de la figure si demandée
+        if save_path:
+            ax.get_figure().savefig(save_path, bbox_inches='tight')
+
+        # Gestion de l'affichage et de la mémoire
+        if created_fig:
+            if show:
+                plt.show()
+            else:
+                plt.close(ax.get_figure())
 
         return ax
 
+
     @staticmethod
     def plot_image(img_dict: dict, cmap: str = 'magma', figsize: tuple = (8, 6),
-                   title: str = "Dirty Map", **kwargs) -> None:
+                   title: str = "Dirty Map", save_path: str = None, show: bool = True, **kwargs) -> None:
         """
         Affiche une image astrophysique avec sa barre de couleur et ses axes astrométriques.
 
@@ -194,14 +206,25 @@ class Visualizer:
         """
         if "data" not in img_dict or "extent" not in img_dict:
             raise KeyError("Le dictionnaire d'image doit contenir les clés 'data' et 'extent'.")
-        plt.figure(figsize=figsize)
+            
+        fig = plt.figure(figsize=figsize)
         plt.imshow(img_dict['data'], extent=img_dict['extent'], origin='lower', cmap=cmap, **kwargs)
         plt.colorbar(label='Densité de flux (Jy/beam)')
         plt.title(title)
         plt.xlabel("Décalage RA (mas)")
         plt.ylabel("Décalage Dec (mas)")
-        plt.show()
-
+        
+        # Sauvegarde sur le disque si un chemin est fourni
+        if save_path:
+            fig.savefig(save_path, bbox_inches='tight')
+            
+        # Gestion de l'affichage interactif
+        if show:
+            plt.show()
+        else:
+            # En mode automatisé (show=False), la figure est fermée
+            # pour éviter toute fuite de mémoire RAM.
+            plt.close(fig)
     def mapplot(self, img_dict: dict = None, **kwargs):
         """
         Affiche l'image actuellement en mémoire.

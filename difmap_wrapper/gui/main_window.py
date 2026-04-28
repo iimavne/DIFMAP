@@ -97,15 +97,15 @@ class MainWindow(QMainWindow):
         try:
             self.log_console.log(f"Loading: {filepath}...")
             self.session.observe(filepath)
-            # Sélection initiale : on tente "I", on récupère la pol réellement active
-            actual_pol = self.session.obs.select(pol="I")
+            available_pols = self.session.obs.available_polarizations()
+            preferred_pol = "I" if "I" in available_pols else (available_pols[0] if available_pols else "I")
+            self.control_panel.set_available_polarizations(available_pols, current=preferred_pol)
+
+            actual_pol = self.session.obs.select(pol=preferred_pol)
 
             self.data = self.session.obs.get_data()
 
-            # Mettre le combo sur la pol réelle (pas forcément "I")
-            self.control_panel.combo_pol.blockSignals(True)
-            self.control_panel.combo_pol.setCurrentText(actual_pol)
-            self.control_panel.combo_pol.blockSignals(False)
+            self.control_panel.set_available_polarizations(available_pols, current=actual_pol)
 
             # Configurer le sélecteur d'IFs (obs.nif évite de scanner data['if_no'])
             n_ifs = self.session.obs.nif
