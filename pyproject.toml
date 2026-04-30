@@ -10,9 +10,10 @@ version = "2.5.0"
 description = "Python binding for Difmap"
 requires-python = ">=3.8"
 dependencies = [
-    "numpy>=2.0.0",
+    "numpy>=2.0",
+    "cython>=3.0",
     "astropy",
-    "PyQt6",
     "matplotlib",
+    "PyQt6",
     "qtawesome"
 ]

@@ -11,7 +11,12 @@ cdef extern from "difmap_api.h":
     double get_native_bpa()
     double get_native_pixsize()
     float* get_native_vis_phs()
+
+    ############# POLARISATION ######################
+    
     const char* get_observation_polarization()
+
+    ###############################
 
     int l_extract_uv()
     int get_native_uv_count()

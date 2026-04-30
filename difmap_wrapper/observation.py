@@ -141,7 +141,7 @@ class Observation:
         return data
 
     # =========================================================
-    # API existante (inchangée sauf print → logging)
+    # API existante 
     # =========================================================
 
     @property
@@ -150,6 +150,10 @@ class Observation:
         if not self._session.uv_loaded:
             return "Inconnue"
         return self._native.get_source()
+
+    def get_polarization(self) -> str:
+        """Retourne la polarisation active (ex: ``'RR'``, ``'LL'``). Retourne ``'Unknown'`` si rien n'est chargé."""
+        return self._native.get_polarization()
 
     def nsub(self) -> int:
         """
@@ -233,7 +237,7 @@ class Observation:
         self.masque_flagges = None
         self.historique_coupes.clear()
 
-        # --- NOUVEAUTÉ : On demande au C sur quelle polarisation il est vraiment ---
+        # On demande au C sur quelle polarisation il est vraiment ---
         try:
             pol_reelle = self._native.get_polarization() 
         except AttributeError:

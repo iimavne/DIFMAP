@@ -246,16 +246,16 @@ def save_wobs(str filepath):
         raise RuntimeError(f"Erreur lors de la sauvegarde du fichier : {filepath}")
     return True
 
+
+############# POLARISATION ######################
+
 def get_polarization() -> str:
-    """Renvoie le nom de la polarisation actuellement chargée en mémoire C."""
-    cdef const char* pol = cdifmap.get_observation_polarization()
-    if pol == NULL:
-        return ""
-        
-    # Sécurité anti-segfault : on limite la lecture à 4 octets max (ex: "RR", "LL")
-    cdef bytes raw_bytes = pol[:4]
-    cdef bytes b_name = raw_bytes.split(b'\x00')[0]
-    return b_name.decode('utf-8', errors='replace').strip()
+  """Récupère la polarisation et décode les octets C en string Python."""
+  return cdifmap.get_observation_polarization().decode('utf-8')
+
+################################################
+
+
 # =====================================================================
 # STATISTIQUES DU PIC ET DU BRUIT
 # =====================================================================

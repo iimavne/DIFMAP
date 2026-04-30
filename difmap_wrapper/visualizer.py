@@ -2,6 +2,7 @@
 import difmap_native
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.patches import Ellipse
 
 class Visualizer:
     """
@@ -22,7 +23,8 @@ class Visualizer:
         self._native = difmap_native
 
     def uvplot(self, ax=None, figsize=(8, 8), color='blue', s=1, alpha=0.5,
-               title=None, edgecolors='none', save_path: str = None, show: bool = True, **kwargs):
+               title=None, edgecolors='none', xlim=None, ylim=None,
+               save_path: str = None, show: bool = True, **kwargs):
         """
         Affiche la couverture du plan UV (U en abscisse, V en ordonnée).
 
@@ -84,8 +86,12 @@ class Visualizer:
         ax.set_ylabel(r"V ($M\lambda$)")
         source_name = self._session.obs.source
         ax.set_title(title or f"Couverture UV : {source_name}")
+        if xlim is not None:
+            ax.set_xlim(xlim)
+        if ylim is not None:
+            ax.set_ylim(ylim)
         ax.invert_xaxis()
-        ax.set_aspect('equal')
+        ax.set_aspect('equal', adjustable='box')
         ax.grid(True, linestyle=':', alpha=0.6)
 
         # Sauvegarde de la figure si demandée (avant l'affichage potentiel)
@@ -175,9 +181,14 @@ class Visualizer:
 
     @staticmethod
     def plot_image(img_dict: dict, cmap: str = 'magma', figsize: tuple = (8, 6),
-                   title: str = "Dirty Map", save_path: str = None, show: bool = True, **kwargs) -> None:
+                   title: str = "Dirty Map", xlim=None, ylim=None,
+                   show_contours: bool = True, contour_levels=None,
+                   contour_color: str = 'white',
+                   show_beam: bool = True,
+                   save_path: str = None, show: bool = True, **kwargs) -> None:
         """
-        Affiche une image astrophysique avec sa barre de couleur et ses axes astrométriques.
+        Affiche une image astrophysique à la manière de difmap :
+        image colorée + contours blancs + ellipse de faisceau.
 
         Parameters
         ----------
@@ -191,6 +202,15 @@ class Visualizer:
             Taille ``(largeur, hauteur)`` en pouces. Par défaut ``(8, 6)``.
         title : str, optional
             Titre affiché au-dessus de l'image. Par défaut ``"Dirty Map"``.
+        show_contours : bool, optional
+            Trace les contours de flux à la manière de difmap. Par défaut ``True``.
+        contour_levels : list of float, optional
+            Niveaux de contour absolus (Jy/beam). Si absent, utilise une séquence
+            doublante de 1 % à 90 % du pic (style difmap).
+        contour_color : str, optional
+            Couleur des contours. Par défaut ``'white'``.
+        show_beam : bool, optional
+            Dessine l'ellipse du faisceau synthétique en bas à gauche. Par défaut ``True``.
         **kwargs
             Paramètres supplémentaires transmis à ``matplotlib.pyplot.imshow``.
 
@@ -201,29 +221,79 @@ class Visualizer:
 
         Examples
         --------
-        >>> img = session.imager.make_dirty_map(512, 0.1)
-        >>> session.vis.plot_image(img, cmap='viridis', title="Source J0003")
+        >>> img = session.imager.make_clean_map(512, 0.1)
+        >>> session.vis.plot_image(img, cmap='viridis', title="Clean Map J0003")
         """
         if "data" not in img_dict or "extent" not in img_dict:
             raise KeyError("Le dictionnaire d'image doit contenir les clés 'data' et 'extent'.")
-            
-        fig = plt.figure(figsize=figsize)
-        plt.imshow(img_dict['data'], extent=img_dict['extent'], origin='lower', cmap=cmap, **kwargs)
-        plt.colorbar(label='Densité de flux (Jy/beam)')
-        plt.title(title)
-        plt.xlabel("Décalage RA (mas)")
-        plt.ylabel("Décalage Dec (mas)")
-        
-        # Sauvegarde sur le disque si un chemin est fourni
+
+        data   = img_dict['data']
+        extent = img_dict['extent']   # [xmax, xmin, ymin, ymax] en mas
+        info   = img_dict.get('info', {})
+
+        fig, ax = plt.subplots(figsize=figsize)
+        im = ax.imshow(data, extent=extent, origin='lower', cmap=cmap, **kwargs)
+        plt.colorbar(im, ax=ax, label='Densité de flux (Jy/beam)')
+
+        # --- Contours style difmap ---
+        peak = float(data.max())
+        if show_contours and peak > 0:
+            ny, nx = data.shape
+            # Coordonnées pixel → monde (extent = [left, right, bottom, top])
+            xs = np.linspace(extent[0], extent[1], nx)
+            ys = np.linspace(extent[2], extent[3], ny)
+
+            if contour_levels is None:
+                # Séquence doublante 1 % → 90 % du pic (style difmap)
+                fracs = np.array([0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 0.90])
+                pos_levels = peak * fracs
+                neg_levels = [-peak * 0.01]
+            else:
+                pos_levels = [l for l in contour_levels if l > 0]
+                neg_levels = [l for l in contour_levels if l < 0]
+
+            ax.contour(xs, ys, data, levels=pos_levels,
+                       colors=contour_color, linewidths=0.6, origin='lower')
+            if neg_levels:
+                ax.contour(xs, ys, data, levels=neg_levels,
+                           colors=contour_color, linewidths=0.6,
+                           linestyles='dashed', origin='lower')
+
+        # --- Ellipse du faisceau synthétique ---
+        bmaj = info.get('bmaj', 0.0)
+        bmin = info.get('bmin', 0.0)
+        bpa  = info.get('bpa',  0.0)   # degrés, Nord vers Est
+
+        if show_beam and bmaj > 0:
+            # Coin bas-gauche : 12 % des plages x/y depuis le bord
+            x_range = abs(extent[0] - extent[1])
+            y_range = abs(extent[3] - extent[2])
+            beam_cx = min(extent[0], extent[1]) + 0.12 * x_range
+            beam_cy = min(extent[2], extent[3]) + 0.12 * y_range
+
+            # BPA (Nord→Est) → angle matplotlib (axe x inversé : Est à gauche)
+            # Nord = +y = 90° CCW depuis +x ; Est = -x = 180° → angle = 90° + BPA
+            ell = Ellipse(xy=(beam_cx, beam_cy),
+                          width=bmin, height=bmaj,
+                          angle=90.0 + bpa,
+                          facecolor='white', edgecolor='black',
+                          linewidth=0.8, zorder=5)
+            ax.add_patch(ell)
+
+        ax.set_title(title)
+        ax.set_xlabel("Décalage RA (mas)")
+        ax.set_ylabel("Décalage Dec (mas)")
+        if xlim is not None:
+            ax.set_xlim(xlim)
+        if ylim is not None:
+            ax.set_ylim(ylim)
+
         if save_path:
             fig.savefig(save_path, bbox_inches='tight')
-            
-        # Gestion de l'affichage interactif
+
         if show:
             plt.show()
         else:
-            # En mode automatisé (show=False), la figure est fermée
-            # pour éviter toute fuite de mémoire RAM.
             plt.close(fig)
     def mapplot(self, img_dict: dict = None, **kwargs):
         """
