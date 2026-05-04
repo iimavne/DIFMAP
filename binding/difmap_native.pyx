@@ -40,8 +40,8 @@ def uvweight(uvbin: float, errpow: float, dorad: int) -> int:
 def uvtaper(gauval: float, gaurad_wav: float) -> int:
     return cdifmap.native_uvtaper(gauval, gaurad_wav)
 
-def mapsize(size: int, cellsize: float) -> int:
-    return cdifmap.native_mapsize(size, cellsize)
+def mapsize(size: int, cellsize: float, ny: int = 0, cellsize_y: float = 0.0) -> int:
+    return cdifmap.native_mapsize(size, cellsize, ny, cellsize_y)
 
 def invert() -> int:
     return cdifmap.native_invert()

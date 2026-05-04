@@ -35,7 +35,7 @@ const char *native_get_header_text(void);
 /* Paramètres d'imagerie complets*/
 int native_uvweight(float uvbin, float errpow, int dorad);
 int native_uvtaper(float gauval, float gaurad_wav);
-int native_mapsize(int nx, float cellsize);
+int native_mapsize(int nx, float cellsize, int ny, float cellsize_y);
 int native_invert(void);
 int native_clean(int niter, float gain);
 int native_restore(void);

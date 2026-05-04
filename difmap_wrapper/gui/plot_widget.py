@@ -289,5 +289,4 @@ class UVPlotWidget(BasePlotWidget):
             ylabel=r"V ($M\lambda$)"
         )
         self.ax.invert_xaxis()
-        # Use automatic aspect ratio so zoom behaves like Radplot instead of shrinking the UV plot frame.
-        self.ax.set_aspect('auto')
+        self.ax.set_aspect('equal', adjustable='box')

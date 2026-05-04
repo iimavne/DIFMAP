@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 
 from PyQt6.QtCore import QTimer
 from .base import BasePlotEditor
+from difmap_wrapper.enums import EditorMode
 from difmap_wrapper.gui.styles.design_system import DesignSystem
 
 logger = logging.getLogger("difmap.uv_editor")
@@ -43,9 +44,52 @@ class UVPlotEditor(BasePlotEditor):
         self.scat_conj = ax.scatter(-u, -v, s=1, color=base_color, alpha=self.data_alpha, edgecolors='none')
         self.scat_conj.set_visible(True)  # conjugué affiché par défaut
 
+        # Limites symétriques identiques sur X et Y pour un affichage carré.
+        # Doit être positionné avant super().__init__() pour que original_limits
+        # (utilisé pour le reset de vue) capture ces limites symétriques.
+        max_range = float(max(np.abs(u).max(), np.abs(v).max())) * 1.1
+        ax.set_xlim(max_range, -max_range)  # axe RA conventionnellement inversé
+        ax.set_ylim(-max_range, max_range)
+
         super().__init__(observation, fig, ax, data, save_callback, sync_callback)
 
         self.raccourcis_autorises["%"] = self.action_toggle_conjugate
+
+    # =========================================================
+    # ZOOM SYMÉTRIQUE
+    # =========================================================
+
+    def on_select(self, eclick, erelease):
+        """Override : zoom rectangulaire forcé carré (symétrie U/V préservée)."""
+        if self.mode not in EditorMode.ALL_RECT:
+            return
+        if abs(erelease.x - eclick.x) < 10 and abs(erelease.y - eclick.y) < 10:
+            return
+
+        if self.mode == EditorMode.ZOOM:
+            u1, v1 = eclick.xdata, eclick.ydata
+            u2, v2 = erelease.xdata, erelease.ydata
+            cx = (u1 + u2) / 2
+            cy = (v1 + v2) / 2
+            half = max(abs(u2 - u1), abs(v2 - v1)) / 2
+            if half == 0:
+                return
+            self.ax.set_xlim(cx + half, cx - half)  # axe RA inversé
+            self.ax.set_ylim(cy - half, cy + half)
+            self.fig.canvas.draw_idle()
+        else:
+            super().on_select(eclick, erelease)
+
+    def action_dezoom(self, event=None):
+        """Override : dézoom 50 % en conservant la symétrie U/V."""
+        xl, xr = self.ax.get_xlim()
+        yl, yr = self.ax.get_ylim()
+        cx = (xl + xr) / 2
+        cy = (yl + yr) / 2
+        half = max(abs(xr - xl), abs(yr - yl)) / 2 * 1.5
+        self.ax.set_xlim(cx + half, cx - half)  # axe RA inversé
+        self.ax.set_ylim(cy - half, cy + half)
+        self.fig.canvas.draw_idle()
 
     # =========================================================
     # FLAGGING

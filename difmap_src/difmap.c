@@ -7999,10 +7999,12 @@ int native_uvtaper(float gauval, float gaurad_wav) {
     return 0;
 }
 
-int native_mapsize(int nx, float cellsize) {
+int native_mapsize(int nx, float cellsize, int ny, float cellsize_y) {
     if (vlbob == NULL) return -1;
-    float xinc = xytorad(cellsize); 
-    vlbmap = new_MapBeam(vlbmap, nx, xinc, nx, xinc);
+    int actual_ny = (ny > 0) ? ny : nx;
+    float xinc = xytorad(cellsize);
+    float yinc = (cellsize_y > 0.0f) ? xytorad(cellsize_y) : xinc;
+    vlbmap = new_MapBeam(vlbmap, nx, xinc, actual_ny, yinc);
     if (vlbmap == NULL) return -1;
     return 0;
 }

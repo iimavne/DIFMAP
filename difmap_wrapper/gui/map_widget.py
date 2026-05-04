@@ -35,40 +35,43 @@ class MapPlotWidget(BasePlotWidget):
             ylabel="Décalage Dec (mas)"
         )
 
-    def plot_map(self, map_data, cellsize):
+    def plot_map(self, map_data, cellsize, cellsize_y=None):
         """
         Affiche la Dirty Map avec une colorbar flux en Jy/beam.
 
         Parameters
         ----------
         map_data : numpy.ndarray or None
-            Tableau 2D de flux en Jy/beam. Si ``None`` ou vide, affiche un message.
+            Tableau 2D de flux en Jy/beam (shape: ny × nx). Si ``None`` ou vide,
+            affiche un message.
         cellsize : float
-            Taille d'une cellule en millisecondes d'arc (mas), utilisée pour
-            calculer l'étendue spatiale de l'image.
+            Taille d'une cellule en mas sur l'axe X.
+        cellsize_y : float, optional
+            Taille d'une cellule en mas sur l'axe Y. Défaut : identique à ``cellsize``.
         """
-        # 1. On supprime proprement la colorbar précédente
         if self.cbar is not None:
             self.cbar.remove()
             self.cbar = None
-            
+
         self._setup_axes()
-        
+
         if map_data is None or len(map_data) == 0:
             self.ax.text(0.5, 0.5, "No Map Data", ha='center', va='center')
             self.draw()
             return
 
-        size = map_data.shape[0]
-        extent_val = (size * cellsize) / 2.0
-        extent = [extent_val, -extent_val, -extent_val, extent_val]
+        cy = cellsize_y if cellsize_y is not None else cellsize
+        ny, nx = map_data.shape
+        ext_x = (nx * cellsize) / 2.0
+        ext_y = (ny * cy) / 2.0
+        extent = [ext_x, -ext_x, -ext_y, ext_y]
 
         self.image = self.ax.imshow(
-            map_data, 
+            map_data,
             cmap='inferno',
             origin='lower',
             extent=extent
         )
-        
+        self.ax.set_aspect('equal', adjustable='box')
         self.cbar = self.fig.colorbar(self.image, ax=self.ax, label="Flux (Jy/beam)", fraction=0.046, pad=0.04)
         self.draw()

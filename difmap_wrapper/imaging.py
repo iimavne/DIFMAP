@@ -25,15 +25,20 @@ class DifmapImager:
     def __init__(self, session):
         self._session = session
         self._native = difmap_native
-        self._last_cellsize = None  
-        self._last_mapsize = None    # <-- AJOUT : Mémorisation de la taille
+        self._last_cellsize = None
+        self._last_mapsize = None
+        self._last_ny = None
+        self._last_cellsize_y = None
         self._current_uvtaper = None
         self._current_uvweight = None
 
     def _reissue_mapsize_if_needed(self):
         """Restaure la grille si elle a été annulée par un changement de pondération."""
         if self._last_mapsize is not None and self._last_cellsize is not None:
-            self._native.mapsize(self._last_mapsize, self._last_cellsize)
+            self._native.mapsize(
+                self._last_mapsize, self._last_cellsize,
+                self._last_ny or 0, self._last_cellsize_y or 0.0
+            )
             
     def get_map(self) -> np.ndarray:
         """
@@ -199,21 +204,25 @@ class DifmapImager:
         else:
             print(f"Taper appliqué : Valeur = {val}, Rayon = {rad} longueurs d'onde")
         
-    def mapsize(self, size: int, cellsize: float) -> None:
+    def mapsize(self, size: int, cellsize: float, ny: int = None, cellsize_y: float = None) -> None:
         """
         Définit la grille d'imagerie.
 
-        Doit être appelé avant ``invert()``. La taille totale du champ de vue
-        est ``size × cellsize`` (mas).
+        Doit être appelé avant ``invert()``. Par défaut la grille est carrée
+        (``ny = size``, ``cellsize_y = cellsize``). Passer ``ny`` et/ou
+        ``cellsize_y`` permet de créer une grille rectangulaire, comme le
+        supporte la commande ``mapsize`` native de DIFMAP.
 
         Parameters
         ----------
         size : int
-            Nombre de pixels sur chaque côté de l'image. Doit être une puissance
-            de 2 pour la FFT (ex : 256, 512, 1024).
+            Nombre de pixels sur l'axe X. Doit être une puissance de 2 (ex : 256, 512, 1024).
         cellsize : float
-            Taille d'un pixel en milli-arcseconde (mas). Choisir environ
-            un tiers à un cinquième de la résolution du faisceau.
+            Taille d'un pixel en milli-arcseconde (mas) sur l'axe X.
+        ny : int, optional
+            Nombre de pixels sur l'axe Y. Défaut : identique à ``size``.
+        cellsize_y : float, optional
+            Taille d'un pixel en mas sur l'axe Y. Défaut : identique à ``cellsize``.
 
         Raises
         ------
@@ -222,12 +231,17 @@ class DifmapImager:
 
         Examples
         --------
-        >>> session.imager.mapsize(512, 0.1)   # champ 51.2 mas, pixel 0.1 mas
+        >>> session.imager.mapsize(512, 0.1)              # grille carrée 512×512
+        >>> session.imager.mapsize(512, 0.1, ny=256)      # grille rectangulaire 512×256
         """
-        if self._native.mapsize(size, cellsize) != 0:
+        actual_ny = ny if ny is not None else 0
+        actual_cy = cellsize_y if cellsize_y is not None else 0.0
+        if self._native.mapsize(size, cellsize, actual_ny, actual_cy) != 0:
             raise DifmapError("Erreur lors de l'allocation de la grille (mapsize).")
-        self._last_cellsize = cellsize
         self._last_mapsize = size
+        self._last_cellsize = cellsize
+        self._last_ny = ny
+        self._last_cellsize_y = cellsize_y
 
     def invert(self) -> None:
         """
@@ -251,7 +265,7 @@ class DifmapImager:
         if self._native.invert() != 0:
             raise DifmapError("Échec de la transformée de Fourier (invert).")
         
-    def get_map_package(self, cellsize: float) -> dict:
+    def get_map_package(self, cellsize: float, cellsize_y: float = None) -> dict:
         """
         Rassemble l'image, le faisceau et les métadonnées dans un seul dictionnaire.
 
@@ -260,7 +274,9 @@ class DifmapImager:
         Parameters
         ----------
         cellsize : float
-            Taille du pixel en mas (doit correspondre à celle passée à ``mapsize()``).
+            Taille du pixel en mas sur l'axe X.
+        cellsize_y : float, optional
+            Taille du pixel en mas sur l'axe Y. Défaut : identique à ``cellsize``.
 
         Returns
         -------
@@ -272,8 +288,8 @@ class DifmapImager:
             ``'extent'`` : limites astrométriques ``[xmax, xmin, ymin, ymax]`` en mas,
             prêtes pour ``matplotlib.imshow()``.
 
-            ``'info'`` : dict avec ``nx``, ``ny``, ``cellsize``, ``bmaj``, ``bmin``, ``bpa``
-            (dimensions et paramètres du faisceau).
+            ``'info'`` : dict avec ``nx``, ``ny``, ``cellsize``, ``cellsize_y``,
+            ``bmaj``, ``bmin``, ``bpa`` (dimensions et paramètres du faisceau).
 
         Examples
         --------
@@ -283,17 +299,19 @@ class DifmapImager:
         >>> print(img["info"]["bmaj"])   # grand axe du faisceau en mas
         0.85
         """
+        cy = cellsize_y if cellsize_y is not None else cellsize
         hdr = self._native.get_header()
         beam = self._native.get_beam_info()
         nx = hdr.get('NX', 512)
         ny = hdr.get('NY', 512)
 
-        demi_pixel = 0.5 * cellsize
+        dpx = 0.5 * cellsize
+        dpy = 0.5 * cy
         extent_corrige = [
-             (nx / 2.0) * cellsize + demi_pixel,
-            -(nx / 2.0) * cellsize + demi_pixel,
-            -(ny / 2.0) * cellsize - demi_pixel,
-             (ny / 2.0) * cellsize - demi_pixel
+             (nx / 2.0) * cellsize + dpx,
+            -(nx / 2.0) * cellsize + dpx,
+            -(ny / 2.0) * cy - dpy,
+             (ny / 2.0) * cy - dpy
         ]
 
         return {
@@ -303,6 +321,7 @@ class DifmapImager:
                 "nx": nx,
                 "ny": ny,
                 "cellsize": cellsize,
+                "cellsize_y": cy,
                 "bmaj": beam.get('BMAJ', 0.0),
                 "bmin": beam.get('BMIN', 0.0),
                 "bpa": beam.get('BPA', 0.0),
@@ -487,16 +506,18 @@ class DifmapImager:
         if self._native.selfcal(int(doamp), int(dofloat), float(solint)) != 0:
             raise DifmapError("Échec de l'auto-calibration (selfcal).")
 
-    def make_clean_map(self, size: int, cellsize: float, niter: int = 100, gain: float = 0.05, pol: str = "I") -> dict:
+    def make_clean_map(self, size: int, cellsize: float, niter: int = 100, gain: float = 0.05,
+                       pol: str = "I", ny: int = None, cellsize_y: float = None) -> dict:
         """Orchestre la création d'une Clean Map de A à Z."""
         self._session.obs.select(pol=pol)
-        self.mapsize(size, cellsize)
-        self.invert()          
-        self.clean(niter, gain) 
-        self.restore()         
-        return self.get_map_package(cellsize) 
+        self.mapsize(size, cellsize, ny=ny, cellsize_y=cellsize_y)
+        self.invert()
+        self.clean(niter, gain)
+        self.restore()
+        return self.get_map_package(cellsize, cellsize_y=cellsize_y)
 
-    def make_dirty_map(self, size: int, cellsize: float, pol: str = "I") -> dict:
+    def make_dirty_map(self, size: int, cellsize: float, pol: str = "I",
+                       ny: int = None, cellsize_y: float = None) -> dict:
         """
         Crée une Dirty Map en une seule commande.
 
@@ -506,11 +527,15 @@ class DifmapImager:
         Parameters
         ----------
         size : int
-            Nombre de pixels sur chaque côté (puissance de 2 recommandée).
+            Nombre de pixels sur l'axe X (puissance de 2 recommandée).
         cellsize : float
-            Taille du pixel en milli-arcseconde.
+            Taille du pixel en milli-arcseconde sur l'axe X.
         pol : str, optional
             Polarisation à imager. Par défaut ``"I"`` (Stokes I).
+        ny : int, optional
+            Nombre de pixels sur l'axe Y. Défaut : identique à ``size``.
+        cellsize_y : float, optional
+            Taille du pixel en mas sur l'axe Y. Défaut : identique à ``cellsize``.
 
         Returns
         -------
@@ -524,6 +549,6 @@ class DifmapImager:
         >>> session.vis.plot_image(img, title="Dirty Map RR")
         """
         self._session.obs.select(pol=pol)
-        self.mapsize(size, cellsize)
+        self.mapsize(size, cellsize, ny=ny, cellsize_y=cellsize_y)
         self.invert()
-        return self.get_map_package(cellsize)
+        return self.get_map_package(cellsize, cellsize_y=cellsize_y)
