@@ -11,6 +11,9 @@ float* get_native_beam_data(void);
 double get_native_bmaj(void);
 double get_native_bmin(void);
 double get_native_bpa(void);
+double get_native_estimated_bmaj(void);
+double get_native_estimated_bmin(void);
+double get_native_estimated_bpa(void);
 double get_native_pixsize(void);
 
 /* Extraction du plan UV */
@@ -47,12 +50,20 @@ const char* get_observation_polarization(void);
 float native_get_peak_flux(void);
 float native_get_peak_x(void);
 float native_get_peak_y(void);
+float native_get_positive_peak_flux(void);
+float native_get_positive_peak_x(void);
+float native_get_positive_peak_y(void);
 float native_get_map_rms(void);
 
 /* Gestion des fenêtres CLEAN */
 int native_addwin(float xa, float xb, float ya, float yb);
 int native_delwin(void);
 int native_peakwin(float size, int doabs);
+int native_get_window_count(void);
+float native_get_window_xmin(int index);
+float native_get_window_xmax(int index);
+float native_get_window_ymin(int index);
+float native_get_window_ymax(int index);
 
 /* Auto-calibration */
 int native_selfcal(int doamp, int dofloat, float solint);

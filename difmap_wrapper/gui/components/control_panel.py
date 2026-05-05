@@ -598,22 +598,176 @@ class ControlPanel(QDockWidget):
         layout = self.group_imaging.content_layout
 
         h = QHBoxLayout()
-        self.input_mapsize  = QLineEdit("1024")
-        self.input_cellsize = QLineEdit("0.05")
+        self.input_mapsize  = QLineEdit("512")
+        self.input_cellsize = QLineEdit("0.1")
         h.addWidget(QLabel("Size:")); h.addWidget(self.input_mapsize)
         h.addWidget(QLabel("Cell:")); h.addWidget(self.input_cellsize)
         layout.addLayout(h)
 
         layout.addWidget(QLabel("UV Weighting:"))
         self.combo_weight = QComboBox()
-        self.combo_weight.addItems(["Natural", "Uniform", "Briggs"])
+        self.combo_weight.addItems(["None", "Natural", "Uniform", "Briggs"])
         layout.addWidget(self.combo_weight)
 
         layout.addWidget(QLabel("Gaussian Taper (Mλ):"))
-        self.input_taper = QLineEdit("2.5")
+        self.input_taper = QLineEdit("0")
         layout.addWidget(self.input_taper)
 
         self.btn_compute = PrimaryButton("Compute Dirty Map")
         layout.addWidget(self.btn_compute)
 
+        # ── Séparateur CLEAN ──────────────────────────────────────
+        sep_clean = QWidget()
+        sep_clean.setFixedHeight(1)
+        sep_clean.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 6px 0;")
+        layout.addWidget(sep_clean)
+
+        layout.addWidget(QLabel("CLEAN — Iterations (niter):"))
+        self.input_niter = QLineEdit("100")
+        layout.addWidget(self.input_niter)
+
+        h_gain = QHBoxLayout()
+        h_gain.addWidget(QLabel("Gain:"))
+        self.input_gain = QLineEdit("0.05")
+        h_gain.addWidget(self.input_gain)
+        layout.addLayout(h_gain)
+
+        self.btn_compute_clean = PrimaryButton("Compute Clean Map")
+        layout.addWidget(self.btn_compute_clean)
+
+        # ── Séparateur DISPLAY ─────────────────────────────────────
+        sep_disp = QWidget()
+        sep_disp.setFixedHeight(1)
+        sep_disp.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 6px 0;")
+        layout.addWidget(sep_disp)
+
+        # Color scale [mapfunc]
+        layout.addWidget(QLabel("Color scale  [mapfunc]:"))
+        self.combo_scale = QComboBox()
+        self.combo_scale.addItems(["Linear", "Log", "Sqrt"])
+        layout.addWidget(self.combo_scale)
+
+        h_range = QHBoxLayout()
+        h_range.addWidget(QLabel("Min:"))
+        self.input_vmin = QLineEdit()
+        self.input_vmin.setPlaceholderText("auto")
+        h_range.addWidget(self.input_vmin)
+        h_range.addWidget(QLabel("Max:"))
+        self.input_vmax = QLineEdit()
+        self.input_vmax.setPlaceholderText("auto")
+        h_range.addWidget(self.input_vmax)
+        layout.addLayout(h_range)
+
+        # ── Séparateur CONTOURS ────────────────────────────────────
+        sep_ctr = QWidget()
+        sep_ctr.setFixedHeight(1)
+        sep_ctr.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 6px 0;")
+        layout.addWidget(sep_ctr)
+
+        # Contour level mode [levs / loglevs]
+        layout.addWidget(QLabel("Contour levels  [levs/loglevs]:"))
+        self.combo_contour_mode = QComboBox()
+        self.combo_contour_mode.addItems(["Standard %", "Log levels [loglevs]", "Custom"])
+        layout.addWidget(self.combo_contour_mode)
+
+        # Log levels parameters (shown only in Log mode)
+        self._widget_log_params = QWidget()
+        h_log = QHBoxLayout(self._widget_log_params)
+        h_log.setContentsMargins(0, 0, 0, 0)
+        h_log.setSpacing(4)
+        h_log.addWidget(QLabel("Min%:"))
+        self.input_absmin = QLineEdit("1")
+        self.input_absmin.setFixedWidth(40)
+        h_log.addWidget(self.input_absmin)
+        h_log.addWidget(QLabel("Max%:"))
+        self.input_absmax = QLineEdit("100")
+        self.input_absmax.setFixedWidth(40)
+        h_log.addWidget(self.input_absmax)
+        h_log.addWidget(QLabel("×:"))
+        self.input_factor = QLineEdit("2")
+        self.input_factor.setFixedWidth(36)
+        h_log.addWidget(self.input_factor)
+        self._widget_log_params.setVisible(False)
+        layout.addWidget(self._widget_log_params)
+
+        # Custom levels field (shown only in Custom mode)
+        self._widget_custom_levels = QWidget()
+        v_custom = QVBoxLayout(self._widget_custom_levels)
+        v_custom.setContentsMargins(0, 0, 0, 0)
+        v_custom.setSpacing(2)
+        v_custom.addWidget(QLabel("Levels Jy/b (comma-sep):"))
+        self.input_custom_levels = QLineEdit()
+        self.input_custom_levels.setPlaceholderText("e.g. -0.001, 0.001, 0.005")
+        v_custom.addWidget(self.input_custom_levels)
+        self._widget_custom_levels.setVisible(False)
+        layout.addWidget(self._widget_custom_levels)
+
+        self.combo_contour_mode.currentIndexChanged.connect(self._on_contour_mode_changed)
+
         self.main_layout.addWidget(self.group_imaging)
+
+    def _on_contour_mode_changed(self, index: int) -> None:
+        """Affiche/masque les champs de paramètres selon le mode de contours."""
+        self._widget_log_params.setVisible(index == 1)    # Log levels
+        self._widget_custom_levels.setVisible(index == 2)  # Custom
+
+    def get_scale_params(self) -> tuple:
+        """
+        Retourne ``(scale, vmin, vmax)`` depuis les contrôles d'échelle de couleur.
+
+        Returns
+        -------
+        tuple
+            ``scale`` : ``'linear'``, ``'log'`` ou ``'sqrt'``.
+            ``vmin``, ``vmax`` : float ou ``None`` (automatique).
+        """
+        scale = self.combo_scale.currentText().lower()
+        try:
+            vmin = float(self.input_vmin.text()) if self.input_vmin.text().strip() else None
+        except ValueError:
+            vmin = None
+        try:
+            vmax = float(self.input_vmax.text()) if self.input_vmax.text().strip() else None
+        except ValueError:
+            vmax = None
+        return scale, vmin, vmax
+
+    def get_contour_params(self) -> tuple:
+        """
+        Retourne ``(mode, absmin, absmax, factor, custom_list)`` depuis les contrôles
+        de niveaux de contours.
+
+        Returns
+        -------
+        tuple
+            ``mode`` : ``'pct'``, ``'log'`` ou ``'custom'``.
+            ``absmin``, ``absmax``, ``factor`` : float (pour mode ``'log'``).
+            ``custom_list`` : list of float ou ``None`` (pour mode ``'custom'``).
+        """
+        idx = self.combo_contour_mode.currentIndex()
+        if idx == 1:  # Log levels
+            try:
+                absmin = float(self.input_absmin.text() or "1")
+            except ValueError:
+                absmin = 1.0
+            try:
+                absmax = float(self.input_absmax.text() or "100")
+            except ValueError:
+                absmax = 100.0
+            try:
+                factor = float(self.input_factor.text() or "2")
+            except ValueError:
+                factor = 2.0
+            return 'log', absmin, absmax, factor, None
+        if idx == 2:  # Custom
+            raw = self.input_custom_levels.text().strip()
+            custom = []
+            if raw:
+                for tok in raw.split(','):
+                    try:
+                        custom.append(float(tok.strip()))
+                    except ValueError:
+                        pass
+            return 'custom', 1.0, 100.0, 2.0, custom or None
+        # Standard %
+        return 'pct', 1.0, 100.0, 2.0, None

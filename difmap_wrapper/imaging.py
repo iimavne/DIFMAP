@@ -1,7 +1,9 @@
 import numpy as np
+from ctypes import Structure, c_char_p, c_int, c_float, c_double, POINTER, byref
+from typing import Optional, Tuple, List, Dict, Any, Union
 import difmap_native
-import matplotlib.pyplot as plt
-from .exceptions import DifmapError, DifmapStateError
+
+from .map_geometry import DifmapMapGeometry, get_difmap_contour_levels
 
 class DifmapImager:
     """
@@ -31,6 +33,9 @@ class DifmapImager:
         self._last_cellsize_y = None
         self._current_uvtaper = None
         self._current_uvweight = None
+        self._current_map_type = None  # "dirty" après invert(), "clean" après restore()
+        self.active_windows = []     # registre Python des fenêtres CLEAN actives [(xa,xb,ya,yb) en mas]
+        self._last_residual_map = None  # copie du buffer résiduel capturée entre clean() et restore()
 
     def _reissue_mapsize_if_needed(self):
         """Restaure la grille si elle a été annulée par un changement de pondération."""
@@ -243,6 +248,10 @@ class DifmapImager:
         self._last_ny = ny
         self._last_cellsize_y = cellsize_y
 
+    def _capture_residual(self) -> None:
+        """Sauvegarde une copie du buffer résiduel (état après clean(), avant restore())."""
+        self._last_residual_map = self.get_map().copy()
+
     def invert(self) -> None:
         """
         Calcule la Dirty Map par transformée de Fourier inverse.
@@ -264,6 +273,26 @@ class DifmapImager:
         """
         if self._native.invert() != 0:
             raise DifmapError("Échec de la transformée de Fourier (invert).")
+        self._current_map_type = "dirty"
+
+    def _display_map_data(self, map_data: np.ndarray, cellsize: float,
+                          cellsize_y: float = None) -> tuple:
+        """
+        Applique le crop d'affichage Difmap en utilisant la géométrie unifiée.
+        """
+        return DifmapMapGeometry.crop_map_data(map_data, cellsize, cellsize_y)
+
+    def _get_clean_windows(self) -> list:
+        """Retourne la liste native des fenêtres CLEAN, avec fallback cache Python."""
+        get_windows = getattr(self._native, 'get_windows', None)
+        if get_windows is None:
+            return list(self.active_windows)
+        windows = [
+            (min(xa, xb), max(xa, xb), min(ya, yb), max(ya, yb))
+            for xa, xb, ya, yb in get_windows()
+        ]
+        self.active_windows = windows
+        return windows
         
     def get_map_package(self, cellsize: float, cellsize_y: float = None) -> dict:
         """
@@ -300,26 +329,19 @@ class DifmapImager:
         0.85
         """
         cy = cellsize_y if cellsize_y is not None else cellsize
-        hdr = self._native.get_header()
         beam = self._native.get_beam_info()
-        nx = hdr.get('NX', 512)
-        ny = hdr.get('NY', 512)
-
-        dpx = 0.5 * cellsize
-        dpy = 0.5 * cy
-        extent_corrige = [
-             (nx / 2.0) * cellsize + dpx,
-            -(nx / 2.0) * cellsize + dpx,
-            -(ny / 2.0) * cy - dpy,
-             (ny / 2.0) * cy - dpy
-        ]
-
+        map_data = self.get_map()
+        display_data, extent, nx_display, ny_display = self._display_map_data(
+            map_data, cellsize, cy
+        )
+        
         return {
-            "data": self.get_map(),
+            "data": display_data,
             "beam_data": self._native.get_beam(),
+            "map_type": self._current_map_type or "dirty",
             "info": {
-                "nx": nx,
-                "ny": ny,
+                "nx": nx_display,
+                "ny": ny_display,
                 "cellsize": cellsize,
                 "cellsize_y": cy,
                 "bmaj": beam.get('BMAJ', 0.0),
@@ -327,12 +349,60 @@ class DifmapImager:
                 "bpa": beam.get('BPA', 0.0),
                 "rms": beam.get('RMS', 0.0)
             },
-            "extent": extent_corrige
+            "extent": extent,
+            "windows": self._get_clean_windows(),
+        }
+
+    def get_residual_package(self, cellsize: float, cellsize_y: float = None) -> dict:
+        """
+        Retourne le package de la Residual Map capturée lors du dernier appel à ``restore()``.
+
+        La Residual Map est le buffer **après** ``clean()`` et **avant** ``restore()`` :
+        elle représente le résidu que CLEAN n'a pas réussi à déconvoluer.
+        Contrairement à la Dirty Map, elle ne contient pas de lobes de synthèse
+        autour des sources détectées.
+
+        Returns
+        -------
+        dict
+            Même structure que ``get_map_package()`` avec ``map_type="residual"``.
+
+        Raises
+        ------
+        DifmapStateError
+            Si ``restore()`` n'a pas encore été appelé (pas de résiduel capturé).
+        """
+        if self._last_residual_map is None:
+            raise DifmapStateError(
+                "Aucun résiduel disponible. Appelez make_clean_map() ou "
+                "la séquence invert() → clean() → restore() d'abord."
+            )
+        cy = cellsize_y if cellsize_y is not None else cellsize
+        beam = self._native.get_beam_info()
+        display_data, extent, nx_display, ny_display = self._display_map_data(
+            self._last_residual_map, cellsize, cy
+        )
+        return {
+            "data": display_data,
+            "beam_data": self._native.get_beam(),
+            "map_type": "residual",
+            "info": {
+                "nx": nx_display,
+                "ny": ny_display,
+                "cellsize": cellsize,
+                "cellsize_y": cy,
+                "bmaj": beam.get('BMAJ', 0.0),
+                "bmin": beam.get('BMIN', 0.0),
+                "bpa": beam.get('BPA', 0.0),
+                "rms": beam.get('RMS', 0.0),
+            },
+            "extent": extent,
+            "windows": self._get_clean_windows(),
         }
 
     def clean(self, niter: int = 100, gain: float = 0.05) -> None:
         """
-        Déconvolue la Dirty Map par l'algorithme CLEAN de Högbom/Clark natif.
+        Déconvolue la Dirty Map par l'algorithme CLEAN natif.
 
         Doit être appelé après ``invert()``. Soustrait itérativement les
         composantes ponctuelles du lobe de synthèse et construit le modèle
@@ -366,8 +436,11 @@ class DifmapImager:
             Si le moteur C retourne une erreur (modèle absent ou faisceau
             non estimé).
         """
+        # Capture le résiduel AVANT l'écrasement par la convolution
+        self._capture_residual()
         if self._native.restore() != 0:
             raise DifmapError("Échec de la restauration (restore).")
+        self._current_map_type = "clean"
 
     def peak(self) -> dict:
         """
@@ -428,6 +501,7 @@ class DifmapImager:
         """
         if self._native.addwin(xa, xb, ya, yb) != 0:
             raise DifmapError("Erreur lors de l'ajout d'une fenêtre CLEAN.")
+        self.active_windows = self._get_clean_windows()
 
     def delwin(self) -> None:
         """
@@ -436,6 +510,7 @@ class DifmapImager:
         Équivalent à la commande ``delwin`` de Difmap.
         """
         self._native.delwin()
+        self.active_windows.clear()
 
     def peakwin(self, size: float = 1.0, doabs: bool = False) -> None:
         """
@@ -466,6 +541,55 @@ class DifmapImager:
         """
         if self._native.peakwin(float(size), int(doabs)) != 0:
             raise DifmapError("Erreur peakwin : aucune carte disponible.")
+        self.active_windows = self._get_clean_windows()
+
+    def get_elliptical_window(self, center_x: float, center_y: float, 
+                             size: float = 1.0) -> Tuple[float, float, float, float]:
+        """
+        Calcule une fenêtre elliptique adaptée au beam comme Difmap.
+        
+        Utilise les paramètres BMAJ, BMIN, BPA du beam pour créer
+        une fenêtre elliptique via el_define() comme dans Difmap.
+        
+        Parameters
+        ----------
+        center_x, center_y : float
+            Centre de la fenêtre en mas
+        size : float, optional
+            Taille en multiples du FWHM. Par défaut 1.0
+            
+        Returns
+        -------
+        tuple
+            (x_min, x_max, y_min, y_max) en mas pour la fenêtre elliptique
+        """
+        beam = self._native.get_beam_info()
+        bmaj = beam.get('BMAJ', 1.0)  # mas
+        bmin = beam.get('BMIN', bmaj)  # mas
+        bpa = beam.get('BPA', 0.0)     # degrés
+        
+        # Conversion en radians pour le calcul
+        bpa_rad = np.radians(bpa)
+        
+        # Demi-axes elliptiques
+        a = size * bmaj / 2.0  # demi-grand axe
+        b = size * bmin / 2.0  # demi-petit axe
+        
+        # Rectangle englobant de l'ellipse (approximation pour l'affichage)
+        # Rotation de l'ellipse par rapport aux axes
+        cos_pa = np.cos(bpa_rad)
+        sin_pa = np.sin(bpa_rad)
+        
+        # Extrema en x et y après rotation
+        dx = np.sqrt((a * cos_pa)**2 + (b * sin_pa)**2)
+        dy = np.sqrt((a * sin_pa)**2 + (b * cos_pa)**2)
+        
+        x_min = center_x - dx
+        x_max = center_x + dx
+        y_min = center_y - dy
+        y_max = center_y + dy
+        
+        return x_min, x_max, y_min, y_max
 
     def selfcal(self, doamp: bool = False, dofloat: bool = False, solint: float = 0.0) -> None:
         """
@@ -508,11 +632,17 @@ class DifmapImager:
 
     def make_clean_map(self, size: int, cellsize: float, niter: int = 100, gain: float = 0.05,
                        pol: str = "I", ny: int = None, cellsize_y: float = None) -> dict:
-        """Orchestre la création d'une Clean Map de A à Z."""
+        """
+        Orchestre la création d'une Clean Map de A à Z.
+
+        Capture automatiquement la Residual Map entre ``clean()`` et ``restore()``.
+        Le résiduel est accessible via ``get_residual_package()`` après l'appel.
+        """
         self._session.obs.select(pol=pol)
         self.mapsize(size, cellsize, ny=ny, cellsize_y=cellsize_y)
         self.invert()
         self.clean(niter, gain)
+        # _capture_residual() est appelé dans restore() automatiquement
         self.restore()
         return self.get_map_package(cellsize, cellsize_y=cellsize_y)
 

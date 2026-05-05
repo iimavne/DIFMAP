@@ -2,6 +2,8 @@
 import difmap_native
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.colors import Normalize, LogNorm, PowerNorm
+from matplotlib.offsetbox import AnchoredOffsetbox, AuxTransformBox
 
 class Visualizer:
     """
@@ -183,24 +185,297 @@ class Visualizer:
 
 
     @staticmethod
-    def plot_image(img_dict: dict, cmap: str = 'magma', figsize: tuple = (8, 6),
-                   title: str = "Dirty Map", xlim=None, ylim=None,
+    def _vis_central_peak(data: np.ndarray) -> float:
+        """Pic signé sur la région d'affichage complète.
+
+        Difmap garde le signe de l'extrême dominant dans maplot.c:setcont().
+        """
+        dmin = float(np.nanmin(data))
+        dmax = float(np.nanmax(data))
+        return dmax if abs(dmax) > abs(dmin) else dmin
+
+    @staticmethod
+    def _make_norm(scale: str, vmin, vmax, data: np.ndarray):
+        """Normalisation matplotlib équivalente à mapfunc de difmap (linear/log/sqrt)."""
+        dmin = float(np.nanmin(data))
+        dmax = float(np.nanmax(data))
+        v_lo = vmin if vmin is not None else dmin
+        v_hi = vmax if vmax is not None else dmax
+        if scale == 'log':
+            safe_lo = max(v_lo, v_hi * 1e-4, 1e-12) if v_hi > 0 else 1e-6
+            return LogNorm(vmin=safe_lo, vmax=v_hi)
+        if scale == 'sqrt':
+            return PowerNorm(gamma=0.5, vmin=max(v_lo, 0.0), vmax=v_hi)
+        return Normalize(vmin=v_lo, vmax=v_hi)
+
+    @staticmethod
+    def _compute_contour_levels(peak, mode='pct', absmin=1.0, absmax=100.0,
+                                 factor=2.0, custom=None):
+        """
+        Calcule les niveaux de contours selon Difmap.
+
+        - Défaut maplot.c:setcont(): [-1, 1, 2, 4, 8, 16, 32, 64] % du pic signé.
+        - loglevs: [-absmin, absmin, absmin*factor, ...] % du pic signé.
+        - custom/clevs: niveaux absolus fournis en Jy/beam.
+        """
+        if peak == 0:
+            return []
+
+        mode = (mode or 'pct').lower()
+        if mode in {'custom', 'clevs'}:
+            if not custom:
+                return []
+            return [float(v) for v in custom if v != 0]
+
+        if mode in {'pct', 'levs', 'default', 'standard'}:
+            return [pct * peak / 100.0 for pct in (-1.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0)]
+
+        if mode not in {'log', 'loglevs'}:
+            return []
+
+        absmin = abs(float(absmin))
+        absmax = abs(float(absmax))
+        factor = abs(float(factor))
+        if absmin > absmax:
+            absmin, absmax = absmax, absmin
+        if absmin < 1.0e-5 or absmax < 1.0e-5 or factor <= 1.0:
+            return []
+
+        pct_levels = [-absmin]
+        val = absmin
+        while val <= absmax:
+            pct_levels.append(val)
+            val *= factor
+        return [pct * peak / 100.0 for pct in pct_levels]
+
+    @staticmethod
+    def _vis_draw_contours(ax, data, x_lin, y_lin, peak, lw=0.8,
+                           mode='pct', absmin=1.0, absmax=100.0,
+                           factor=2.0, custom=None):
+        """
+        Contours difmap : négatifs en rouge, positifs en blanc, traits pleins.
+        Supporte les modes 'pct' (levs), 'log' (loglevs) et 'custom'.
+        Retourne la liste des niveaux tracés (Jy/beam).
+        """
+        levels = Visualizer._compute_contour_levels(peak, mode, absmin, absmax, factor, custom)
+        if not levels:
+            return []
+        cmin = float(np.nanmin(data))
+        cmax = float(np.nanmax(data))
+        visible = [l for l in levels if cmin < l < cmax]
+        drawn = []
+        for level in visible:
+            ax.contour(
+                x_lin, y_lin, data, levels=[level],
+                colors='white' if level >= 0 else 'red',
+                linewidths=lw, linestyles='solid',
+                alpha=0.9 if level >= 0 else 0.85
+            )
+            drawn.append(level)
+        return drawn
+
+    @staticmethod
+    def _vis_add_annotations(ax, data, map_type, info=None,
+                              drawn_levels=None, contour_mode='pct'):
+        """Annotations texte style difmap (maplot.c:1664-1703)."""
+        lines = []
+        if map_type == "clean":
+            lines.append(f"Map peak: {float(np.nanmax(data)):.3g} Jy/beam")
+        else:
+            lines.append(
+                f"Displayed range: {float(np.nanmin(data)):.3g} □ "
+                f"{float(np.nanmax(data)):.3g} Jy/beam"
+            )
+        if drawn_levels:
+            peak = Visualizer._vis_central_peak(data)
+            if (contour_mode or '').lower() in {'custom', 'clevs'}:
+                lvl_strs = [f"{l:.3g}" for l in drawn_levels]
+                lines.append("Contours (Jy/b): " + ", ".join(lvl_strs))
+            elif peak != 0:
+                pct_strs = [f"{l / peak * 100:.3g}" for l in drawn_levels]
+                lines.append("Contours %: " + ", ".join(pct_strs))
+        if map_type == "clean" and info:
+            bmaj = info.get('bmaj', 0.0)
+            bmin = info.get('bmin', 0.0)
+            bpa  = info.get('bpa',  0.0)
+            if bmaj > 0 and bmin > 0:
+                lines.append(f"Beam FWHM: {bmaj:.3g} × {bmin:.3g} (mas) at {bpa:.3g}°")
+        y = 0.03
+        for line in lines:
+            ax.text(0.02, y, line, transform=ax.transAxes,
+                    fontsize=7, color='white', va='bottom', ha='left',
+                    bbox=dict(boxstyle='round,pad=0.15', facecolor='black', alpha=0.4, linewidth=0))
+            y += 0.08
+
+    @staticmethod
+    def plot_clean_map(img_dict: dict, windows=None, ax=None,
+                       cmap: str = 'inferno', figsize: tuple = (8, 8),
+                       title: str = None,
+                       scale: str = 'linear', vmin=None, vmax=None,
+                       contour_mode: str = 'pct',
+                       contour_absmin: float = 1.0, contour_absmax: float = 100.0,
+                       contour_factor: float = 2.0, contour_custom=None,
+                       save_path: str = None, show: bool = True) -> 'plt.Axes':
+        """
+        Affichage scientifique d'une Clean Map, Residual Map ou Dirty Map,
+        identique au mode pgplot de Difmap (maplot.c).
+
+        Comportement selon ``img_dict['map_type']`` :
+
+        - ``"clean"``    → "Map peak: X Jy/beam" + ellipse du faisceau
+        - ``"residual"`` → "Displayed range: min □ max Jy/beam", pas d'ellipse
+        - ``"dirty"``    → idem résiduel
+
+        Parameters
+        ----------
+        img_dict : dict
+            Dictionnaire retourné par ``get_map_package()`` ou ``get_residual_package()``.
+        windows : list of tuple, optional
+            Fenêtres CLEAN ``[(xa, xb, ya, yb)]`` en mas.
+        ax : matplotlib.axes.Axes, optional
+            Axe existant. Si absent, une nouvelle figure est créée.
+        cmap : str
+            Palette de couleurs. Par défaut ``'inferno'``.
+        figsize : tuple
+            Taille de la figure. Par défaut ``(8, 8)``.
+        title : str, optional
+            Titre. Si absent, déduit de ``map_type``.
+        scale : str, optional
+            Échelle de couleur : ``'linear'``, ``'log'`` ou ``'sqrt'`` (mapfunc).
+        vmin, vmax : float, optional
+            Bornes de la colormap (``None`` = automatique).
+        contour_mode : str, optional
+            ``'pct'`` (levs Difmap), ``'log'`` (loglevs) ou ``'custom'``.
+        contour_absmin : float
+            Pour ``'log'`` : niveau min en % du pic (défaut 1 %).
+        contour_absmax : float
+            Pour ``'log'`` : niveau max en % du pic (défaut 100 %).
+        contour_factor : float
+            Pour ``'log'`` : facteur multiplicatif (défaut 2.0).
+        contour_custom : list of float, optional
+            Pour ``'custom'`` : niveaux absolus en Jy/beam.
+        save_path : str, optional
+            Chemin de sauvegarde.
+        show : bool
+            Afficher si True.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+        """
+        from matplotlib.patches import Ellipse, Rectangle
+
+        if "data" not in img_dict or "extent" not in img_dict:
+            raise KeyError("Le dictionnaire doit contenir les clés 'data' et 'extent'.")
+
+        map_type = img_dict.get("map_type", "dirty")
+
+        _TYPE_TITLE = {"clean": "Clean map.", "residual": "Residual map.", "dirty": "Dirty map."}
+        if title is None:
+            title = _TYPE_TITLE.get(map_type, "Map")
+
+        created_fig = ax is None
+        if created_fig:
+            fig, ax = plt.subplots(figsize=figsize)
+
+        data = img_dict['data']
+        info = img_dict.get('info', {})
+        extent = img_dict['extent']  # [xmax, xmin, ymin, ymax]
+        xmax_e, xmin_e, ymin_e, ymax_e = extent
+        astrometric_extent = [xmax_e, xmin_e, ymin_e, ymax_e]
+
+        ny_px, nx_px = data.shape
+        x_lin = np.linspace(xmax_e, xmin_e, nx_px)
+        y_lin = np.linspace(ymin_e, ymax_e, ny_px)
+
+        # 1. Image de fond
+        norm = Visualizer._make_norm(scale, vmin, vmax, data)
+        im = ax.imshow(data, origin='lower', extent=astrometric_extent, cmap=cmap,
+                       aspect='equal', norm=norm)
+        ax.get_figure().colorbar(im, ax=ax, label='Flux (Jy/beam)', fraction=0.046, pad=0.04)
+
+        # 3. Contours isophotes
+        peak = Visualizer._vis_central_peak(data)
+        drawn = Visualizer._vis_draw_contours(
+            ax, data, x_lin, y_lin, peak,
+            mode=contour_mode, absmin=contour_absmin, absmax=contour_absmax,
+            factor=contour_factor, custom=contour_custom
+        )
+
+        # 4. Fenêtres CLEAN
+        active_wins = windows if windows is not None else img_dict.get('windows', [])
+        for (xa, xb, ya, yb) in active_wins:
+            x0, y0 = min(xa, xb), min(ya, yb)
+            w, h   = abs(xb - xa), abs(yb - ya)
+            ax.add_patch(Rectangle(
+                (x0, y0), w, h,
+                linewidth=1.3, edgecolor='cyan', facecolor='none', linestyle='--', alpha=0.85
+            ))
+
+        # 5. Ellipse faisceau propre (uniquement pour carte restaurée)
+        if map_type == "clean":
+            bmaj = info.get('bmaj', 0.0)
+            bmin = info.get('bmin', 0.0)
+            bpa  = info.get('bpa',  0.0)
+            if bmaj > 0 and bmin > 0:
+                beam_box = AuxTransformBox(ax.transData)
+                beam_box.add_artist(Ellipse(
+                    (0.0, 0.0), width=bmaj, height=bmin, angle=90 - bpa,
+                    facecolor='gold', edgecolor='white', linewidth=1, alpha=0.85, zorder=5
+                ))
+                ax.add_artist(AnchoredOffsetbox(
+                    loc='lower left', child=beam_box,
+                    pad=0.0, borderpad=1.5, frameon=False
+                ))
+
+        # 6. Annotations texte
+        Visualizer._vis_add_annotations(ax, data, map_type, info=info,
+                                         drawn_levels=drawn, contour_mode=contour_mode)
+
+        ax.set_xlabel("Décalage RA (mas)")
+        ax.set_ylabel("Décalage Dec (mas)")
+        ax.set_title(title)
+
+        if save_path and created_fig:
+            ax.get_figure().savefig(save_path, bbox_inches='tight')
+        if created_fig:
+            if show:
+                plt.show()
+            else:
+                plt.close(ax.get_figure())
+
+        return ax
+
+    @staticmethod
+    def plot_image(img_dict: dict, cmap: str = None, figsize: tuple = (8, 6),
+                   title: str = None, xlim=None, ylim=None,
+                   scale: str = 'linear', vmin=None, vmax=None,
+                   contour_mode: str = 'pct',
+                   contour_absmin: float = 1.0, contour_absmax: float = 100.0,
+                   contour_factor: float = 2.0, contour_custom=None,
                    save_path: str = None, show: bool = True, **kwargs) -> None:
         """
         Affiche une image astrophysique avec sa barre de couleur et ses axes astrométriques.
+
+        Le titre et la palette de couleurs sont déduits automatiquement de la clé
+        ``'map_type'`` du dictionnaire (``"dirty"`` → "Dirty Map" / inferno,
+        ``"clean"`` → "Clean Map" / viridis) sauf si ``title`` ou ``cmap``
+        sont fournis explicitement.
 
         Parameters
         ----------
         img_dict : dict
             Dictionnaire retourné par ``DifmapImager.get_map_package()``.
             Doit contenir les clés ``'data'`` (tableau 2D) et ``'extent'``
-            (limites en mas pour les axes).
+            (limites en mas pour les axes). La clé optionnelle ``'map_type'``
+            (``"dirty"`` ou ``"clean"``) est utilisée pour choisir le titre
+            et la palette par défaut.
         cmap : str, optional
-            Palette de couleurs Matplotlib. Par défaut ``'magma'``.
+            Palette de couleurs Matplotlib. Si absent, déduit de ``map_type``.
         figsize : tuple of float, optional
             Taille ``(largeur, hauteur)`` en pouces. Par défaut ``(8, 6)``.
         title : str, optional
-            Titre affiché au-dessus de l'image. Par défaut ``"Dirty Map"``.
+            Titre affiché au-dessus de l'image. Si absent, déduit de ``map_type``.
         **kwargs
             Paramètres supplémentaires transmis à ``matplotlib.pyplot.imshow``.
 
@@ -212,15 +487,60 @@ class Visualizer:
         Examples
         --------
         >>> img = session.imager.make_dirty_map(512, 0.1)
-        >>> session.vis.plot_image(img, cmap='viridis', title="Source J0003")
+        >>> session.vis.plot_image(img)                          # titre auto "Dirty Map"
+        >>> img2 = session.imager.make_clean_map(512, 0.1)
+        >>> session.vis.plot_image(img2)                         # titre auto "Clean Map"
+        >>> session.vis.plot_image(img, title="Source J0003")    # titre explicite
         """
         if "data" not in img_dict or "extent" not in img_dict:
             raise KeyError("Le dictionnaire d'image doit contenir les clés 'data' et 'extent'.")
-            
+
+        map_type = img_dict.get("map_type", "dirty")
+
+        # Les Clean Maps utilisent l'affichage scientifique complet (contours + beam + fenêtres)
+        if map_type == "clean":
+            return Visualizer.plot_clean_map(
+                img_dict,
+                cmap=cmap or 'inferno',
+                figsize=figsize,
+                title=title or "Clean Map",
+                scale=scale, vmin=vmin, vmax=vmax,
+                contour_mode=contour_mode, contour_absmin=contour_absmin,
+                contour_absmax=contour_absmax, contour_factor=contour_factor,
+                contour_custom=contour_custom,
+                save_path=save_path,
+                show=show,
+            )
+
+        if title is None:
+            title = "Residual map." if map_type == "residual" else "Dirty map."
+        if cmap is None:
+            cmap = "inferno"
+
+        extent = img_dict['extent']  # [xmax, xmin, ymin, ymax]
+        xmax_e, xmin_e, ymin_e, ymax_e = extent
+        astrometric_extent = [xmax_e, xmin_e, ymin_e, ymax_e]
+        data = img_dict['data']
+        ny_px, nx_px = data.shape
+        x_lin = np.linspace(xmax_e, xmin_e, nx_px)
+        y_lin = np.linspace(ymin_e, ymax_e, ny_px)
+
         fig, ax = plt.subplots(figsize=figsize)
-        ax.imshow(img_dict['data'], extent=img_dict['extent'], origin='lower', cmap=cmap, **kwargs)
-        ax.set_aspect('equal', adjustable='box')
-        fig.colorbar(ax.images[0], ax=ax, label='Densité de flux (Jy/beam)')
+        norm = Visualizer._make_norm(scale, vmin, vmax, data)
+        im = ax.imshow(data, extent=astrometric_extent, origin='lower', cmap=cmap,
+                       aspect='equal', norm=norm, **kwargs)
+        fig.colorbar(im, ax=ax, label='Flux (Jy/beam)')
+
+        # Contours difmap (négatifs rouges, positifs blancs)
+        peak = Visualizer._vis_central_peak(data)
+        drawn = Visualizer._vis_draw_contours(
+            ax, data, x_lin, y_lin, peak,
+            mode=contour_mode, absmin=contour_absmin, absmax=contour_absmax,
+            factor=contour_factor, custom=contour_custom
+        )
+        Visualizer._vis_add_annotations(ax, data, map_type,
+                                         drawn_levels=drawn, contour_mode=contour_mode)
+
         ax.set_title(title)
         ax.set_xlabel("Décalage RA (mas)")
         ax.set_ylabel("Décalage Dec (mas)")
@@ -229,16 +549,12 @@ class Visualizer:
         if ylim is not None:
             ax.set_ylim(ylim)
 
-        # Sauvegarde sur le disque si un chemin est fourni
         if save_path:
             fig.savefig(save_path, bbox_inches='tight')
-            
-        # Gestion de l'affichage interactif
+
         if show:
             plt.show()
         else:
-            # En mode automatisé (show=False), la figure est fermée
-            # pour éviter toute fuite de mémoire RAM.
             plt.close(fig)
     def mapplot(self, img_dict: dict = None, **kwargs):
         """
@@ -275,4 +591,9 @@ class Visualizer:
             img_dict = self._session.imager.get_map_package(
                 cellsize=self._session.imager._last_cellsize
             )
+        # Titre automatique si l'appelant n'en fournit pas
+        kwargs.setdefault(
+            "title",
+            "Clean Map" if img_dict.get("map_type") == "clean" else "Dirty Map"
+        )
         return self.plot_image(img_dict, **kwargs)

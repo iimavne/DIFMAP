@@ -170,6 +170,8 @@ py3.install_sources(
     'difmap_wrapper/app.py',
     'difmap_wrapper/enums.py',
     'difmap_wrapper/command_parser.py',
+    'difmap_wrapper/map_geometry.py',
+    'difmap_wrapper/map_annotations.py',
     'difmap_wrapper/manager.py',
     subdir: 'difmap_wrapper'
 )

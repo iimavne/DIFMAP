@@ -1,6 +1,7 @@
 import sys
 import os
 import locale
+import difmap_native
 from PyQt6.QtWidgets import QApplication
 
 # --- Forcer Python à lire les fichiers sources directement ---

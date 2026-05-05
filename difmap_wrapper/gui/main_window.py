@@ -1,5 +1,6 @@
 # difmap_wrapper/gui/main_window.py
 import re
+import difmap_native
 
 from PyQt6.QtWidgets import QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox
 from PyQt6.QtCore import Qt, QTimer
@@ -13,7 +14,7 @@ from .plot_widget import UVPlotWidget
 from .components.improved_log_console import ImprovedLogConsole
 from .components.control_panel import ControlPanel
 from .components.main_toolbar import MainToolbar
-from .map_widget import MapPlotWidget
+from .map_widget import DirtyMapPlotWidget, CleanMapPlotWidget, ResidualMapPlotWidget
 from .radplot_widget import RadPlotWidget
 from .routing.signal_router import SignalRouter
 from .header_widget import HeaderWidget
@@ -63,18 +64,22 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
 
-        self.plot_widget    = None
-        self.map_widget     = MapPlotWidget(self)
-        self.radplot_widget = RadPlotWidget(
+        self.plot_widget          = None
+        self.map_widget           = DirtyMapPlotWidget(self)
+        self.clean_map_widget     = CleanMapPlotWidget(self)
+        self.residual_map_widget  = ResidualMapPlotWidget(self)
+        self.radplot_widget    = RadPlotWidget(
             parent=self,
             sync_callback=self._sync_all_plots,
         )
         self.header_widget  = HeaderWidget(self.session, parent=self)
 
-        self.tabs.addTab(QWidget(),               "UVplot")    # TabIndex.UV
-        self.tabs.addTab(self.radplot_widget,      "Radplot")   # TabIndex.RADPLOT
-        self.tabs.addTab(self.map_widget,          "Dirty Map") # TabIndex.MAP
-        self.tabs.addTab(self.header_widget,       "Header")    # TabIndex.HEADER
+        self.tabs.addTab(QWidget(),                   "UVplot")       # TabIndex.UV       = 0
+        self.tabs.addTab(self.radplot_widget,          "Radplot")      # TabIndex.RADPLOT  = 1
+        self.tabs.addTab(self.map_widget,              "Dirty Map")    # TabIndex.MAP      = 2
+        self.tabs.addTab(self.clean_map_widget,        "Clean Map")    # TabIndex.CLEAN    = 3
+        self.tabs.addTab(self.residual_map_widget,     "Residual Map") # TabIndex.RESIDUAL = 4
+        self.tabs.addTab(self.header_widget,           "Header")       # TabIndex.HEADER   = 5
 
         self._help_dialog_open = False   # garde anti-ouvertures multiples
 
@@ -313,6 +318,7 @@ class MainWindow(QMainWindow):
         self.control_panel.data_color_changed.connect(_on_color_selected)
 
         self.control_panel.btn_compute.clicked.connect(self._compute_dirty_map)
+        self.control_panel.btn_compute_clean.clicked.connect(self._compute_clean_map)
         self.control_panel.combo_pol.currentTextChanged.connect(self._change_polarization)
         self.control_panel.ifs_range_changed.connect(self._on_ifs_range_changed)
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -370,7 +376,7 @@ class MainWindow(QMainWindow):
         ctrl = self.control_panel
         tb   = self.toolbar
         has_data   = self.plot_widget is not None
-        is_map     = (index == TabIndex.MAP)
+        is_map     = index in (TabIndex.MAP, TabIndex.CLEAN, TabIndex.RESIDUAL)
         is_radplot = (index == TabIndex.RADPLOT)
         is_uv      = (index == TabIndex.UV)
         is_header  = (index == TabIndex.HEADER)
@@ -557,55 +563,130 @@ class MainWindow(QMainWindow):
     # MÉTHODES MÉTIER
     # =========================================================
 
+    def _apply_imaging_params(self) -> tuple:
+        """
+        Lit les paramètres d'imagerie du panneau et les applique au moteur C.
+
+        Returns
+        -------
+        tuple
+            ``(mapsize, cellsize, taper_val)`` pour usage par les appelants.
+        """
+        mapsize   = int(self.control_panel.input_mapsize.text())
+        cellsize  = float(self.control_panel.input_cellsize.text())
+        weight    = self.control_panel.combo_weight.currentText().lower()
+        taper_str = self.control_panel.input_taper.text().strip()
+        taper_val = float(taper_str) if taper_str else 0.0
+
+        self.session.imager.mapsize(mapsize, cellsize)
+
+        if weight == "none":
+            # Ne rien appliquer - utiliser les paramètres par défaut de Difmap
+            pass
+        elif weight == "natural":
+            self.session.imager.uvweight(bin_size=0.0, err_power=-2.0)  # difmap: uvweight 0,-2
+        elif weight == "uniform":
+            self.session.imager.uvweight(bin_size=2.0, err_power=0.0)
+        elif weight == "briggs":
+            self.session.imager.uvweight(bin_size=2.0, err_power=-1.0)
+
+        if taper_val > 0.0:
+            self.session.imager.uvtaper(taper_val, taper_val)
+        else:
+            self.session.imager.uvtaper(0.0, 0.0)
+
+        return mapsize, cellsize, taper_val
+
     def _compute_dirty_map(self):
         """
-        Calcule la Dirty Map à partir des paramètres saisis dans le panneau.
-
-        Lit ``mapsize``, ``cellsize``, la pondération UV et le taper gaussien
-        depuis le ``ControlPanel``, puis exécute le pipeline d'imagerie C :
-        ``mapsize → uvweight → uvtaper → invert``.
-        Affiche le résultat dans :class:`MapPlotWidget` et bascule sur l'onglet Map.
-
-        Raises
-        ------
-        Exception
-            Tout échec du moteur C déclenche un ``QMessageBox`` d'erreur critique.
+        Calcule la Dirty Map (inversion FFT uniquement) et l'affiche dans l'onglet
+        dédié. Ne lance pas CLEAN ni restore().
         """
         try:
-            mapsize  = int(self.control_panel.input_mapsize.text())
-            cellsize = float(self.control_panel.input_cellsize.text())
-            weight   = self.control_panel.combo_weight.currentText().lower()
-            taper_str = self.control_panel.input_taper.text().strip()
-            taper_val = float(taper_str) if taper_str else 0.0
-
+            mapsize, cellsize, taper_val = self._apply_imaging_params()
+            weight = self.control_panel.combo_weight.currentText().lower()
             self.log_console.log(
-                f"Computing Dirty Map (Size: {mapsize}, Cell: {cellsize}, "
-                f"Weight: {weight}, Taper: {taper_val})..."
+                f"Computing Dirty Map — size: {mapsize}, cell: {cellsize} mas, "
+                f"weight: {weight}, taper: {taper_val} Mλ ..."
             )
-            self.session.imager.mapsize(mapsize, cellsize)
-
-            if weight == "natural":
-                self.session.imager.uvweight(bin_size=0.0,  err_power=-1.0)
-            elif weight == "uniform":
-                self.session.imager.uvweight(bin_size=2.0,  err_power=0.0)
-            elif weight == "briggs":
-                self.session.imager.uvweight(bin_size=2.0,  err_power=-1.0)
-
-            if taper_val > 0.0:
-                self.session.imager.uvtaper(taper_val, taper_val)
-            else:
-                self.session.imager.uvtaper(0.0, 0.0)
-
             self.session.imager.invert()
 
-            # M6 : session.imager.get_map() remplace difmap_native.get_map()
-            map_data = self.session.imager.get_map()
-            self.map_widget.plot_map(map_data, cellsize)
+            img_dict = self.session.imager.get_map_package(cellsize)
+            self.map_widget.plot_map(
+                img_dict['data'], cellsize,
+                extent=img_dict.get('extent'),
+            )
             self.tabs.setCurrentIndex(TabIndex.MAP)
             self.log_console.log("Dirty Map computed successfully.")
 
         except Exception as e:
-            err_msg = f"Failed to compute map: {e}"
+            err_msg = f"Failed to compute Dirty Map: {e}"
+            self.log_console.log(err_msg)
+            QMessageBox.critical(self, "Imaging Error", err_msg)
+
+    def _compute_clean_map(self):
+        """
+        Calcule la Clean Map restaurée (invert → clean → restore) et l'affiche
+        dans l'onglet Clean Map dédié. Distinct de la Dirty Map.
+        """
+        try:
+            niter = int(self.control_panel.input_niter.text())
+            gain  = float(self.control_panel.input_gain.text())
+            mapsize, cellsize, taper_val = self._apply_imaging_params()
+            contour_mode, contour_absmin, contour_absmax, contour_factor, contour_custom = (
+                self.control_panel.get_contour_params()
+            )
+            weight = self.control_panel.combo_weight.currentText().lower()
+            self.log_console.log(
+                f"Computing Clean Map — size: {mapsize}, cell: {cellsize} mas, "
+                f"weight: {weight}, taper: {taper_val} Mλ, "
+                f"niter: {niter}, gain: {gain} ..."
+            )
+            self.session.imager.invert()
+            self.session.imager.clean(niter, gain)
+            # Le résiduel est capturé automatiquement dans restore()
+            self.session.imager.restore()
+
+            # --- Clean Map ---
+            img_dict = self.session.imager.get_map_package(cellsize)
+            self.clean_map_widget.plot_map(
+                img_dict['data'], cellsize,
+                beam_info=img_dict['info'],
+                windows=img_dict.get('windows', []),
+                extent=img_dict.get('extent'),
+                contour_mode=contour_mode,
+                contour_absmin=contour_absmin,
+                contour_absmax=contour_absmax,
+                contour_factor=contour_factor,
+                contour_custom=contour_custom,
+            )
+
+            # --- Residual Map ---
+            try:
+                res_dict = self.session.imager.get_residual_package(cellsize)
+                self.residual_map_widget.plot_map(
+                    res_dict['data'], cellsize,
+                    extent=res_dict.get('extent'),
+                    contour_mode=contour_mode,
+                    contour_absmin=contour_absmin,
+                    contour_absmax=contour_absmax,
+                    contour_factor=contour_factor,
+                    contour_custom=contour_custom,
+                )
+            except Exception:
+                pass  # Ne pas bloquer si le résiduel est indisponible
+
+            self.tabs.setCurrentIndex(TabIndex.CLEAN)
+            peak_flux = float(img_dict['data'].max())
+            rms = img_dict['info'].get('rms', 0.0)
+            self.log_console.log(
+                f"Clean Map restored — peak: {peak_flux:.4f} Jy/beam, "
+                f"rms: {rms:.4f} Jy/beam, "
+                f"windows: {len(img_dict.get('windows', []))}."
+            )
+
+        except Exception as e:
+            err_msg = f"Failed to compute Clean Map: {e}"
             self.log_console.log(err_msg)
             QMessageBox.critical(self, "Imaging Error", err_msg)
 

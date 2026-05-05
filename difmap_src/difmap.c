@@ -7791,7 +7791,10 @@ float* get_native_map_data(void) { return (vlbmap != NULL && vlbmap->map != NULL
 float* get_native_beam_data(void) { return (vlbmap != NULL && vlbmap->beam != NULL) ? vlbmap->beam : NULL; }
 double get_native_bmaj(void) { return (vlbmap) ? vlbmap->bmaj * RTOMAS : 0.0; }
 double get_native_bmin(void) { return (vlbmap) ? vlbmap->bmin * RTOMAS : 0.0; }
-double get_native_bpa(void) { return (vlbmap) ? vlbmap->bpa : 0.0; }
+double get_native_bpa(void) { return (vlbmap) ? vlbmap->bpa * rtod : 0.0; }
+double get_native_estimated_bmaj(void) { return (vlbmap) ? vlbmap->e_bmaj * RTOMAS : 0.0; }
+double get_native_estimated_bmin(void) { return (vlbmap) ? vlbmap->e_bmin * RTOMAS : 0.0; }
+double get_native_estimated_bpa(void) { return (vlbmap) ? vlbmap->e_bpa * rtod : 0.0; }
 double get_native_pixsize(void) { return (vlbmap) ? vlbmap->xinc * RTOMAS : 0.0; }
 
 const char* get_native_telescope_name(int isub, int itel) {
@@ -8259,6 +8262,7 @@ int save_native_wobs(const char* filepath) {
     return 0;
 }
 
+
 const char* get_observation_polarization() {
     if (!vlbob) return "Unknown";
     return Stokes_name(vlbob->stream.pol.type);
@@ -8288,6 +8292,21 @@ float native_get_peak_y(void) {
     return (float)radtoxy(abs_peak_pix()->ypos);
 }
 
+float native_get_positive_peak_flux(void) {
+    if (!vlbmap) return 0.0f;
+    return vlbmap->maxpix.value;
+}
+
+float native_get_positive_peak_x(void) {
+    if (!vlbmap) return 0.0f;
+    return (float)radtoxy(vlbmap->maxpix.xpos);
+}
+
+float native_get_positive_peak_y(void) {
+    if (!vlbmap) return 0.0f;
+    return (float)radtoxy(vlbmap->maxpix.ypos);
+}
+
 float native_get_map_rms(void) {
     return (vlbmap) ? vlbmap->maprms : 0.0f;
 }
@@ -8315,6 +8334,40 @@ int native_peakwin(float size, int doabs) {
     if (vlbwins == NULL && (vlbwins = new_Mapwin()) == NULL) return -1;
     if (peakwin(vlbmap, vlbwins, size, doabs)) return -1;
     return 0;
+}
+
+static Subwin *native_get_window_at(int index) {
+    Subwin *win;
+    int i;
+    if (!vlbwins || index < 0 || index >= vlbwins->nwin) return NULL;
+    win = vlbwins->head;
+    for (i = 0; win && i < index; i++)
+        win = win->next;
+    return win;
+}
+
+int native_get_window_count(void) {
+    return vlbwins ? vlbwins->nwin : 0;
+}
+
+float native_get_window_xmin(int index) {
+    Subwin *win = native_get_window_at(index);
+    return win ? (float)radtoxy(win->xmin) : 0.0f;
+}
+
+float native_get_window_xmax(int index) {
+    Subwin *win = native_get_window_at(index);
+    return win ? (float)radtoxy(win->xmax) : 0.0f;
+}
+
+float native_get_window_ymin(int index) {
+    Subwin *win = native_get_window_at(index);
+    return win ? (float)radtoxy(win->ymin) : 0.0f;
+}
+
+float native_get_window_ymax(int index) {
+    Subwin *win = native_get_window_at(index);
+    return win ? (float)radtoxy(win->ymax) : 0.0f;
 }
 
 /* ------------------------------------------------------------------ */

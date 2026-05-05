@@ -35,7 +35,9 @@ class TabIndex:
     """
     Indices des onglets dans QTabWidget.
     """
-    UV      = 0
-    RADPLOT = 1
-    MAP     = 2
-    HEADER  = 3
+    UV       = 0
+    RADPLOT  = 1
+    MAP      = 2   # Dirty Map
+    CLEAN    = 3   # Clean Map (restaurée)
+    RESIDUAL = 4   # Residual Map (après clean(), avant restore())
+    HEADER   = 5

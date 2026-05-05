@@ -125,6 +125,15 @@ def get_beam_info() -> dict:
         "RMS": cdifmap.native_get_map_rms()
     }
 
+def get_estimated_beam_info() -> dict:
+    """Extrait le beam estimé par invert(), celui utilisé par peakwin()."""
+    return {
+        "BMAJ": cdifmap.get_native_estimated_bmaj(),
+        "BMIN": cdifmap.get_native_estimated_bmin(),
+        "BPA": cdifmap.get_native_estimated_bpa(),
+        "RMS": cdifmap.native_get_map_rms()
+    }
+
 
 def get_telescope_name(int isub, int itel) -> str:
     """Demande au moteur C le nom textuel d'une antenne."""
@@ -260,11 +269,19 @@ def get_polarization() -> str:
 # STATISTIQUES DU PIC ET DU BRUIT
 # =====================================================================
 
-def get_peak_info() -> dict:
+def get_peak_info(bint doabs=True) -> dict:
     """Retourne le pic de flux, sa position et le bruit RMS de la carte courante."""
-    cdef float flux = cdifmap.native_get_peak_flux()
-    cdef float x    = cdifmap.native_get_peak_x()
-    cdef float y    = cdifmap.native_get_peak_y()
+    cdef float flux
+    cdef float x
+    cdef float y
+    if doabs:
+        flux = cdifmap.native_get_peak_flux()
+        x = cdifmap.native_get_peak_x()
+        y = cdifmap.native_get_peak_y()
+    else:
+        flux = cdifmap.native_get_positive_peak_flux()
+        x = cdifmap.native_get_positive_peak_x()
+        y = cdifmap.native_get_positive_peak_y()
     cdef float rms  = cdifmap.native_get_map_rms()
     return {
         "flux": flux,
@@ -295,6 +312,20 @@ def peakwin(float size=1.0, int doabs=0) -> int:
     if ret != 0:
         raise RuntimeError("Erreur lors de la création de la fenêtre peakwin.")
     return ret
+
+def get_windows() -> list:
+    """Retourne les fenêtres CLEAN natives en mas: [(xmin, xmax, ymin, ymax), ...]."""
+    cdef int n = cdifmap.native_get_window_count()
+    cdef int i
+    windows = []
+    for i in range(n):
+        windows.append((
+            cdifmap.native_get_window_xmin(i),
+            cdifmap.native_get_window_xmax(i),
+            cdifmap.native_get_window_ymin(i),
+            cdifmap.native_get_window_ymax(i),
+        ))
+    return windows
 
 # =====================================================================
 # AUTO-CALIBRATION

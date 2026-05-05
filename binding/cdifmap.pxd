@@ -9,6 +9,9 @@ cdef extern from "difmap_api.h":
     double get_native_bmaj()
     double get_native_bmin()
     double get_native_bpa()
+    double get_native_estimated_bmaj()
+    double get_native_estimated_bmin()
+    double get_native_estimated_bpa()
     double get_native_pixsize()
     float* get_native_vis_phs()
 
@@ -56,12 +59,20 @@ cdef extern from "difmap_api.h":
     float native_get_peak_flux()
     float native_get_peak_x()
     float native_get_peak_y()
+    float native_get_positive_peak_flux()
+    float native_get_positive_peak_x()
+    float native_get_positive_peak_y()
     float native_get_map_rms()
 
     # Fenêtres CLEAN
     int native_addwin(float xa, float xb, float ya, float yb)
     int native_delwin()
     int native_peakwin(float size, int doabs)
+    int native_get_window_count()
+    float native_get_window_xmin(int index)
+    float native_get_window_xmax(int index)
+    float native_get_window_ymin(int index)
+    float native_get_window_ymax(int index)
 
     # Auto-calibration
     int native_selfcal(int doamp, int dofloat, float solint)

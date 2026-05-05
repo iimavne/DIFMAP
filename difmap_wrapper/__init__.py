@@ -1,6 +1,7 @@
 # difmap_wrapper/__init__.py
 
 # 1. On importe les classes pour l'API publique (accès direct)
+import difmap_native
 from .session import DifmapSession
 from .observation import Observation
 from .imaging import DifmapImager
