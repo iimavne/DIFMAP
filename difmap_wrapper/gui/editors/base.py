@@ -5,8 +5,8 @@ import numpy as np
 from matplotlib.widgets import MultiCursor, RectangleSelector, SpanSelector
 from PyQt6.QtCore import Qt
 
-from difmap_wrapper.enums import EditorMode
-from difmap_wrapper.gui.styles.design_system import DesignSystem
+from difmap_wrapper.types import EditorMode
+from difmap_wrapper.gui.styles import DesignSystem
 
 logger = logging.getLogger("difmap.editors")
 
@@ -41,7 +41,7 @@ class BasePlotEditor:
         TypeError
             Si ``observation`` n'est pas une instance :class:`Observation`.
         """
-        from difmap_wrapper.observation import Observation
+        from difmap_wrapper.core.observation import Observation
         if not isinstance(observation, Observation):
             raise TypeError(
                 f"BasePlotEditor attend une instance Observation, reçu {type(observation).__name__}.\n"

@@ -268,13 +268,23 @@ def get_difmap_contour_levels(peak: float, mode: str = 'pct',
         return custom_levels
     
     if mode == 'log':
+        # Implémentation correcte du mode logarithmique
+        # Génère une série géométrique depuis absmin jusqu'à absmax ou peak
         levels = []
         current = absmin
-        while current <= absmax:
-            levels.extend([-current, current])
+        while current <= min(absmax, abs(peak)):
+            levels.extend([-current, current])  # Négatif et positif
             current *= factor
-        return levels
+        return sorted(levels)
     
-    # Mode 'pct' - niveaux par défaut Difmap
+    # Mode 'pct' - niveaux par défaut Difmap originaux
+    # Garder les niveaux signés corrects même si peak est négatif
     default_levels = [-1, 1, 2, 4, 8, 16, 32, 64]
-    return [level * peak / 100.0 for level in default_levels]
+    abs_peak = abs(peak)
+    levels = [level * abs_peak / 100.0 for level in default_levels]
+    
+    # Si le pic est négatif, inverser les signes pour garder la cohérence
+    if peak < 0:
+        levels = [-level for level in levels]
+    
+    return levels

@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                              QFileDialog, QApplication)
 from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QSyntaxHighlighter
 from PyQt6.QtCore import Qt, QRegularExpression
-from difmap_wrapper.gui.styles.design_system import DesignSystem
+from difmap_wrapper.gui.styles import DesignSystem
 
 D = DesignSystem
 

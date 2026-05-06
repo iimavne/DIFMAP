@@ -154,94 +154,67 @@ difmap_sources = [
 # ==============================================================================
 # 1. INSTALLATION DU WRAPPER PYTHON (Couche de haut niveau)
 # ==============================================================================
-# Racine du package
-# ==============================================================================
-# 1. INSTALLATION DU WRAPPER PYTHON (Couche de haut niveau)
-# ==============================================================================
+
 # Racine du package
 py3.install_sources(
     'difmap_wrapper/__init__.py',
-    'difmap_wrapper/session.py',
-    'difmap_wrapper/imaging.py',
-    'difmap_wrapper/exceptions.py',
-    'difmap_wrapper/observation.py',
-    'difmap_wrapper/visualizer.py',
-    'difmap_wrapper/standardizer.py',
+    'difmap_wrapper/types.py',
     'difmap_wrapper/app.py',
-    'difmap_wrapper/enums.py',
-    'difmap_wrapper/command_parser.py',
-    'difmap_wrapper/map_geometry.py',
-    'difmap_wrapper/map_annotations.py',
-    'difmap_wrapper/manager.py',
     subdir: 'difmap_wrapper'
 )
 
-# Sous-module : Éditeurs interactifs
+# Sous-module : Core (API principale)
 py3.install_sources(
-    'difmap_wrapper/editors/__init__.py',
-    'difmap_wrapper/editors/base.py',
-    'difmap_wrapper/editors/uv_editor.py',
-    'difmap_wrapper/editors/rad_editor.py',
-    subdir: 'difmap_wrapper/editors'
+    'difmap_wrapper/core/__init__.py',
+    'difmap_wrapper/core/session.py',
+    'difmap_wrapper/core/observation.py',
+    'difmap_wrapper/core/imaging.py',
+    'difmap_wrapper/core/visualizer.py',
+    'difmap_wrapper/core/manager.py',
+    subdir: 'difmap_wrapper/core'
 )
 
-# Sous-module : Interface Graphique (PyQt6)
+# Sous-module : Utils (utilitaires sans dépendance GUI)
+py3.install_sources(
+    'difmap_wrapper/utils/__init__.py',
+    'difmap_wrapper/utils/exceptions.py',
+    'difmap_wrapper/utils/map_geometry.py',
+    'difmap_wrapper/utils/map_annotations.py',
+    'difmap_wrapper/utils/standardizer.py',
+    'difmap_wrapper/utils/command_parser.py',
+    subdir: 'difmap_wrapper/utils'
+)
+
+# Sous-module : GUI principal
 py3.install_sources(
     'difmap_wrapper/gui/__init__.py',
     'difmap_wrapper/gui/main_window.py',
-    'difmap_wrapper/gui/plot_widget.py',
-    'difmap_wrapper/gui/map_widget.py',
-    'difmap_wrapper/gui/radplot_widget.py',
-    'difmap_wrapper/gui/constants.py',
-    'difmap_wrapper/gui/log_handler.py',
-    'difmap_wrapper/gui/header_widget.py',
+    'difmap_wrapper/gui/styles.py',
+    'difmap_wrapper/gui/utils.py',
     subdir: 'difmap_wrapper/gui'
 )
 
-# Sous-module : Composants UI
+# Sous-module : Éditeurs interactifs (GUI)
 py3.install_sources(
-    'difmap_wrapper/gui/components/__init__.py',
-    'difmap_wrapper/gui/components/main_toolbar.py',
-    'difmap_wrapper/gui/components/control_panel.py',
-    'difmap_wrapper/gui/components/log_console.py',
-    'difmap_wrapper/gui/components/improved_log_console.py',
-    'difmap_wrapper/gui/components/styled_buttons.py',
-    subdir: 'difmap_wrapper/gui/components'
+    'difmap_wrapper/gui/editors/__init__.py',
+    'difmap_wrapper/gui/editors/base.py',
+    'difmap_wrapper/gui/editors/uv_editor.py',
+    'difmap_wrapper/gui/editors/rad_editor.py',
+    subdir: 'difmap_wrapper/gui/editors'
 )
 
-# NOUVEAU - Sous-module : Styles
-py3.install_sources(
-    'difmap_wrapper/gui/styles/__init__.py',
-    'difmap_wrapper/gui/styles/design_system.py',
-    'difmap_wrapper/gui/styles/themes.py',
-    subdir: 'difmap_wrapper/gui/styles'
-)
-
-# NOUVEAU - Sous-module : Routing
-py3.install_sources(
-    'difmap_wrapper/gui/routing/__init__.py',
-    'difmap_wrapper/gui/routing/signal_router.py',
-    subdir: 'difmap_wrapper/gui/routing'
-)
-
-# NOUVEAU - Sous-module : Utilities
-py3.install_sources(
-    'difmap_wrapper/gui/utils/__init__.py',
-    'difmap_wrapper/gui/utils/matplotlib_styles.py',
-    subdir: 'difmap_wrapper/gui/utils'
-)
-
-# NOUVEAU - Sous-module : Validation
-py3.install_sources(
-    'difmap_wrapper/gui/validation/__init__.py',
-    'difmap_wrapper/gui/validation/input_validator.py',
-    subdir: 'difmap_wrapper/gui/validation'
-)
-
-# NOUVEAU - Sous-module : Widgets de Base
+# Sous-module : Widgets (tous les widgets Qt)
 py3.install_sources(
     'difmap_wrapper/gui/widgets/__init__.py',
     'difmap_wrapper/gui/widgets/base_plot_widget.py',
+    'difmap_wrapper/gui/widgets/map_widget.py',
+    'difmap_wrapper/gui/widgets/plot_widget.py',
+    'difmap_wrapper/gui/widgets/radplot_widget.py',
+    'difmap_wrapper/gui/widgets/header_widget.py',
+    'difmap_wrapper/gui/widgets/control_panel.py',
+    'difmap_wrapper/gui/widgets/log_console.py',
+    'difmap_wrapper/gui/widgets/main_toolbar.py',
+    'difmap_wrapper/gui/widgets/styled_buttons.py',
     subdir: 'difmap_wrapper/gui/widgets'
 )
 # ==============================================================================

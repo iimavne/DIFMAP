@@ -48,6 +48,9 @@ cdef extern from "difmap_api.h":
     int native_mapsize(int nx, float cellsize, int ny, float cellsize_y)
     int native_invert()
     int native_clean(int niter, float gain)
+    int native_clrmod()
+    int native_reset_map_flags()
+    int native_refresh_beam()
     int native_restore()
 
     int native_wfits(const char* filename)

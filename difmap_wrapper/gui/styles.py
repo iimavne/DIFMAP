@@ -1,4 +1,6 @@
-# difmap_wrapper/gui/styles/design_system.py
+# difmap_wrapper/gui/styles.py
+"""Styles unifiés : palette de couleurs DesignSystem et thèmes clair/sombre."""
+
 
 class DesignSystem:
     """
@@ -8,44 +10,32 @@ class DesignSystem:
     Terminal droit  →  quasi-noir
     """
 
-    # ============================================================
-    # BLEU ASTRAL — panneau gauche, dock titres, menu bar
-    # ============================================================
-    ASTRAL_DEEPEST = "#0A1628"   # titres de dock, menu bar
-    ASTRAL_DEEP    = "#0E1F35"   # fond du dock widget
-    ASTRAL_BG      = "#162D4A"   # fond principal panneau gauche
-    ASTRAL_SURFACE = "#1C3A5E"   # group boxes
-    ASTRAL_HOVER   = "#254F7A"   # survol
-    ASTRAL_BORDER  = "#2A4D72"   # bordures
-    ASTRAL_TEXT    = "#B8CFE8"   # texte principal
-    ASTRAL_DIM     = "#6080A0"   # texte secondaire / labels
-    ASTRAL_MUTED   = "#2D4862"   # texte désactivé
-    ASTRAL_ACCENT  = "#4A98D4"   # highlight actif
+    ASTRAL_DEEPEST = "#0A1628"
+    ASTRAL_DEEP    = "#0E1F35"
+    ASTRAL_BG      = "#162D4A"
+    ASTRAL_SURFACE = "#1C3A5E"
+    ASTRAL_HOVER   = "#254F7A"
+    ASTRAL_BORDER  = "#2A4D72"
+    ASTRAL_TEXT    = "#B8CFE8"
+    ASTRAL_DIM     = "#6080A0"
+    ASTRAL_MUTED   = "#2D4862"
+    ASTRAL_ACCENT  = "#4A98D4"
 
-    # ============================================================
-    # CENTRE BLANC — zone de plots / onglets
-    # ============================================================
-    BACKGROUND   = "#F0F2F5"    # fond fenêtre principale
-    SURFACE      = "#FFFFFF"    # panneaux blancs, zone plot
-    SURFACE_ALT  = "#E8ECF2"    # alt surface, onglets inactifs
-    BORDER       = "#C8D4E0"    # bordures légères
+    BACKGROUND   = "#F0F2F5"
+    SURFACE      = "#FFFFFF"
+    SURFACE_ALT  = "#E8ECF2"
+    BORDER       = "#C8D4E0"
     BORDER_LIGHT = "#DDE4EC"
 
-    TEXT         = "#1C2B3A"    # texte principal (zone centrale)
+    TEXT           = "#1C2B3A"
     TEXT_SECONDARY = "#4A607A"
-    TEXT_MUTED   = "#90A8C0"
+    TEXT_MUTED     = "#90A8C0"
 
-    # ============================================================
-    # TERMINAL SOMBRE — dock droit
-    # ============================================================
     TERMINAL_BG     = "#0D1117"
     TERMINAL_TEXT   = "#A0B4C8"
     TERMINAL_BORDER = "#1C2535"
 
-    # ============================================================
-    # ACCENTS SÉMANTIQUES
-    # ============================================================
-    PRIMARY        = ASTRAL_ACCENT    # "#4A98D4"
+    PRIMARY        = ASTRAL_ACCENT
     PRIMARY_HOVER  = "#5BAAE0"
     PRIMARY_ACTIVE = "#3A88C4"
 
@@ -54,18 +44,12 @@ class DesignSystem:
     DANGER  = "#C62828"
     INFO    = "#00838F"
 
-    # ============================================================
-    # COULEURS PLOTS MATPLOTLIB (fond blanc)
-    # ============================================================
-    PLOT_DATA           = "#1565C0"   # bleu profond, données
-    PLOT_FOCUS          = "#C62828"   # rouge, points flaggés
+    PLOT_DATA           = "#1565C0"
+    PLOT_FOCUS          = "#C62828"
     PLOT_TITLE_INACTIVE = "#7090B0"
-    PLOT_MODEL          = "#E65100"   # orange, modèle
-    PLOT_ERROR          = "#00695C"   # teal, erreurs
+    PLOT_MODEL          = "#E65100"
+    PLOT_ERROR          = "#00695C"
 
-    # ============================================================
-    # TYPOGRAPHIE
-    # ============================================================
     FONT_FAMILY = "'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif"
     FONT_MONO   = "'Source Code Pro', 'Menlo', 'Monaco', monospace"
     FONT_SIZE_XS   = "9px"
@@ -80,20 +64,8 @@ class DesignSystem:
     SPACING_LG = "16px"; SPACING_XL = "24px"
     RADIUS_SM = "3px"; RADIUS_MD = "5px"; RADIUS_LG = "8px"
 
-    # ============================================================
-    # STYLES QSS COMPOSÉS
-    # ============================================================
-
     @staticmethod
     def get_button_primary():
-        """
-        Feuille QSS pour les boutons d'action principale.
-
-        Returns
-        -------
-        str
-            Style QSS (fond bleu astral, états hover / pressed / disabled).
-        """
         D = DesignSystem
         return f"""
             QPushButton {{
@@ -116,14 +88,6 @@ class DesignSystem:
 
     @staticmethod
     def get_button_secondary():
-        """
-        Feuille QSS pour les boutons secondaires.
-
-        Returns
-        -------
-        str
-            Style QSS (fond gris clair, bordure subtile, hover avec accent primaire).
-        """
         D = DesignSystem
         return f"""
             QPushButton {{
@@ -146,14 +110,6 @@ class DesignSystem:
 
     @staticmethod
     def get_button_danger():
-        """
-        Feuille QSS pour les boutons d'action destructrice.
-
-        Returns
-        -------
-        str
-            Style QSS (fond rouge pâle, texte rouge vif).
-        """
         return """
             QPushButton {
                 background-color: #FDECEA; color: #C62828;
@@ -164,14 +120,6 @@ class DesignSystem:
 
     @staticmethod
     def get_button_success():
-        """
-        Feuille QSS pour les boutons d'action positive (confirmation, sauvegarde).
-
-        Returns
-        -------
-        str
-            Style QSS (fond vert pâle, texte vert).
-        """
         return """
             QPushButton {
                 background-color: #E8F5E9; color: #2E7D32;
@@ -182,14 +130,6 @@ class DesignSystem:
 
     @staticmethod
     def get_tab_style():
-        """
-        Feuille QSS pour les onglets (``QTabBar`` et ``QTabWidget``).
-
-        Returns
-        -------
-        str
-            Style QSS avec onglet actif souligné en bleu astral et fond blanc.
-        """
         D = DesignSystem
         return f"""
             QTabBar::tab {{
@@ -220,14 +160,6 @@ class DesignSystem:
 
     @staticmethod
     def get_toolbar_style():
-        """
-        Feuille QSS pour la barre d'outils (``QToolBar`` et ``QToolButton``).
-
-        Returns
-        -------
-        str
-            Style QSS (fond blanc, hover gris clair, état actif fond bleu astral).
-        """
         D = DesignSystem
         return f"""
             QToolBar {{
@@ -277,14 +209,6 @@ class DesignSystem:
 
     @staticmethod
     def get_scrollbar_style():
-        """
-        Feuille QSS pour la scrollbar verticale.
-
-        Returns
-        -------
-        str
-            Style QSS (barre fine bleu astral, handle avec hover en accent).
-        """
         D = DesignSystem
         return f"""
             QScrollBar:vertical {{
@@ -303,17 +227,6 @@ class DesignSystem:
 
     @staticmethod
     def get_full_app_style():
-        """
-        Feuille QSS globale de l'application.
-
-        Agrège les styles onglets, toolbar, scrollbar, menus et dock widgets
-        en une seule chaîne applicable directement à ``QMainWindow``.
-
-        Returns
-        -------
-        str
-            Feuille de style QSS complète pour l'ensemble de l'application.
-        """
         D = DesignSystem
         return f"""
             QMainWindow, QWidget {{
@@ -361,3 +274,73 @@ class DesignSystem:
             {D.get_toolbar_style()}
             {D.get_scrollbar_style()}
         """
+
+
+# ── Thèmes clair / sombre ────────────────────────────────────────────────────
+
+LIGHT_THEME = {
+    'name': 'Light',
+    'primary': '#3f8adc',
+    'primary_hover': '#3074c1',
+    'primary_active': '#2563aa',
+    'secondary': '#6c757d',
+    'success': '#28a745',
+    'warning': '#ffc107',
+    'danger': '#dc3545',
+    'info': '#17a2b8',
+    'background': '#ffffff',
+    'surface': '#f8f9fa',
+    'surface_alt': '#e9ecef',
+    'text': '#212529',
+    'text_secondary': '#6c757d',
+    'text_muted': '#adb5bd',
+    'text_light': '#e9ecef',
+    'border': '#dee2e6',
+    'border_light': '#e9ecef',
+    'divider': '#dee2e6',
+}
+
+DARK_THEME = {
+    'name': 'Dark',
+    'primary': '#5eb3ff',
+    'primary_hover': '#4da3f0',
+    'primary_active': '#3d93e0',
+    'secondary': '#a0aec0',
+    'success': '#48bb78',
+    'warning': '#ed8936',
+    'danger': '#f56565',
+    'info': '#38b2e6',
+    'background': '#0f0f1e',
+    'surface': '#1e1e2e',
+    'surface_alt': '#2d2d3d',
+    'text': '#e8e8f0',
+    'text_secondary': '#a0aec0',
+    'text_muted': '#6d7a96',
+    'text_light': '#212529',
+    'border': '#434358',
+    'border_light': '#2d2d3d',
+    'divider': '#434358',
+}
+
+THEMES = {'light': LIGHT_THEME, 'dark': DARK_THEME}
+
+
+def get_theme(name='light'):
+    return THEMES.get(name, LIGHT_THEME)
+
+
+def generate_qss_from_theme(theme):
+    return f"""
+        QWidget {{ background-color: {theme['background']}; color: {theme['text']}; }}
+        QLabel {{ color: {theme['text']}; }}
+        QPushButton {{
+            background-color: {theme['surface_alt']}; color: {theme['text']};
+            border: 1px solid {theme['border']};
+        }}
+        QPushButton:hover {{ background-color: {theme['primary']}; color: white; }}
+        QLineEdit {{
+            background-color: {theme['surface']}; color: {theme['text']};
+            border: 1px solid {theme['border']};
+        }}
+        QGroupBox {{ color: {theme['text_secondary']}; border: 1px solid {theme['border']}; }}
+    """

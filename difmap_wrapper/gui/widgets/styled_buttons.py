@@ -98,7 +98,7 @@ class SuccessButton(QPushButton):
 # Utilisation :
 # ============================================================
 # 
-# from difmap_wrapper.gui.components.styled_buttons import (
+# from .styled_buttons import (
 #     PrimaryButton, SecondaryButton, DangerButton, SuccessButton
 # )
 # 

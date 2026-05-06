@@ -41,6 +41,9 @@ int native_uvtaper(float gauval, float gaurad_wav);
 int native_mapsize(int nx, float cellsize, int ny, float cellsize_y);
 int native_invert(void);
 int native_clean(int niter, float gain);
+int native_clrmod(void);
+int native_reset_map_flags(void);
+int native_refresh_beam(void);
 int native_restore(void);
 int native_wfits(const char* filename);
 

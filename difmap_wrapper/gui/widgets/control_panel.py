@@ -6,8 +6,8 @@ from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt6.QtGui import QColor
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtCore import Qt
-from difmap_wrapper.gui.components.styled_buttons import PrimaryButton, SecondaryButton
-from difmap_wrapper.gui.styles.design_system import DesignSystem
+from .styled_buttons import PrimaryButton, SecondaryButton
+from difmap_wrapper.gui.styles import DesignSystem
 
 D = DesignSystem
 
@@ -635,6 +635,48 @@ class ControlPanel(QDockWidget):
         self.btn_compute_clean = PrimaryButton("Compute Clean Map")
         layout.addWidget(self.btn_compute_clean)
 
+        # ── Séparateur CLEAN WINDOWS ─────────────────────────────
+        sep_windows = QWidget()
+        sep_windows.setFixedHeight(1)
+        sep_windows.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 6px 0;")
+        layout.addWidget(sep_windows)
+
+        layout.addWidget(QLabel("CLEAN WINDOWS:"))
+        
+        # Boutons de gestion des fenêtres
+        h_win = QHBoxLayout()
+        self.btn_addwin = SecondaryButton("Add Window")
+        self.btn_delwin = SecondaryButton("Delete All")
+        self.btn_del_last_win = SecondaryButton("Delete Last")
+        self.btn_del_this_win = SecondaryButton("Delete This")
+        self.btn_peakwin = SecondaryButton("Peak Window")
+        h_win.addWidget(self.btn_addwin)
+        h_win.addWidget(self.btn_delwin)
+        h_win.addWidget(self.btn_del_last_win)
+        h_win.addWidget(self.btn_del_this_win)
+        h_win.addWidget(self.btn_peakwin)
+        layout.addLayout(h_win)
+        
+        # Champs pour ajouter une fenêtre manuelle
+        layout.addWidget(QLabel("Add Window (mas):"))
+        h_coords = QHBoxLayout()
+        self.input_xa = QLineEdit("-5")
+        self.input_xb = QLineEdit("5")
+        self.input_ya = QLineEdit("-5")
+        self.input_yb = QLineEdit("5")
+        h_coords.addWidget(QLabel("X1:")); h_coords.addWidget(self.input_xa)
+        h_coords.addWidget(QLabel("X2:")); h_coords.addWidget(self.input_xb)
+        h_coords.addWidget(QLabel("Y1:")); h_coords.addWidget(self.input_ya)
+        h_coords.addWidget(QLabel("Y2:")); h_coords.addWidget(self.input_yb)
+        layout.addLayout(h_coords)
+        
+        # Taille pour peakwin
+        h_peak = QHBoxLayout()
+        h_peak.addWidget(QLabel("Peak size:"))
+        self.input_peak_size = QLineEdit("1.0")
+        h_peak.addWidget(self.input_peak_size)
+        layout.addLayout(h_peak)
+
         # ── Séparateur DISPLAY ─────────────────────────────────────
         sep_disp = QWidget()
         sep_disp.setFixedHeight(1)
@@ -702,6 +744,42 @@ class ControlPanel(QDockWidget):
         self._widget_custom_levels.setVisible(False)
         layout.addWidget(self._widget_custom_levels)
 
+        # ── Séparateur DISPLAY AREA ───────────────────────────────
+        sep_area = QWidget()
+        sep_area.setFixedHeight(1)
+        sep_area.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 6px 0;")
+        layout.addWidget(sep_area)
+
+        # Zone d'affichage personnalisable
+        layout.addWidget(QLabel("Display Area (mas):"))
+        h_area = QHBoxLayout()
+        h_area.addWidget(QLabel("Xmin:"))
+        self.input_xmin = QLineEdit()
+        self.input_xmin.setPlaceholderText("auto")
+        h_area.addWidget(self.input_xmin)
+        h_area.addWidget(QLabel("Xmax:"))
+        self.input_xmax = QLineEdit()
+        self.input_xmax.setPlaceholderText("auto")
+        h_area.addWidget(self.input_xmax)
+        layout.addLayout(h_area)
+        
+        h_area2 = QHBoxLayout()
+        h_area2.addWidget(QLabel("Ymin:"))
+        self.input_ymin = QLineEdit()
+        self.input_ymin.setPlaceholderText("auto")
+        h_area2.addWidget(self.input_ymin)
+        h_area2.addWidget(QLabel("Ymax:"))
+        self.input_ymax = QLineEdit()
+        self.input_ymax.setPlaceholderText("auto")
+        h_area2.addWidget(self.input_ymax)
+        layout.addLayout(h_area2)
+
+        self.btn_refresh_view = SecondaryButton("Refresh View")
+        self.btn_refresh_view.setToolTip(
+            "Appliquer les paramètres d'affichage et de contours sans recalculer"
+        )
+        layout.addWidget(self.btn_refresh_view)
+
         self.combo_contour_mode.currentIndexChanged.connect(self._on_contour_mode_changed)
 
         self.main_layout.addWidget(self.group_imaging)
@@ -732,6 +810,53 @@ class ControlPanel(QDockWidget):
             vmax = None
         return scale, vmin, vmax
 
+    def get_window_params(self) -> tuple:
+        """
+        Retourne les coordonnées de la fenêtre depuis les champs input.
+        
+        Returns
+        -------
+        tuple
+            (xa, xb, ya, yb) en float ou None si invalide
+        """
+        try:
+            xa = float(self.input_xa.text())
+            xb = float(self.input_xb.text())
+            ya = float(self.input_ya.text())
+            yb = float(self.input_yb.text())
+            return xa, xb, ya, yb
+        except ValueError:
+            return None, None, None, None
+    
+    def get_peak_size(self) -> float:
+        """Retourne la taille pour peakwin."""
+        try:
+            return float(self.input_peak_size.text())
+        except ValueError:
+            return 1.0
+
+    def get_display_area_params(self) -> tuple:
+        """
+        Retourne les limites de la zone d'affichage personnalisée.
+        
+        Returns
+        -------
+        tuple
+            (xmin, xmax, ymin, ymax) en float ou None si auto
+        """
+        def _parse_float(value):
+            try:
+                return float(value) if value.strip() else None
+            except ValueError:
+                return None
+        
+        xmin = _parse_float(self.input_xmin.text())
+        xmax = _parse_float(self.input_xmax.text())
+        ymin = _parse_float(self.input_ymin.text())
+        ymax = _parse_float(self.input_ymax.text())
+        
+        return xmin, xmax, ymin, ymax
+
     def get_contour_params(self) -> tuple:
         """
         Retourne ``(mode, absmin, absmax, factor, custom_list)`` depuis les contrôles
@@ -742,7 +867,7 @@ class ControlPanel(QDockWidget):
         tuple
             ``mode`` : ``'pct'``, ``'log'`` ou ``'custom'``.
             ``absmin``, ``absmax``, ``factor`` : float (pour mode ``'log'``).
-            ``custom_list`` : list of float ou ``None`` (pour mode ``'custom'``).
+            ``custom_list`` : list[float] ou ``None``.
         """
         idx = self.combo_contour_mode.currentIndex()
         if idx == 1:  # Log levels

@@ -8036,6 +8036,36 @@ int native_clean(int niter, float gain) {
     return 0;
 }
 
+int native_clrmod(void) {
+    if (vlbob == NULL) return -1;
+    return clrmod(vlbob, 1, 1, 0) ? -1 : 0;
+}
+
+/*
+ * Réinitialise les flags domap et dobeam pour permettre
+ * un nouveau calcul de carte après clrmod.
+ * Retourne 0 en cas de succès, -1 si vlbmap est NULL.
+ */
+int native_reset_map_flags(void) {
+    if (vlbmap == NULL) return -1;
+    vlbmap->domap = MAP_IS_STALE;
+    vlbmap->dobeam = MAP_IS_STALE;
+    return 0;
+}
+
+int native_refresh_beam(void) {
+    if (vlbob == NULL || vlbmap == NULL) return -1;
+    /* Si la carte ou le faisceau est périmé, recalculer via uvinvert */
+    if (vlbmap->dobeam || vlbmap->domap) {
+        if (uvinvert(vlbob, vlbmap, invpar.uvmin, invpar.uvmax, invpar.gauval,
+                     invpar.gaurad, invpar.dorad, invpar.errpow, invpar.uvbin)) return -1;
+        respar.e_bmin = vlbmap->e_bmin;
+        respar.e_bmaj = vlbmap->e_bmaj;
+        respar.e_bpa  = vlbmap->e_bpa * rtod;
+    }
+    return 0;
+}
+
 int native_restore(void) {
     int dosm = 1;
     int noresid = 0;

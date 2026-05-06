@@ -8,10 +8,10 @@ try:
 except ImportError:
     _HAS_QTA = False
 
-from difmap_wrapper.gui.widgets.base_plot_widget import BasePlotWidget
-from difmap_wrapper.editors.uv_editor import UVPlotEditor
+from .base_plot_widget import BasePlotWidget
+from difmap_wrapper.gui.editors.uv_editor import UVPlotEditor
 from difmap_wrapper.gui.utils import MatplotlibStyler
-from difmap_wrapper.gui.styles.design_system import DesignSystem
+from difmap_wrapper.gui.styles import DesignSystem
 
 _TOOLBAR_QSS = f"""
 QWidget#PlotToolbar {{

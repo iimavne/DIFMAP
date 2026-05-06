@@ -52,6 +52,18 @@ def clean(niter: int, gain: float) -> int:
         raise RuntimeError("Échec de la déconvolution CLEAN dans le moteur C.")
     return ret
 
+def clrmod() -> int:
+    """Vide le modèle CLEAN côté C."""
+    return cdifmap.native_clrmod()
+
+def reset_map_flags() -> int:
+    """Réinitialise les flags de carte pour permettre un nouveau invert après clrmod."""
+    return cdifmap.native_reset_map_flags()
+
+def refresh_beam() -> int:
+    """Rafraîchit le faisceau synthétique pour peakwin."""
+    return cdifmap.native_refresh_beam()
+
 def restore() -> int:
     cdef int ret = cdifmap.native_restore()
     if ret != 0:
@@ -77,7 +89,6 @@ def get_map():
     
     # Création du Memoryview direct sur la RAM C
     cdef float[:, :] view = <float[:ny, :nx]> map_ptr
-    # Difmap a un axe inversé (RA), on applique fliplr pour s'aligner sur la norme FITS
     return np.fliplr(np.asarray(view))
 
 def get_beam():

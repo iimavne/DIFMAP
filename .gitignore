@@ -48,6 +48,8 @@ difmap.log_*
 *.jpeg
 *.md
 core
+!difmap_wrapper/core/
+!difmap_wrapper/core/**
 scrfil_src/scrfile*
 
 # On ignore les brouillons Markdown, MAIS on garde les docs officielles

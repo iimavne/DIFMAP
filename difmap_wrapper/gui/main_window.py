@@ -6,18 +6,18 @@ from PyQt6.QtWidgets import QMainWindow, QTabWidget, QFileDialog, QWidget, QMess
 from PyQt6.QtCore import Qt, QTimer
 
 from difmap_wrapper import DifmapSession
-from difmap_wrapper.enums import TabIndex  
-from difmap_wrapper.gui.styles.design_system import DesignSystem
+from difmap_wrapper.types import TabIndex  
+from difmap_wrapper.gui.styles import DesignSystem
 import logging
-from difmap_wrapper.gui.log_handler import DifmapLogHandler
-from .plot_widget import UVPlotWidget
-from .components.improved_log_console import ImprovedLogConsole
-from .components.control_panel import ControlPanel
-from .components.main_toolbar import MainToolbar
-from .map_widget import DirtyMapPlotWidget, CleanMapPlotWidget, ResidualMapPlotWidget
-from .radplot_widget import RadPlotWidget
-from .routing.signal_router import SignalRouter
-from .header_widget import HeaderWidget
+from difmap_wrapper.gui.utils import DifmapLogHandler
+from .widgets.plot_widget import UVPlotWidget
+from .widgets.log_console import ImprovedLogConsole
+from .widgets.control_panel import ControlPanel
+from .widgets.main_toolbar import MainToolbar
+from .widgets.map_widget import DirtyMapPlotWidget, CleanMapPlotWidget, ResidualMapPlotWidget
+from .widgets.radplot_widget import RadPlotWidget
+from .utils import SignalRouter
+from .widgets.header_widget import HeaderWidget
 
 
 
@@ -82,6 +82,9 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.header_widget,           "Header")       # TabIndex.HEADER   = 5
 
         self._help_dialog_open = False   # garde anti-ouvertures multiples
+
+        self._last_clean_package = None
+        self._last_added_window = None
 
         # 4. Signaux
         self._connect_signals()
@@ -319,8 +322,18 @@ class MainWindow(QMainWindow):
 
         self.control_panel.btn_compute.clicked.connect(self._compute_dirty_map)
         self.control_panel.btn_compute_clean.clicked.connect(self._compute_clean_map)
+        self.control_panel.btn_refresh_view.clicked.connect(self._refresh_current_map_tab)
         self.control_panel.combo_pol.currentTextChanged.connect(self._change_polarization)
         self.control_panel.ifs_range_changed.connect(self._on_ifs_range_changed)
+        
+        # Connexions des fenêtres CLEAN
+        self.control_panel.btn_addwin.clicked.connect(self._add_clean_window)
+        self.control_panel.btn_delwin.clicked.connect(self._delete_clean_windows)
+        self.control_panel.btn_peakwin.clicked.connect(self._add_peak_window)
+        if hasattr(self.control_panel, 'btn_del_last_win'):
+            self.control_panel.btn_del_last_win.clicked.connect(self._delete_last_clean_window)
+        if hasattr(self.control_panel, 'btn_del_this_win'):
+            self.control_panel.btn_del_this_win.clicked.connect(self._delete_this_clean_window)
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.control_panel.combo_rad_mode.currentIndexChanged.connect(
             lambda idx: self.radplot_widget.set_display_mode(idx)
@@ -591,9 +604,11 @@ class MainWindow(QMainWindow):
             self.session.imager.uvweight(bin_size=2.0, err_power=-1.0)
 
         if taper_val > 0.0:
-            self.session.imager.uvtaper(taper_val, taper_val)
+            # gaussian_value=0.3 : amplitude standard difmap (30% au rayon de coupure)
+            # gaussian_radius_wav : rayon en λ (GUI est en Mλ → ×1e6)
+            self.session.imager.uvtaper(gaussian_value=0.3, gaussian_radius_wav=taper_val * 1e6)
         else:
-            self.session.imager.uvtaper(0.0, 0.0)
+            self.session.imager.uvtaper(gaussian_value=0.0, gaussian_radius_wav=0.0)
 
         return mapsize, cellsize, taper_val
 
@@ -612,9 +627,17 @@ class MainWindow(QMainWindow):
             self.session.imager.invert()
 
             img_dict = self.session.imager.get_map_package(cellsize)
+            scale, vmin, vmax = self.control_panel.get_scale_params()
+            contour_mode, contour_absmin, contour_absmax, contour_factor, contour_custom = (
+                self.control_panel.get_contour_params()
+            )
             self.map_widget.plot_map(
                 img_dict['data'], cellsize,
                 extent=img_dict.get('extent'),
+                scale=scale, vmin=vmin, vmax=vmax,
+                contour_mode=contour_mode, contour_absmin=contour_absmin,
+                contour_absmax=contour_absmax, contour_factor=contour_factor,
+                contour_custom=contour_custom
             )
             self.tabs.setCurrentIndex(TabIndex.MAP)
             self.log_console.log("Dirty Map computed successfully.")
@@ -627,68 +650,322 @@ class MainWindow(QMainWindow):
     def _compute_clean_map(self):
         """
         Calcule la Clean Map restaurée (invert → clean → restore) et l'affiche
-        dans l'onglet Clean Map dédié. Distinct de la Dirty Map.
+        dans l'onglet Clean Map dédié. Suit fidèlement le cycle de difmap_src.
         """
         try:
             niter = int(self.control_panel.input_niter.text())
             gain  = float(self.control_panel.input_gain.text())
             mapsize, cellsize, taper_val = self._apply_imaging_params()
+            
+            self.log_console.log(
+                f"CLEAN cycle — niter: {niter}, gain: {gain}, taper: {taper_val} Mλ"
+            )
+
+            # 1. Inversion (Dirty Map)
+            self.session.imager.invert()
+            
+            # 2. CLEAN (cherche les composants dans les fenêtres)
+            self.session.imager.clean(niter, gain)
+            
+            # 3. Restore (convolue le modèle et ajoute au résiduel)
+            self.session.imager.restore()
+
+            # Mise à jour des affichages
+            self._refresh_clean_map()
+            self._refresh_residual_map()
+            
+            # Basculer sur l'onglet Clean Map
+            self.tabs.setCurrentIndex(TabIndex.CLEAN)
+            
+            # Log des stats finales
+            img_dict = self.session.imager.get_map_package(cellsize)
+            peak_flux = float(img_dict['data'].max())
+            self.log_console.log(f"Clean Map restored — Peak: {peak_flux:.4f} Jy/beam")
+
+        except Exception as e:
+            err_msg = f"Failed to compute Clean Map: {e}"
+            self.log_console.log(err_msg)
+            QMessageBox.critical(self, "Imaging Error", err_msg)
+
+    def _add_clean_window(self):
+        """Ajoute une fenêtre CLEAN depuis les coordonnées du ControlPanel."""
+        try:
+            xa, xb, ya, yb = self.control_panel.get_window_params()
+            if None in (xa, xb, ya, yb):
+                QMessageBox.warning(self, "Invalid coordinates", 
+                                 "Please enter valid numeric coordinates.")
+                return
+            
+            self.session.imager.addwin(xa, xb, ya, yb)
+            self._last_added_window = (min(xa, xb), max(xa, xb), min(ya, yb), max(ya, yb))
+            self.log_console.log(f"Added CLEAN window: ({xa}, {xb}, {ya}, {yb}) mas")
+            self._refresh_clean_windows_overlay()
+            self._refresh_residual_map()
+            
+        except Exception as e:
+            err_msg = f"Failed to add CLEAN window: {e}"
+            self.log_console.log_error(err_msg)
+            QMessageBox.critical(self, "Window Error", err_msg)
+
+    def _add_clean_window_from_coords(self, xa, xb, ya, yb):
+        """Ajoute une fenêtre CLEAN depuis les coordonnées de la souris."""
+        try:
+            self.session.imager.addwin(xa, xb, ya, yb)
+            self._last_added_window = (min(xa, xb), max(xa, xb), min(ya, yb), max(ya, yb))
+            self.log_console.log(f"Added CLEAN window from mouse: ({xa:.2f}, {xb:.2f}, {ya:.2f}, {yb:.2f}) mas")
+            self._refresh_clean_windows_overlay()
+            self._refresh_residual_map()
+            
+        except Exception as e:
+            err_msg = f"Failed to add CLEAN window from mouse: {e}"
+            self.log_console.log_error(err_msg)
+            QMessageBox.critical(self, "Window Error", err_msg)
+
+    def _delete_clean_windows(self):
+        """Supprime toutes les fenêtres CLEAN."""
+        try:
+            self.session.imager.delwin()
+            self.log_console.log("Deleted all CLEAN windows")
+            self._refresh_clean_windows_overlay()
+            self._refresh_residual_map()
+            
+        except Exception as e:
+            err_msg = f"Failed to delete CLEAN windows: {e}"
+            self.log_console.log_error(err_msg)
+            QMessageBox.critical(self, "Window Error", err_msg)
+
+    def _delete_last_clean_window(self):
+        try:
+            windows = list(self.session.imager._get_clean_windows())
+            if not windows:
+                return
+            windows = windows[:-1]
+            self.session.imager.delwin()
+            for xa, xb, ya, yb in windows:
+                self.session.imager.addwin(xa, xb, ya, yb)
+            self.log_console.log("Deleted last CLEAN window")
+            self._refresh_clean_windows_overlay()
+            self._refresh_residual_map()
+        except Exception as e:
+            err_msg = f"Failed to delete last CLEAN window: {e}"
+            self.log_console.log_error(err_msg)
+            QMessageBox.critical(self, "Window Error", err_msg)
+
+    def _delete_this_clean_window(self):
+        try:
+            target = self._last_added_window
+            windows = list(self.session.imager._get_clean_windows())
+            if not windows:
+                return
+            if target and target in windows:
+                windows.remove(target)
+            else:
+                windows = windows[:-1]
+            self.session.imager.delwin()
+            for xa, xb, ya, yb in windows:
+                self.session.imager.addwin(xa, xb, ya, yb)
+            self.log_console.log("Deleted selected CLEAN window")
+            self._refresh_clean_windows_overlay()
+            self._refresh_residual_map()
+        except Exception as e:
+            err_msg = f"Failed to delete CLEAN window: {e}"
+            self.log_console.log_error(err_msg)
+            QMessageBox.critical(self, "Window Error", err_msg)
+
+    def _add_peak_window(self):
+        """Ajoute une fenêtre autour du pic de flux."""
+        try:
+            size = self.control_panel.get_peak_size()
+            self.session.imager.peakwin(size=size)
+            self.log_console.log(f"Added peak window with size {size}")
+            windows = self.session.imager._get_clean_windows()
+            if windows:
+                self._last_added_window = windows[-1]
+            self._refresh_clean_windows_overlay()
+            self._refresh_residual_map()
+            
+        except Exception as e:
+            # Gérer spécifiquement le cas où aucune carte n'est disponible
+            if "aucune carte" in str(e).lower() or "no map" in str(e).lower():
+                self.log_console.log("Peak window requires a map to be computed first. Please compute a Dirty Map or Clean Map first.")
+                QMessageBox.information(self, "Peak Window", 
+                    "A map must be computed before adding a peak window.\n\n"
+                    "Please:\n"
+                    "1. Compute a Dirty Map, or\n"
+                    "2. Compute a Clean Map\n\n"
+                    "Then try adding the peak window again.")
+            else:
+                err_msg = f"Failed to add peak window: {e}"
+                self.log_console.log_error(err_msg)
+                QMessageBox.critical(self, "Window Error", err_msg)
+
+    def _refresh_current_map_tab(self):
+        """Rafraîchit l'onglet de carte actif sans recalculer."""
+        try:
+            current_tab = self.tabs.currentIndex()
+            if current_tab == TabIndex.MAP:  # Fixed: DIRTY -> MAP
+                self._refresh_dirty_map()
+            elif current_tab == TabIndex.CLEAN:
+                self._refresh_clean_map()
+            elif current_tab == TabIndex.RESIDUAL:
+                self._refresh_residual_map()
+        except Exception as e:
+            self.log_console.log_error(f"Failed to refresh map: {e}")
+
+    def _get_valid_cellsize(self) -> float:
+        """Récupère un cellsize valide depuis le panneau de contrôle."""
+        try:
+            if hasattr(self, 'control_panel') and self.control_panel:
+                cellsize_text = self.control_panel.input_cellsize.text()
+                if cellsize_text and cellsize_text.strip():
+                    cellsize = float(cellsize_text)
+                    if cellsize > 0:  # Validation que le cellsize est positif
+                        return cellsize
+        except (ValueError, AttributeError, TypeError):
+            pass
+        
+        # Valeur par défaut robuste
+        return 0.1
+
+    def _refresh_dirty_map(self):
+        """Rafraîchit la Dirty Map sans recalculer."""
+        try:
+            if not (hasattr(self, 'session') and self.session and
+                    hasattr(self.session, 'imager') and self.session.imager):
+                return
+            if not self.session.imager.has_map_data():
+                return
+
+            cellsize = self._get_valid_cellsize()
+            map_package = self.session.imager.get_map_package(cellsize=cellsize)
+            if not (map_package and map_package.get('data') is not None):
+                return
+
+            scale, vmin, vmax = self.control_panel.get_scale_params()
+            info = map_package.get('info', {})
+            self.map_widget.plot_map(
+                map_data=map_package['data'],
+                cellsize=info.get('cellsize', cellsize),
+                cellsize_y=info.get('cellsize_y'),
+                scale=scale,
+                vmin=vmin, vmax=vmax,
+                extent=map_package['extent'],
+                windows=map_package.get('windows', []),
+            )
+        except Exception as e:
+            self.log_console.log_error(f"Failed to refresh dirty map: {e}")
+
+    def _refresh_clean_map(self):
+        """Rafraîchit la Clean Map sans recalculer."""
+        try:
+            if not (hasattr(self, 'session') and self.session and
+                    hasattr(self.session, 'imager') and self.session.imager):
+                return
+            if not self.session.imager.has_map_data():
+                return
+
+            cellsize = self._get_valid_cellsize()
+            clean_package = self.session.imager.get_map_package(cellsize=cellsize)
+            if not (clean_package and clean_package.get('data') is not None):
+                return
+
+            info = clean_package.get('info', {})
+            map_type = clean_package.get('map_type') or info.get('map_type')
+            if map_type != 'clean':
+                return
+            scale, vmin, vmax = self.control_panel.get_scale_params()
             contour_mode, contour_absmin, contour_absmax, contour_factor, contour_custom = (
                 self.control_panel.get_contour_params()
             )
-            weight = self.control_panel.combo_weight.currentText().lower()
-            self.log_console.log(
-                f"Computing Clean Map — size: {mapsize}, cell: {cellsize} mas, "
-                f"weight: {weight}, taper: {taper_val} Mλ, "
-                f"niter: {niter}, gain: {gain} ..."
-            )
-            self.session.imager.invert()
-            self.session.imager.clean(niter, gain)
-            # Le résiduel est capturé automatiquement dans restore()
-            self.session.imager.restore()
-
-            # --- Clean Map ---
-            img_dict = self.session.imager.get_map_package(cellsize)
             self.clean_map_widget.plot_map(
-                img_dict['data'], cellsize,
-                beam_info=img_dict['info'],
-                windows=img_dict.get('windows', []),
-                extent=img_dict.get('extent'),
+                map_data=clean_package['data'],
+                cellsize=info.get('cellsize', cellsize),
+                cellsize_y=info.get('cellsize_y'),
+                scale=scale,
+                vmin=vmin, vmax=vmax,
+                extent=clean_package['extent'],
+                beam_info=info,
+                windows=clean_package.get('windows', []),
                 contour_mode=contour_mode,
                 contour_absmin=contour_absmin,
                 contour_absmax=contour_absmax,
                 contour_factor=contour_factor,
                 contour_custom=contour_custom,
             )
-
-            # --- Residual Map ---
-            try:
-                res_dict = self.session.imager.get_residual_package(cellsize)
-                self.residual_map_widget.plot_map(
-                    res_dict['data'], cellsize,
-                    extent=res_dict.get('extent'),
-                    contour_mode=contour_mode,
-                    contour_absmin=contour_absmin,
-                    contour_absmax=contour_absmax,
-                    contour_factor=contour_factor,
-                    contour_custom=contour_custom,
-                )
-            except Exception:
-                pass  # Ne pas bloquer si le résiduel est indisponible
-
-            self.tabs.setCurrentIndex(TabIndex.CLEAN)
-            peak_flux = float(img_dict['data'].max())
-            rms = img_dict['info'].get('rms', 0.0)
-            self.log_console.log(
-                f"Clean Map restored — peak: {peak_flux:.4f} Jy/beam, "
-                f"rms: {rms:.4f} Jy/beam, "
-                f"windows: {len(img_dict.get('windows', []))}."
-            )
-
+            data = clean_package.get('data')
+            frozen = dict(clean_package)
+            if hasattr(data, 'copy'):
+                frozen['data'] = data.copy()
+            extent = clean_package.get('extent')
+            if isinstance(extent, list):
+                frozen['extent'] = list(extent)
+            info_frozen = clean_package.get('info')
+            if isinstance(info_frozen, dict):
+                frozen['info'] = dict(info_frozen)
+            self._last_clean_package = frozen
         except Exception as e:
-            err_msg = f"Failed to compute Clean Map: {e}"
-            self.log_console.log(err_msg)
-            QMessageBox.critical(self, "Imaging Error", err_msg)
+            self.log_console.log_error(f"Failed to refresh clean map: {e}")
+
+    def _refresh_clean_windows_overlay(self) -> None:
+        try:
+            if not (hasattr(self, 'session') and self.session and
+                    hasattr(self.session, 'imager') and self.session.imager):
+                return
+            if not self._last_clean_package:
+                return
+            cellsize = self._get_valid_cellsize()
+            scale, vmin, vmax = self.control_panel.get_scale_params()
+            contour_mode, contour_absmin, contour_absmax, contour_factor, contour_custom = (
+                self.control_panel.get_contour_params()
+            )
+            windows = self.session.imager._get_clean_windows()
+            pkg = self._last_clean_package
+            info = pkg.get('info', {})
+            self.clean_map_widget.plot_map(
+                map_data=pkg['data'],
+                cellsize=info.get('cellsize', cellsize),
+                cellsize_y=info.get('cellsize_y'),
+                scale=scale,
+                vmin=vmin, vmax=vmax,
+                extent=pkg['extent'],
+                beam_info=info,
+                windows=windows,
+                contour_mode=contour_mode,
+                contour_absmin=contour_absmin,
+                contour_absmax=contour_absmax,
+                contour_factor=contour_factor,
+                contour_custom=contour_custom,
+            )
+        except Exception:
+            return
+
+    def _refresh_residual_map(self):
+        """Rafraîchit la Residual Map sans recalculer."""
+        try:
+            if not (hasattr(self, 'session') and self.session and
+                    hasattr(self.session, 'imager') and self.session.imager):
+                return
+            if self.session.imager._last_residual_map is None:
+                return
+
+            cellsize = self._get_valid_cellsize()
+            residual_package = self.session.imager.get_residual_package(cellsize=cellsize)
+            if not (residual_package and residual_package.get('data') is not None):
+                return
+
+            info = residual_package.get('info', {})
+            scale, vmin, vmax = self.control_panel.get_scale_params()
+            self.residual_map_widget.plot_map(
+                map_data=residual_package['data'],
+                cellsize=info.get('cellsize', cellsize),
+                cellsize_y=info.get('cellsize_y'),
+                scale=scale,
+                vmin=vmin, vmax=vmax,
+                extent=residual_package['extent'],
+                windows=residual_package.get('windows', []),
+            )
+        except Exception as e:
+            self.log_console.log_error(f"Failed to refresh residual map: {e}")
 
     def _change_polarization(self, pol_text: str) -> None:
         """

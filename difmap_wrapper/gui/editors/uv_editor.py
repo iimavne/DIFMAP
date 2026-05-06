@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 
 from PyQt6.QtCore import QTimer
 from .base import BasePlotEditor
-from difmap_wrapper.enums import EditorMode
-from difmap_wrapper.gui.styles.design_system import DesignSystem
+from difmap_wrapper.types import EditorMode
+from difmap_wrapper.gui.styles import DesignSystem
 
 logger = logging.getLogger("difmap.uv_editor")
 

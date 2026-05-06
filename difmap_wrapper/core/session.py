@@ -3,7 +3,7 @@ import difmap_native
 
 from .imaging import DifmapImager
 from .observation import Observation
-from .exceptions import DifmapStateError, DifmapError
+from ..utils.exceptions import DifmapStateError, DifmapError
 
 
 class _SingletonMeta(type):

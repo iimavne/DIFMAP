@@ -4,7 +4,7 @@ import re
 import numpy as np
 import difmap_native
 
-from .exceptions import DifmapStateError, DifmapError
+from ..utils.exceptions import DifmapStateError, DifmapError
 
 logger = logging.getLogger("difmap.observation")
 

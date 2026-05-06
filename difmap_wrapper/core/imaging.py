@@ -3,7 +3,8 @@ from ctypes import Structure, c_char_p, c_int, c_float, c_double, POINTER, byref
 from typing import Optional, Tuple, List, Dict, Any, Union
 import difmap_native
 
-from .map_geometry import DifmapMapGeometry, get_difmap_contour_levels
+from ..utils.map_geometry import DifmapMapGeometry, get_difmap_contour_levels
+from ..utils.exceptions import DifmapError, DifmapStateError
 
 class DifmapImager:
     """
@@ -55,6 +56,21 @@ class DifmapImager:
             Matrice 2D de taille ``(ny, nx)`` en Jy/beam.
         """
         return self._native.get_map()
+
+    def has_map_data(self) -> bool:
+        """
+        Vérifie si des données de carte sont disponibles en mémoire C.
+        
+        Returns
+        -------
+        bool
+            True si une carte (dirty ou clean) est disponible, False sinon.
+        """
+        try:
+            map_data = self._native.get_map()
+            return map_data is not None and map_data.size > 0
+        except:
+            return False
 
     def get_cropped_map(self, target_shape: tuple) -> np.ndarray:
         """
@@ -347,7 +363,8 @@ class DifmapImager:
                 "bmaj": beam.get('BMAJ', 0.0),
                 "bmin": beam.get('BMIN', 0.0),
                 "bpa": beam.get('BPA', 0.0),
-                "rms": beam.get('RMS', 0.0)
+                "rms": beam.get('RMS', 0.0),
+                "map_type": self._current_map_type or "dirty",  # Pour le wrapper GUI
             },
             "extent": extent,
             "windows": self._get_clean_windows(),
@@ -399,6 +416,23 @@ class DifmapImager:
             "extent": extent,
             "windows": self._get_clean_windows(),
         }
+
+    def clrmod(self) -> None:
+        """
+        Vide le modèle CLEAN côté C.
+        
+        Cette méthode doit être appelée avant chaque nouvelle opération clean()
+        pour éviter l'accumulation des composantes des runs précédents.
+        
+        Raises
+        ------
+        DifmapError
+            Si le moteur C retourne une erreur lors du vidage du modèle.
+        """
+        if self._native.clrmod() != 0:
+            raise DifmapError("Échec du vidage du modèle CLEAN.")
+        # Réinitialiser les flags pour permettre un nouveau invert
+        self._native.reset_map_flags()
 
     def clean(self, niter: int = 100, gain: float = 0.05) -> None:
         """
@@ -539,9 +573,32 @@ class DifmapImager:
         >>> session.imager.peakwin(size=2.0)   # fenêtre 2× le beam autour du pic
         >>> session.imager.clean(500, 0.05)
         """
+        # Rafraîchir la carte si elle est marquée comme périmée
+        self._refresh_map_if_needed()
+        
         if self._native.peakwin(float(size), int(doabs)) != 0:
-            raise DifmapError("Erreur peakwin : aucune carte disponible.")
+            raise DifmapError("Erreur peakwin : aucune carte disponible ou carte périmée.")
         self.active_windows = self._get_clean_windows()
+
+    def _refresh_map_if_needed(self) -> None:
+        """
+        Rafraîchit la carte et le faisceau si nécessaire pour peakwin.
+        
+        Cette fonction met à jour les flags domap/dobeam pour que peakwin
+        fonctionne correctement après des opérations comme CLEAN.
+        """
+        try:
+            # Tenter de rafraîchir le faisceau si nécessaire
+            # Cela correspond à appeler uvgrid avec domap=0, dobeam=1
+            if hasattr(self._native, 'refresh_beam'):
+                self._native.refresh_beam()
+                # refresh_beam peut déclencher un recalcul/inversion du buffer map
+                # côté C (cf. logs "Inverting map"). Dans ce cas, la carte courante
+                # n'est plus garantie d'être une clean map restaurée.
+                self._current_map_type = "dirty"
+        except:
+            # Si la fonction n'existe pas, ignorer - peakwin échouera mais avec un message clair
+            pass
 
     def get_elliptical_window(self, center_x: float, center_y: float, 
                              size: float = 1.0) -> Tuple[float, float, float, float]:
