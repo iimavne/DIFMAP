@@ -1,0 +1,230 @@
+---
+title: "Architecture du Wrapper"
+---
+
+Le wrapper est organisé en **3 couches** superposées. Chaque couche a une responsabilité unique et ne connaît que la couche immédiatement en dessous.
+
+## Vue d'ensemble
+
+```{mermaid}
+graph TD
+    USR["Script utilisateur / Notebook"]
+
+    subgraph C3["Couche 3 — API Python  (difmap_wrapper/)"]
+        SESSION["DifmapSession\n(façade + singleton)"]
+        OBS["Observation\n(données UV, flagging)"]
+        IMAGER["DifmapImager\n(grille, FFT, image)"]
+        VIS["Visualizer\n(graphiques statiques)"]
+        GUI["Interface PyQt6\n(app.py + gui/)"]
+        BATCH["DifmapBatchManager\n(ProcessPoolExecutor)"]
+        EDITORS["Éditeurs Matplotlib\n(editors/)"]
+    end
+
+    subgraph C2["Couche 2 — Binding Cython  (binding/)"]
+        PYX["difmap_native.pyx\n(fonctions Python↔C)"]
+        PXD["cdifmap.pxd\n(déclarations d'interface)"]
+    end
+
+    subgraph C1["Couche 1 — Moteur C  (difmap_src/)"]
+        FACADE["difmap.c\n(façade C + getters/setters)"]
+        ALGO["Algorithmes\n(FFT, CLEAN, select, invert…)"]
+        RAM["Variables globales\nvlbob · vlbmap · model"]
+    end
+
+    USR -->|"session.observe() etc."| SESSION
+    SESSION --> OBS
+    SESSION --> IMAGER
+    SESSION --> VIS
+    GUI --> SESSION
+    BATCH -.->|"N processus"| SESSION
+    EDITORS --> OBS
+
+    SESSION -->|"difmap_native.*"| PYX
+    IMAGER  -->|"difmap_native.*"| PYX
+    OBS     -->|"difmap_native.*"| PYX
+
+    PYX --> PXD
+    PXD -->|"liaison statique"| FACADE
+    FACADE --> ALGO
+    FACADE --> RAM
+
+    style C3 fill:#eff6ff,stroke:#1e40af,stroke-width:2px
+    style C2 fill:#fffbeb,stroke:#92400e,stroke-width:2px
+    style C1 fill:#fef2f2,stroke:#991b1b,stroke-width:2px
+    style USR fill:#f0fdf4,stroke:#16a34a
+```
+
+---
+
+## Couche 1 — Moteur C (`difmap_src/`)
+
+C'est le muscle du système. Il n'a pas été modifié dans sa logique mathématique. Seul `difmap.c` a reçu une **façade API** sous forme de *getters/setters* minimalistes qui exposent les variables globales de manière contrôlée.
+
+**Ce que contient cette couche :**
+- Les algorithmes de FFT inverse (`native_invert`)
+- L'algorithme CLEAN
+- L'auto-calibration
+- Le chargement de fichiers FITS/UVFITS (`native_observe`)
+- La sélection de polarisation (`native_select`)
+- Les structures de données `Observation`, `Mapcln`, `Model` en RAM
+
+**Ce qui a été ajouté :**
+- Un header `difmap_api.h` qui déclare les fonctions exportées
+- Des *safe getters* avec vérification de pointeur NULL (prévention de segfault)
+- Un getter `get_native_map_data()` qui retourne l'adresse brute de la grille de pixels
+
+### Règle d'or
+
+> Ne jamais modifier les algorithmes de `difmap_src/`. Toute nouvelle fonctionnalité s'ajoute comme un getter/setter dans `difmap.c`, exposé via `difmap_api.h`.
+
+---
+
+## Couche 2 — Binding Cython (`binding/`)
+
+C'est le pont. Elle traduit les objets Python en appels C et récupère les données sans copie.
+
+**Deux fichiers :**
+
+| Fichier | Rôle |
+|:--------|:-----|
+| `cdifmap.pxd` | Déclarations d'interface — dit à Cython quelles fonctions C existent dans `difmap_api.h` |
+| `difmap_native.pyx` | Implémentation — fonctions Python qui appellent les fonctions C via `cimport cdifmap` |
+
+**La technique clé : Typed Memoryviews**
+
+Pour une image 2048×2048 (`float32`), dupliquer les pixels de C vers Python représente 16 Mo et plusieurs millisecondes. Le wrapper l'évite entièrement :
+
+```python
+# binding/difmap_native.pyx (simplifié)
+def get_map():
+    cdef float* ptr = cdifmap.get_native_map_data()
+    cdef int nx = cdifmap.get_native_map_nx()
+    cdef int ny = cdifmap.get_native_map_ny()
+
+    # Typed Memoryview : projette la géométrie 2D sur la RAM C existante
+    # Aucune allocation, aucune copie — NumPy utilise l'adresse fournie
+    cdef float[:ny, :nx] view = <float[:ny, :nx]> ptr
+    return np.fliplr(np.asarray(view))
+```
+
+`np.asarray(view)` est instantané : NumPy enregistre l'adresse fournie. `np.fliplr` corrige l'orientation — en radioastronomie, l'Ascension Droite croît vers la gauche, donc l'axe X de l'image est inversé.
+
+---
+
+## Couche 3 — API Python (`difmap_wrapper/`)
+
+C'est la façade utilisateur. Toute la complexité des pointeurs C est abstraite derrière des objets Python idiomatiques.
+
+### Organisation des modules
+
+```
+difmap_wrapper/
+├── __init__.py          # Exporte DifmapSession, DifmapError
+├── session.py           # DifmapSession + _SingletonMeta
+├── observation.py       # Observation (données UV, flagging, observer pattern)
+├── imaging.py           # DifmapImager (grille, pondération, FFT, image)
+├── visualizer.py        # Visualizer (graphiques statiques Matplotlib)
+├── manager.py           # DifmapBatchManager (batch parallèle)
+├── exceptions.py        # DifmapError, DifmapStateError
+├── enums.py             # EditorMode (modes des éditeurs)
+├── editors/
+│   ├── base.py          # BasePlotEditor (logique commune)
+│   ├── uv_editor.py     # UVPlotEditor (plan UV)
+│   └── rad_editor.py    # RadPlotEditor (amplitude/phase)
+└── gui/
+    ├── app.py           # Point d'entrée QApplication
+    ├── main_window.py   # MainWindow (QMainWindow)
+    ├── plot_widget.py   # UVPlotWidget (onglet UV)
+    ├── radplot_widget.py # RadPlotWidget (onglet Radplot)
+    ├── map_widget.py    # MapPlotWidget (onglet Dirty Map)
+    ├── components/      # ControlPanel, MainToolbar, LogConsole
+    ├── routing/         # SignalRouter (flux de signaux Qt)
+    ├── styles/          # DesignSystem, themes
+    ├── utils/           # Styles Matplotlib
+    └── validation/      # Validation des inputs utilisateur
+```
+
+### Machine d'état de `DifmapSession`
+
+`DifmapSession` ne calcule rien. Elle valide l'état global et délègue aux sous-objets. Le flag `uv_loaded` est l'état principal :
+
+```{mermaid}
+stateDiagram-v2
+    [*] --> Vide : DifmapSession()
+    Vide --> Chargé : observe(filepath)
+    Chargé --> Vide : cleanup()
+    Chargé --> Chargé : observe(autre_fichier)
+    note right of Chargé
+        uv_loaded = True
+        obs.select() disponible
+        imager.mapsize() disponible
+    end note
+    note right of Vide
+        uv_loaded = False
+        Appels → DifmapStateError
+    end note
+```
+
+---
+
+## Bypass de SPHERE
+
+Dans l'architecture originale, chaque action Python devait passer par SPHERE :
+
+```
+Python → texte → SPHERE (parse) → fonction C → résultat écrit sur disque → Python le relit
+```
+
+Dans le wrapper :
+
+```
+Python → difmap_native.observe() → Cython → native_observe() en C → vlbob en RAM
+```
+
+SPHERE n'est **jamais initialisé** lors d'une utilisation programmatique. Pas de parsing de texte, pas d'I/O disque.
+
+---
+
+## Build system
+
+Les anciens Makefile (capricieux selon les systèmes) ont été remplacés par une chaîne standard :
+
+| Étape | Outil | Rôle |
+|:------|:------|:-----|
+| Métadonnées projet | `pyproject.toml` | Déclare les dépendances de build, le nom du paquet, la version |
+| Compilation C/Fortran | Meson + Ninja | Détecte GCC, GFortran, PGPLOT, GSL, X11. Compile `difmap_src/` en `.o` |
+| Compilation Cython | Meson | Transpile `difmap_native.pyx` → `difmap_native.c` → `difmap_native.cpython-3XX.so` |
+| Installation Python | `pip install .` | Appelle Meson, lie tout, installe dans `site-packages` |
+
+```
+pyproject.toml
+    └── meson.build
+            ├── compile difmap_src/*.c + *.f → libdifmap.a
+            ├── compile binding/difmap_native.pyx → difmap_native.so
+            └── link → difmap_wrapper Python package
+```
+
+Pour l'utilisateur final, tout se résume à :
+
+```bash
+pip install .
+```
+
+---
+
+## Surface d'API publique
+
+Ce que le module exporte (via `__init__.py`) :
+
+```python
+from difmap_wrapper import DifmapSession, DifmapError
+```
+
+Le reste (`Observation`, `DifmapImager`, `Visualizer`, `DifmapBatchManager`) s'obtient via les attributs de la session ou par import explicite.
+
+| Symbole exporté | Usage |
+|:----------------|:------|
+| `DifmapSession` | Point d'entrée. `session.obs`, `session.imager`, `session.vis` |
+| `DifmapError` | Exception de base à capturer dans les pipelines |
+| `DifmapStateError` (via `exceptions`) | Sous-type pour les erreurs d'ordre d'appel |
+| `DifmapBatchManager` (via `manager`) | Traitement parallèle |

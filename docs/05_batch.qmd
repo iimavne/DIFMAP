@@ -1,0 +1,229 @@
+---
+title: "Traitement Batch Parallèle"
+---
+
+`DifmapBatchManager` permet de traiter N fichiers FITS indépendants en parallèle, en distribuant les tâches sur plusieurs processus OS. C'est la solution au problème du singleton C.
+
+## Pourquoi des processus et non des threads
+
+Le moteur C de Difmap stocke son état dans des variables globales `static` (`vlbob` pour l'observation, `vlbmap` pour l'image). **Un seul état est possible par processus.**
+
+Les threads partagent la mémoire du même processus. Si deux threads appellent `observe()` simultanément, ils écrivent tous les deux sur le même pointeur `vlbob` → corruption mémoire garantie → segfault.
+
+La solution est l'**isolation par processus OS** : chaque worker est un processus indépendant avec son propre espace mémoire. Il peut créer sa propre `DifmapSession` sans interférer avec les autres.
+
+```{mermaid}
+sequenceDiagram
+    participant M as DifmapBatchManager<br/>(processus principal)
+    participant P1 as Process 1<br/>vlbob₁ en RAM
+    participant P2 as Process 2<br/>vlbob₂ en RAM
+    participant P3 as Process 3<br/>vlbob₃ en RAM
+
+    M->>P1: submit(worker, file1)
+    M->>P2: submit(worker, file2)
+    M->>P3: submit(worker, file3)
+
+    P1->>P1: DifmapSession() → vlbob₁
+    P2->>P2: DifmapSession() → vlbob₂
+    P3->>P3: DifmapSession() → vlbob₃
+
+    P3-->>M: result₃ (terminé en premier)
+    P1-->>M: result₁
+    P2-->>M: result₂
+
+    Note over M: Résultats réordonnés → [r₁, r₂, r₃]
+```
+
+Les résultats sont toujours retournés **dans le même ordre que les arguments d'entrée**, quel que soit l'ordre de complétion des processus.
+
+---
+
+## DifmapBatchManager
+
+```python
+from difmap_wrapper.manager import DifmapBatchManager
+
+manager = DifmapBatchManager(max_workers=4)
+```
+
+| Paramètre | Type | Défaut | Description |
+|:----------|:-----|:-------|:------------|
+| `max_workers` | `int` ou `None` | `None` | Nombre de processus parallèles. `None` = nombre de CPUs détectés |
+
+---
+
+## Cas d'usage : extraction de statistiques en batch
+
+::: {.callout-important}
+### Contrainte pickling
+
+La fonction worker **doit être définie au niveau du module** (pas en lambda, pas en fonction locale). `ProcessPoolExecutor` sérialise la fonction avec `pickle` pour l'envoyer aux sous-processus. Les lambdas et fonctions locales ne sont pas picklables.
+:::
+
+```python
+# worker.py — module séparé, importable
+from difmap_wrapper import DifmapSession
+
+def extract_stats(filepath: str) -> dict:
+    with DifmapSession() as session:
+        session.observe(filepath)
+        session.obs.select(pol="I")
+        data = session.obs.get_data()
+        amp = data["amp"][data["weight"] > 0]
+        return {
+            "file": filepath,
+            "n_vis": int(len(amp)),
+            "mean_amp": float(amp.mean()),
+            "max_amp": float(amp.max()),
+        }
+```
+
+```python
+# main.py
+import glob
+from difmap_wrapper.manager import DifmapBatchManager
+from worker import extract_stats
+
+files = glob.glob("data/*.fits")
+manager = DifmapBatchManager(max_workers=4)
+results = manager.run_batch(extract_stats, files)
+
+for r in results:
+    print(f"{r['file']}: {r['n_vis']} vis, amp moy = {r['mean_amp']:.3f} Jy")
+```
+
+---
+
+## `run_batch(worker_func, arguments, max_workers)`
+
+| Paramètre | Type | Description |
+|:----------|:-----|:------------|
+| `worker_func` | `Callable` | Fonction à exécuter dans chaque processus. Doit être picklable (définie au niveau du module). |
+| `arguments` | `Iterable` | Itérable d'arguments. Chaque élément est passé à `worker_func()` dans un processus séparé. |
+| `max_workers` | `int` ou `None` | Surcharge `self.max_workers` pour cette exécution uniquement. |
+
+**Retourne** `list` — résultats dans le même ordre que `arguments`.
+
+**Lève** toute exception provenant d'un worker (elle est propagée lors de l'itération).
+
+---
+
+## Arguments multiples par tâche
+
+Passez un tuple par tâche, déballez dans le worker :
+
+```python
+# worker.py
+def process_with_pol(arg: tuple) -> dict:
+    filepath, pol = arg
+    with DifmapSession() as session:
+        session.observe(filepath)
+        session.obs.select(pol=pol)
+        data = session.obs.get_data()
+        return {
+            "file": filepath,
+            "pol": pol,
+            "n_vis": int(len(data["amp"]))
+        }
+```
+
+```python
+# main.py
+tasks = [
+    ("source1.fits", "RR"),
+    ("source1.fits", "LL"),
+    ("source2.fits", "RR"),
+    ("source2.fits", "LL"),
+]
+results = manager.run_batch(process_with_pol, tasks)
+```
+
+---
+
+## Gestion des erreurs dans les workers
+
+Par défaut, une exception dans un worker est re-levée par `run_batch`. Pour traiter les fichiers problématiques sans arrêter le batch :
+
+```python
+# worker.py
+from difmap_wrapper import DifmapSession
+from difmap_wrapper.exceptions import DifmapError
+
+def safe_process(filepath: str) -> dict:
+    try:
+        with DifmapSession() as session:
+            session.observe(filepath)
+            session.obs.select(pol="I")
+            data = session.obs.get_data()
+            return {"status": "ok", "file": filepath, "n_vis": len(data["amp"])}
+    except DifmapError as e:
+        return {"status": "error", "file": filepath, "reason": str(e)}
+    except Exception as e:
+        return {"status": "error", "file": filepath, "reason": f"Inattendu: {e}"}
+```
+
+```python
+results = manager.run_batch(safe_process, files)
+ok      = [r for r in results if r["status"] == "ok"]
+errors  = [r for r in results if r["status"] == "error"]
+
+print(f"{len(ok)} fichier(s) traités, {len(errors)} en erreur")
+for e in errors:
+    print(f"  ✗ {e['file']}: {e['reason']}")
+```
+
+---
+
+## Contrainte `if __name__ == "__main__"`
+
+Sur **Linux**, `fork` est la méthode de démarrage par défaut : les sous-processus héritent de la mémoire du processus parent, le démarrage est instantané.
+
+Sur **macOS** (Python ≥ 3.8) et **Windows**, la méthode est `spawn` : chaque processus ré-importe tous les modules depuis zéro. Si le code d'orchestration est exécuté au niveau module (hors `if __name__ == "__main__":`), il sera ré-exécuté dans chaque worker, ce qui provoque des erreurs.
+
+**Bonne pratique — protéger le code principal :**
+
+```python
+# main.py
+import glob
+from difmap_wrapper.manager import DifmapBatchManager
+from worker import extract_stats
+
+if __name__ == "__main__":
+    files = glob.glob("data/*.fits")
+    manager = DifmapBatchManager(max_workers=4)
+    results = manager.run_batch(extract_stats, files)
+    for r in results:
+        print(r)
+```
+
+---
+
+## Limitations et bonnes pratiques
+
+### Nombre de workers
+
+Limitez `max_workers` au nombre de **CPUs physiques** (pas logiques / hyper-threading). Le moteur C est CPU-bound ; au-delà du nombre de cœurs physiques, vous payez le coût de context-switch sans gain de débit.
+
+```python
+import os
+n_physical = os.cpu_count() // 2   # estimation : CPUs logiques / 2
+manager = DifmapBatchManager(max_workers=n_physical)
+```
+
+### Consommation mémoire
+
+Chaque processus charge sa propre copie de la bibliothèque `.so` et de ses données en RAM. Estimez avant de lancer :
+
+| Workers | Taille fichier | RAM estimée |
+|:--------|:--------------|:-----------|
+| 4 | 100 MB | ~500 MB |
+| 4 | 500 MB | ~2.5 GB |
+| 8 | 500 MB | ~5 GB |
+
+### Picklabilité des résultats
+
+Les valeurs retournées par le worker doivent être sérialisables par `pickle`. Retournez `dict`, `list`, `int`, `float`, `numpy.ndarray` — **pas** d'objets `DifmapSession`, `matplotlib.Figure`, ou `PyQt6`.
+
+### Valeur de retour et `None`
+
+Si un worker retourne `None` (pas de `return` explicite), `run_batch` retourne `None` pour cet index. Vérifiez vos retours.

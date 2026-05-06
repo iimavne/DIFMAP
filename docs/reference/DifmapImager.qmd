@@ -1,0 +1,278 @@
+# DifmapImager { #difmap_wrapper.DifmapImager }
+
+```python
+DifmapImager(session)
+```
+
+Outils pour créer une image à partir des visibilités chargées.
+
+Gère la grille de calcul (taille, pixel), la pondération des baselines,
+et la transformée de Fourier inverse (Dirty Map). Accessible via
+``session.imager``.
+
+## Examples {.doc-section .doc-section-examples}
+
+Workflow complet pour créer une Dirty Map :
+
+```python
+>>> session.obs.select(pol="I")
+>>> session.imager.mapsize(512, 0.1)       # grille 512×512, pixel 0.1 mas
+>>> session.imager.invert()                # calcul de la Dirty Map
+>>> img = session.imager.get_map_package(cellsize=0.1)
+>>> session.vis.plot_image(img)
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [get_cropped_map](#difmap_wrapper.DifmapImager.get_cropped_map) | Retourne l'image recadrée autour de son centre. |
+| [get_map](#difmap_wrapper.DifmapImager.get_map) | Retourne l'image courante depuis la mémoire C (tableau 2D, float). |
+| [get_map_package](#difmap_wrapper.DifmapImager.get_map_package) | Rassemble l'image, le faisceau et les métadonnées dans un seul dictionnaire. |
+| [invert](#difmap_wrapper.DifmapImager.invert) | Calcule la Dirty Map par transformée de Fourier inverse. |
+| [make_dirty_map](#difmap_wrapper.DifmapImager.make_dirty_map) | Crée une Dirty Map en une seule commande. |
+| [mapsize](#difmap_wrapper.DifmapImager.mapsize) | Définit la grille d'imagerie. |
+| [uvtaper](#difmap_wrapper.DifmapImager.uvtaper) | Applique un filtre gaussien (taper) pour réduire la résolution angulaire. |
+| [uvweight](#difmap_wrapper.DifmapImager.uvweight) | Définit comment les visibilités sont pondérées avant l'imagerie. |
+
+### get_cropped_map { #difmap_wrapper.DifmapImager.get_cropped_map }
+
+```python
+DifmapImager.get_cropped_map(target_shape)
+```
+
+Retourne l'image recadrée autour de son centre.
+
+Utile pour réduire la taille de la figure affichée sans recalculer la FFT.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name         | Type         | Description                                                                                               | Default    |
+|--------------|--------------|-----------------------------------------------------------------------------------------------------------|------------|
+| target_shape | tuple of int | ``(hauteur, largeur)`` en pixels. Doit être inférieur à la taille de la grille définie par ``mapsize()``. | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type       | Description                                    |
+|--------|------------|------------------------------------------------|
+|        | np.ndarray | Sous-image centrée de taille ``target_shape``. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type       | Description                                                  |
+|--------|------------|--------------------------------------------------------------|
+|        | ValueError | Si ``target_shape`` dépasse la taille de l'image en mémoire. |
+
+### get_map { #difmap_wrapper.DifmapImager.get_map }
+
+```python
+DifmapImager.get_map()
+```
+
+Retourne l'image courante depuis la mémoire C (tableau 2D, float).
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type       | Description                                   |
+|--------|------------|-----------------------------------------------|
+|        | np.ndarray | Matrice 2D de taille ``(ny, nx)`` en Jy/beam. |
+
+### get_map_package { #difmap_wrapper.DifmapImager.get_map_package }
+
+```python
+DifmapImager.get_map_package(cellsize)
+```
+
+Rassemble l'image, le faisceau et les métadonnées dans un seul dictionnaire.
+
+Ce dictionnaire est le format attendu par ``Visualizer.plot_image()``.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type   | Description                                                                | Default    |
+|----------|--------|----------------------------------------------------------------------------|------------|
+| cellsize | float  | Taille du pixel en mas (doit correspondre à celle passée à ``mapsize()``). | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type   | Description                                                                                                                                                                                                                                                                                                                                                            |
+|--------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | dict   | ``'data'`` : tableau 2D NumPy de la Dirty Map (Jy/beam).  ``'beam_data'`` : tableau 2D NumPy du faisceau synthétique (PSF).  ``'extent'`` : limites astrométriques ``[xmax, xmin, ymin, ymax]`` en mas, prêtes pour ``matplotlib.imshow()``.  ``'info'`` : dict avec ``nx``, ``ny``, ``cellsize``, ``bmaj``, ``bmin``, ``bpa`` (dimensions et paramètres du faisceau). |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.imager.mapsize(512, 0.1)
+>>> session.imager.invert()
+>>> img = session.imager.get_map_package(cellsize=0.1)
+>>> print(img["info"]["bmaj"])   # grand axe du faisceau en mas
+0.85
+```
+
+### invert { #difmap_wrapper.DifmapImager.invert }
+
+```python
+DifmapImager.invert()
+```
+
+Calcule la Dirty Map par transformée de Fourier inverse.
+
+Gridde les visibilités sur la grille définie par ``mapsize()``,
+puis applique la FFT inverse. Le résultat est stocké en mémoire C
+et accessible via ``get_map()``.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type        | Description                                                |
+|--------|-------------|------------------------------------------------------------|
+|        | DifmapError | Si la FFT échoue (grille non définie ou données absentes). |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.imager.mapsize(512, 0.1)
+>>> session.imager.invert()
+>>> img_array = session.imager.get_map()
+```
+
+### make_dirty_map { #difmap_wrapper.DifmapImager.make_dirty_map }
+
+```python
+DifmapImager.make_dirty_map(size, cellsize, pol='I')
+```
+
+Crée une Dirty Map en une seule commande.
+
+Enchaîne ``select()``, ``mapsize()`` et ``invert()``, puis retourne le
+package complet. Idéal pour une utilisation rapide dans un notebook.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type   | Description                                                    | Default    |
+|----------|--------|----------------------------------------------------------------|------------|
+| size     | int    | Nombre de pixels sur chaque côté (puissance de 2 recommandée). | _required_ |
+| cellsize | float  | Taille du pixel en milli-arcseconde.                           | _required_ |
+| pol      | str    | Polarisation à imager. Par défaut ``"I"`` (Stokes I).          | `'I'`      |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type   | Description                                                                                       |
+|--------|--------|---------------------------------------------------------------------------------------------------|
+|        | dict   | Même structure que ``get_map_package()`` : ``'data'``, ``'beam_data'``, ``'extent'``, ``'info'``. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> img = session.imager.make_dirty_map(512, 0.1, pol="RR")
+>>> session.vis.plot_image(img, title="Dirty Map RR")
+```
+
+### mapsize { #difmap_wrapper.DifmapImager.mapsize }
+
+```python
+DifmapImager.mapsize(size, cellsize)
+```
+
+Définit la grille d'imagerie.
+
+Doit être appelé avant ``invert()``. La taille totale du champ de vue
+est ``size × cellsize`` (mas).
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type   | Description                                                                                                        | Default    |
+|----------|--------|--------------------------------------------------------------------------------------------------------------------|------------|
+| size     | int    | Nombre de pixels sur chaque côté de l'image. Doit être une puissance de 2 pour la FFT (ex : 256, 512, 1024).       | _required_ |
+| cellsize | float  | Taille d'un pixel en milli-arcseconde (mas). Choisir environ un tiers à un cinquième de la résolution du faisceau. | _required_ |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type        | Description                                   |
+|--------|-------------|-----------------------------------------------|
+|        | DifmapError | Si le moteur C ne peut pas allouer la grille. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.imager.mapsize(512, 0.1)   # champ 51.2 mas, pixel 0.1 mas
+```
+
+### uvtaper { #difmap_wrapper.DifmapImager.uvtaper }
+
+```python
+DifmapImager.uvtaper(gaussian_value=None, gaussian_radius_wav=None)
+```
+
+Applique un filtre gaussien (taper) pour réduire la résolution angulaire.
+
+Le taper atténue les baselines les plus longues, ce qui améliore la
+sensibilité aux structures étendues au détriment de la résolution.
+Appelé sans argument, affiche ou désactive le taper actif.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name                | Type   | Description                                                                                            | Default   |
+|---------------------|--------|--------------------------------------------------------------------------------------------------------|-----------|
+| gaussian_value      | float  | Amplitude du filtre gaussien (entre 0 et 1). ``0.0`` = aucun taper.                                    | `None`    |
+| gaussian_radius_wav | float  | Rayon du filtre en longueurs d'onde. Définit à quelle distance dans le plan UV l'atténuation commence. | `None`    |
+
+#### Examples {.doc-section .doc-section-examples}
+
+Appliquer un taper à partir de 50 Mλ :
+
+```python
+>>> session.imager.uvtaper(gaussian_value=0.3, gaussian_radius_wav=50e6)
+```
+
+Désactiver le taper :
+
+```python
+>>> session.imager.uvtaper(0, 0)
+```
+
+Afficher le taper actif :
+
+```python
+>>> session.imager.uvtaper()
+Taper actuel : Valeur = 0.3, Rayon = 50000000.0 longueurs d'onde
+```
+
+### uvweight { #difmap_wrapper.DifmapImager.uvweight }
+
+```python
+DifmapImager.uvweight(bin_size=None, err_power=None, radial=None)
+```
+
+Définit comment les visibilités sont pondérées avant l'imagerie.
+
+Appelé sans argument, affiche la pondération active. Les trois paramètres
+correspondent aux options classiques de Difmap.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type   | Description                                                                                                                                                               | Default   |
+|-----------|--------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| bin_size  | float  | Taille des cases UV pour la pondération uniforme. ``2.0`` = pondération uniforme standard. Valeurs proches de 0 → plus naturelle (bruit plus faible, résolution réduite). | `None`    |
+| err_power | float  | Exposant appliqué à l'erreur pour le pondération robuste. ``0.0`` = uniforme, ``-2.0`` = naturelle (poids proportionnel à 1/σ²).                                          | `None`    |
+| radial    | bool   | Si ``True``, applique une pondération radiale (favorise les grandes baselines).                                                                                           | `None`    |
+
+#### Examples {.doc-section .doc-section-examples}
+
+Pondération uniforme standard :
+
+```python
+>>> session.imager.uvweight(bin_size=2.0, err_power=0.0)
+```
+
+Pondération naturelle (meilleure sensibilité) :
+
+```python
+>>> session.imager.uvweight(bin_size=0.0, err_power=-2.0)
+```
+
+Afficher la pondération active :
+
+```python
+>>> session.imager.uvweight()
+Pondération actuelle : bin_size=2.0, err_power=0.0, radial=Non
+```

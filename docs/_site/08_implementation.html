@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.4.553">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>difmap_smartedit - Implémentation Technique</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+<link rel="stylesheet" href="styles.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">difmap_smartedit</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link active" href="./index.html" aria-current="page"> 
+<span class="menu-text">v2.5.0</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/iimavne/DIFMAP"> <i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+          <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./06_contexte.html">Internals</a></li><li class="breadcrumb-item"><a href="./08_implementation.html">Implémentation technique</a></li></ol></nav>
+        <a class="flex-grow-1" role="button" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Accueil</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" aria-expanded="true">
+ <span class="menu-text">Démarrage</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./01_installation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Installation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./02_quick_start.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Quick Start</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="true">
+ <span class="menu-text">Guide utilisateur</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./03_api_python.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Recettes &amp; Patterns API</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./04_interface_gui.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Interface graphique (PyQt6)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./05_batch.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Traitement batch parallèle</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <span class="sidebar-item-text sidebar-link text-start">
+ <span class="menu-text">Référence API</span></span>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="true">
+ <span class="menu-text">Internals</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./06_contexte.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Contexte et existant</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./07_architecture.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Architecture du wrapper</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./08_implementation.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Implémentation technique</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./09_contribuer.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Contribuer</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#couche-1-façade-c-difmap.c" id="toc-couche-1-façade-c-difmap.c" class="nav-link active" data-scroll-target="#couche-1-façade-c-difmap.c">Couche 1 — Façade C (<code>difmap.c</code>)</a>
+  <ul class="collapse">
+  <li><a href="#safe-getters-prévention-des-segfaults" id="toc-safe-getters-prévention-des-segfaults" class="nav-link" data-scroll-target="#safe-getters-prévention-des-segfaults">Safe getters — prévention des segfaults</a></li>
+  <li><a href="#gestion-du-cycle-de-vie-prévention-des-fuites-mémoire" id="toc-gestion-du-cycle-de-vie-prévention-des-fuites-mémoire" class="nav-link" data-scroll-target="#gestion-du-cycle-de-vie-prévention-des-fuites-mémoire">Gestion du cycle de vie — prévention des fuites mémoire</a></li>
+  <li><a href="#synchronisation-c-fortran-le-double-pointeur" id="toc-synchronisation-c-fortran-le-double-pointeur" class="nav-link" data-scroll-target="#synchronisation-c-fortran-le-double-pointeur">Synchronisation C ↔︎ Fortran (le double pointeur)</a></li>
+  <li><a href="#tableau-de-correspondance-des-fonctions-c" id="toc-tableau-de-correspondance-des-fonctions-c" class="nav-link" data-scroll-target="#tableau-de-correspondance-des-fonctions-c">Tableau de correspondance des fonctions C</a></li>
+  </ul></li>
+  <li><a href="#couche-2-binding-cython-binding" id="toc-couche-2-binding-cython-binding" class="nav-link" data-scroll-target="#couche-2-binding-cython-binding">Couche 2 — Binding Cython (<code>binding/</code>)</a>
+  <ul class="collapse">
+  <li><a href="#déclaration-dinterface-cdifmap.pxd" id="toc-déclaration-dinterface-cdifmap.pxd" class="nav-link" data-scroll-target="#déclaration-dinterface-cdifmap.pxd">Déclaration d’interface : <code>cdifmap.pxd</code></a></li>
+  <li><a href="#conversion-de-chaînes-python-char" id="toc-conversion-de-chaînes-python-char" class="nav-link" data-scroll-target="#conversion-de-chaînes-python-char">Conversion de chaînes Python → <code>char*</code></a></li>
+  <li><a href="#zéro-copie-via-typed-memoryviews" id="toc-zéro-copie-via-typed-memoryviews" class="nav-link" data-scroll-target="#zéro-copie-via-typed-memoryviews">Zéro-copie via Typed Memoryviews</a></li>
+  <li><a href="#pourquoi-np.fliplr" id="toc-pourquoi-np.fliplr" class="nav-link" data-scroll-target="#pourquoi-np.fliplr">Pourquoi <code>np.fliplr</code> ?</a></li>
+  </ul></li>
+  <li><a href="#couche-3-décisions-dimplémentation-python" id="toc-couche-3-décisions-dimplémentation-python" class="nav-link" data-scroll-target="#couche-3-décisions-dimplémentation-python">Couche 3 — Décisions d’implémentation Python</a>
+  <ul class="collapse">
+  <li><a href="#le-singleton-_singletonmeta" id="toc-le-singleton-_singletonmeta" class="nav-link" data-scroll-target="#le-singleton-_singletonmeta">Le Singleton <code>_SingletonMeta</code></a></li>
+  <li><a href="#correction-astrométrique-du-demi-pixel" id="toc-correction-astrométrique-du-demi-pixel" class="nav-link" data-scroll-target="#correction-astrométrique-du-demi-pixel">Correction astrométrique du demi-pixel</a></li>
+  <li><a href="#restauration-de-la-grille-après-uvweight" id="toc-restauration-de-la-grille-après-uvweight" class="nav-link" data-scroll-target="#restauration-de-la-grille-après-uvweight">Restauration de la grille après <code>uvweight</code></a></li>
+  <li><a href="#hiérarchie-des-exceptions" id="toc-hiérarchie-des-exceptions" class="nav-link" data-scroll-target="#hiérarchie-des-exceptions">Hiérarchie des exceptions</a></li>
+  </ul></li>
+  <li><a href="#notes-pour-les-contributeurs" id="toc-notes-pour-les-contributeurs" class="nav-link" data-scroll-target="#notes-pour-les-contributeurs">Notes pour les contributeurs</a>
+  <ul class="collapse">
+  <li><a href="#ajouter-une-nouvelle-fonction-c" id="toc-ajouter-une-nouvelle-fonction-c" class="nav-link" data-scroll-target="#ajouter-une-nouvelle-fonction-c">Ajouter une nouvelle fonction C</a></li>
+  <li><a href="#modifier-get_map_package" id="toc-modifier-get_map_package" class="nav-link" data-scroll-target="#modifier-get_map_package">Modifier <code>get_map_package()</code></a></li>
+  <li><a href="#modifier-le-nombre-darguments-de-native_select" id="toc-modifier-le-nombre-darguments-de-native_select" class="nav-link" data-scroll-target="#modifier-le-nombre-darguments-de-native_select">Modifier le nombre d’arguments de <code>native_select()</code></a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./06_contexte.html">Internals</a></li><li class="breadcrumb-item"><a href="./08_implementation.html">Implémentation technique</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">Implémentation Technique</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>Ce chapitre détaille les décisions d’implémentation non-évidentes : pourquoi le code est structuré ainsi, et quelles contraintes techniques ont guidé chaque choix. Lecture recommandée avant toute modification du code C, Cython, ou Python.</p>
+<hr>
+<section id="couche-1-façade-c-difmap.c" class="level2">
+<h2 class="anchored" data-anchor-id="couche-1-façade-c-difmap.c">Couche 1 — Façade C (<code>difmap.c</code>)</h2>
+<p>Les variables globales de Difmap (<code>vlbob</code>, <code>vlbmap</code>) sont <code>static</code> dans <code>difmap.c</code>. Elles sont invisibles en dehors de ce fichier. Plutôt que de modifier les 150+ fichiers sources pour exporter ces variables, on a injecté une mini-API directement dans <code>difmap.c</code> — le seul fichier qui y a déjà accès.</p>
+<section id="safe-getters-prévention-des-segfaults" class="level3">
+<h3 class="anchored" data-anchor-id="safe-getters-prévention-des-segfaults">Safe getters — prévention des segfaults</h3>
+<p>Lire un pointeur <code>NULL</code> depuis Python provoque un segfault immédiat et <strong>non-récupérable</strong> : Python ne peut pas capturer un SIGSEGV. Chaque getter vérifie la validité du pointeur avant de le déréférencer.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c code-with-copy"><code class="sourceCode c"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">/* difmap.c */</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> get_native_map_nx<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="op">(</span>vlbmap <span class="op">!=</span> NULL<span class="op">)</span> <span class="op">?</span> vlbmap<span class="op">-&gt;</span>nx <span class="op">:</span> <span class="op">-</span><span class="dv">1</span><span class="op">;</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="dt">char</span><span class="op">*</span> get_native_source_name<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="op">(</span>vlbob <span class="op">!=</span> NULL<span class="op">)</span> <span class="op">?</span> vlbob<span class="op">-&gt;</span>source<span class="op">.</span>name <span class="op">:</span> <span class="st">"Inconnue"</span><span class="op">;</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="dt">float</span><span class="op">*</span> get_native_map_data<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>vlbmap <span class="op">==</span> NULL <span class="op">||</span> vlbmap<span class="op">-&gt;</span>map <span class="op">==</span> NULL<span class="op">)</span> <span class="cf">return</span> NULL<span class="op">;</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> vlbmap<span class="op">-&gt;</span>map<span class="op">;</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Le Cython vérifie ensuite ce <code>NULL</code> et lève une <code>RuntimeError</code> Python propre, à la place d’un crash système.</p>
+</section>
+<section id="gestion-du-cycle-de-vie-prévention-des-fuites-mémoire" class="level3">
+<h3 class="anchored" data-anchor-id="gestion-du-cycle-de-vie-prévention-des-fuites-mémoire">Gestion du cycle de vie — prévention des fuites mémoire</h3>
+<p>Chaque appel à <code>native_observe()</code> doit libérer l’observation précédente avant d’allouer la nouvelle. Sans <code>obs_end()</code>, traiter 10 000 fichiers en boucle consomme toute la RAM (<em>OOM Kill</em>).</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c code-with-copy"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> native_observe<span class="op">(</span><span class="dt">char</span> <span class="op">*</span>name<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    obs_end<span class="op">();</span>   <span class="co">/* Libère vlbob précédent — CRITIQUE */</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    vlbob <span class="op">=</span> new_Observation<span class="op">(</span>name<span class="op">,</span> <span class="fl">0.0</span><span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">1</span><span class="op">,</span> NULL<span class="op">,</span> NO_POL<span class="op">,</span> fix_visibility_weights<span class="op">);</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="op">(</span>vlbob <span class="op">==</span> NULL<span class="op">)</span> <span class="cf">return</span> <span class="op">-</span><span class="dv">1</span><span class="op">;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    vlbspec <span class="op">=</span> new_Specattr<span class="op">(</span>vlbob<span class="op">);</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="synchronisation-c-fortran-le-double-pointeur" class="level3">
+<h3 class="anchored" data-anchor-id="synchronisation-c-fortran-le-double-pointeur">Synchronisation C ↔︎ Fortran (le double pointeur)</h3>
+<p>Difmap maintient <strong>deux systèmes d’image en parallèle</strong> : le système C moderne (<code>vlbmap</code>) et le vieux système Fortran (<code>mb_map</code>). Si leurs pointeurs divergent, la FFT s’exécute dans le vide (résultat zéro sans erreur).</p>
+<p>La solution : après chaque allocation de grille, forcer les pointeurs Fortran à pointer sur la mémoire C :</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c code-with-copy"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="dt">int</span> native_mapsize<span class="op">(</span><span class="dt">int</span> nx<span class="op">,</span> <span class="dt">float</span> cellsize<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="dt">float</span> xinc <span class="op">=</span> xytorad<span class="op">(</span>cellsize<span class="op">);</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    vlbmap <span class="op">=</span> new_MapBeam<span class="op">(</span>vlbmap<span class="op">,</span> nx<span class="op">,</span> xinc<span class="op">,</span> nx<span class="op">,</span> xinc<span class="op">);</span>  <span class="co">/* allocation C */</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    <span class="co">/* Force les pointeurs Fortran sur la mémoire C */</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    VOIDPTR<span class="op">(&amp;</span>mb_beam<span class="op">)</span> <span class="op">=</span> vlbmap<span class="op">-&gt;</span>beam<span class="op">;</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    VOIDPTR<span class="op">(&amp;</span>mb_map<span class="op">)</span>  <span class="op">=</span> vlbmap<span class="op">-&gt;</span>map<span class="op">;</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    mb_map<span class="op">.</span>adim<span class="op">[</span><span class="dv">0</span><span class="op">]</span>    <span class="op">=</span> nx<span class="op">;</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    mb_map<span class="op">.</span>adim<span class="op">[</span><span class="dv">1</span><span class="op">]</span>    <span class="op">=</span> nx<span class="op">;</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>    mb_map<span class="op">.</span>num_el     <span class="op">=</span> <span class="op">(</span><span class="dt">size_t</span><span class="op">)(</span>nx <span class="op">*</span> nx<span class="op">);</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Sans ces 5 lignes, <code>native_invert()</code> calcule la FFT dans le buffer Fortran <code>mb_map</code> mais <code>get_native_map_data()</code> lit le buffer C <code>vlbmap-&gt;map</code> → résultat toujours zéro.</p>
+</section>
+<section id="tableau-de-correspondance-des-fonctions-c" class="level3">
+<h3 class="anchored" data-anchor-id="tableau-de-correspondance-des-fonctions-c">Tableau de correspondance des fonctions C</h3>
+<table class="table">
+<colgroup>
+<col style="width: 48%">
+<col style="width: 13%">
+<col style="width: 37%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Fonction C exportée</th>
+<th style="text-align: left;">Rôle</th>
+<th style="text-align: left;">Méthode Python</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;"><code>native_observe(filepath)</code></td>
+<td style="text-align: left;">Reset RAM + chargement FITS</td>
+<td style="text-align: left;"><code>session.observe()</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>native_select(pol, if_beg, if_end, ch_beg, ch_end)</code></td>
+<td style="text-align: left;">Filtrage Stokes + IFs</td>
+<td style="text-align: left;"><code>session.obs.select()</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>native_mapsize(nx, cellsize)</code></td>
+<td style="text-align: left;">Allocation grille + sync Fortran</td>
+<td style="text-align: left;"><code>session.imager.mapsize()</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>native_uvweight(bin, pow, dorad)</code></td>
+<td style="text-align: left;">Pondération UV</td>
+<td style="text-align: left;"><code>session.imager.uvweight()</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>native_uvtaper(val, rad_wav)</code></td>
+<td style="text-align: left;">Filtre gaussien</td>
+<td style="text-align: left;"><code>session.imager.uvtaper()</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>native_invert()</code></td>
+<td style="text-align: left;">FFT inverse → Dirty Map en RAM</td>
+<td style="text-align: left;"><code>session.imager.invert()</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>get_native_map_data()</code></td>
+<td style="text-align: left;">Adresse brute de <code>vlbmap-&gt;map</code></td>
+<td style="text-align: left;"><code>session.imager.get_map()</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>get_native_beam_data()</code></td>
+<td style="text-align: left;">Adresse brute du beam</td>
+<td style="text-align: left;"><code>session.imager.get_map_package()</code></td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>l_extract_uv()</code></td>
+<td style="text-align: left;">Prépare le buffer UV pour extraction</td>
+<td style="text-align: left;"><code>session.obs.get_data()</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>get_native_uv_count()</code></td>
+<td style="text-align: left;">Nombre de visibilités</td>
+<td style="text-align: left;">interne</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>flag_native_data(indices, n)</code></td>
+<td style="text-align: left;">Flagging dans la mémoire C</td>
+<td style="text-align: left;"><code>session.obs.flag_data()</code></td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>save_native_wobs(filepath)</code></td>
+<td style="text-align: left;">Sauvegarde FITS avec flags</td>
+<td style="text-align: left;"><code>session.obs.save_wobs()</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+</section>
+<section id="couche-2-binding-cython-binding" class="level2">
+<h2 class="anchored" data-anchor-id="couche-2-binding-cython-binding">Couche 2 — Binding Cython (<code>binding/</code>)</h2>
+<section id="déclaration-dinterface-cdifmap.pxd" class="level3">
+<h3 class="anchored" data-anchor-id="déclaration-dinterface-cdifmap.pxd">Déclaration d’interface : <code>cdifmap.pxd</code></h3>
+<p>Ce fichier <code>.pxd</code> est l’équivalent Cython d’un header C. Il dit à Cython quelles fonctions C existent et leurs signatures. <code>cimport</code> réalise une <strong>liaison statique à la compilation</strong> — l’appel est résolu par le compilateur, pas à l’exécution. Latence O(1), sans overhead Python.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># binding/cdifmap.pxd</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>cdef extern <span class="im">from</span> <span class="st">"difmap_api.h"</span>:</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="bu">int</span>  native_observe(const char<span class="op">*</span> filepath)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">int</span>  native_select(const char<span class="op">*</span> pol, <span class="bu">int</span> if_beg, <span class="bu">int</span> if_end, <span class="bu">int</span> ch_beg, <span class="bu">int</span> ch_end)</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="bu">int</span>  native_invert()</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="bu">float</span><span class="op">*</span> get_native_map_data()</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="bu">int</span>  get_native_map_nx()</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    <span class="bu">int</span>  get_native_map_ny()</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="co"># ... etc.</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Règle pour les contributeurs
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Toute nouvelle fonction C ajoutée dans <code>difmap.c</code> doit être : 1. Déclarée dans <code>difmap_api.h</code> 2. Déclarée dans <code>cdifmap.pxd</code> 3. Enveloppée dans <code>difmap_native.pyx</code></p>
+<p>Sans ces 3 étapes, la fonction n’est pas accessible depuis Python.</p>
+</div>
+</div>
+</section>
+<section id="conversion-de-chaînes-python-char" class="level3">
+<h3 class="anchored" data-anchor-id="conversion-de-chaînes-python-char">Conversion de chaînes Python → <code>char*</code></h3>
+<p>Les fonctions C attendent des <code>char*</code> (bytes C). Python 3 manipule des <code>str</code> Unicode. La conversion doit se faire <strong>avant</strong> l’appel C, et le buffer bytes doit rester alloué pendant toute la durée de l’appel :</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># binding/difmap_native.pyx</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> observe(filepath: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">int</span>:</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    cdef <span class="bu">bytes</span> filepath_bytes <span class="op">=</span> filepath.encode(<span class="st">'utf-8'</span>)</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="co"># filepath_bytes est maintenu en vie jusqu'à la fin de la fonction</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> cdifmap.native_observe(filepath_bytes)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Sans le <code>cdef bytes</code> explicite, un <code>filepath.encode('utf-8')</code> temporaire peut être ramassé par le GC pendant l’appel C → <strong>dangling pointer</strong> → segfault.</p>
+</section>
+<section id="zéro-copie-via-typed-memoryviews" class="level3">
+<h3 class="anchored" data-anchor-id="zéro-copie-via-typed-memoryviews">Zéro-copie via Typed Memoryviews</h3>
+<p>C’est la technique centrale qui rend le wrapper performant. Un Typed Memoryview est un pointeur Cython typé sur un buffer existant. <code>np.asarray()</code> crée ensuite un tableau NumPy qui utilise <strong>l’adresse fournie</strong> sans allouer de nouvelle mémoire.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># binding/difmap_native.pyx</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_map():</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    cdef <span class="bu">float</span><span class="op">*</span> map_ptr <span class="op">=</span> cdifmap.get_native_map_data()</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    cdef <span class="bu">int</span> nx <span class="op">=</span> cdifmap.get_native_map_nx()</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    cdef <span class="bu">int</span> ny <span class="op">=</span> cdifmap.get_native_map_ny()</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> map_ptr <span class="op">==</span> NULL <span class="kw">or</span> nx <span class="op">&lt;=</span> <span class="dv">0</span>:</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">raise</span> <span class="pp">RuntimeError</span>(<span class="st">"Aucune image en mémoire. Avez-vous appelé invert() ?"</span>)</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Typed Memoryview : vue 2D sur la RAM C, sans copie</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    cdef <span class="bu">float</span>[:ny, :nx] view <span class="op">=</span> <span class="op">&lt;</span><span class="bu">float</span>[:ny, :nx]<span class="op">&gt;</span> map_ptr</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># np.fliplr : corrige l'orientation RA (Ascension Droite croît à gauche)</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> np.fliplr(np.asarray(view))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 41%">
+<col style="width: 38%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;">Étape</th>
+<th style="text-align: left;">Coût mémoire</th>
+<th style="text-align: left;">Explication</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;"><code>&lt;float[:ny, :nx]&gt; map_ptr</code></td>
+<td style="text-align: left;">0 octet</td>
+<td style="text-align: left;">Crée un descripteur de vue, pas de copie</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><code>np.asarray(view)</code></td>
+<td style="text-align: left;">0 octet</td>
+<td style="text-align: left;">NumPy utilise l’adresse fournie</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><code>np.fliplr(...)</code></td>
+<td style="text-align: left;"><code>ny × nx × 4</code> octets</td>
+<td style="text-align: left;"><strong>Seule copie</strong> — nécessaire pour inverser l’axe RA</td>
+</tr>
+</tbody>
+</table>
+<p>Pour une image 2048×2048 : 16 Mo copiés une seule fois (pour le fliplr), au lieu de 32 Mo (copie C→Python + copie pour fliplr).</p>
+</section>
+<section id="pourquoi-np.fliplr" class="level3">
+<h3 class="anchored" data-anchor-id="pourquoi-np.fliplr">Pourquoi <code>np.fliplr</code> ?</h3>
+<p>Difmap stocke les pixels avec l’axe X dans l’ordre croissant des indices mémoire (gauche→droite = RA décroissant). La convention astronomique standard est l’inverse : RA croît vers la gauche.</p>
+<p>Sans <code>np.fliplr</code>, l’image est un miroir horizontal de la réalité. Toutes les coordonnées astrométriques seraient symétriquement erronées.</p>
+<hr>
+</section>
+</section>
+<section id="couche-3-décisions-dimplémentation-python" class="level2">
+<h2 class="anchored" data-anchor-id="couche-3-décisions-dimplémentation-python">Couche 3 — Décisions d’implémentation Python</h2>
+<section id="le-singleton-_singletonmeta" class="level3">
+<h3 class="anchored" data-anchor-id="le-singleton-_singletonmeta">Le Singleton <code>_SingletonMeta</code></h3>
+<p>La mécanique de prévention des instances multiples est implémentée comme une métaclasse, pas comme un attribut de classe. Cela garantit que la vérification se produit <strong>avant</strong> que <code>__init__</code> s’exécute :</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># difmap_wrapper/session.py</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> _SingletonMeta(<span class="bu">type</span>):</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    _instance <span class="op">=</span> <span class="va">None</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__call__</span>(cls, <span class="op">*</span>args, <span class="op">**</span>kwargs):</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> cls._instance <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>            <span class="cf">raise</span> DifmapStateError(</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>                <span class="st">"Une instance DifmapSession est déjà active dans ce processus."</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>                <span class="st">" Appelez session.cleanup() avant d'en créer une nouvelle."</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>        instance <span class="op">=</span> <span class="bu">super</span>().<span class="fu">__call__</span>(<span class="op">*</span>args, <span class="op">**</span>kwargs)</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>        cls._instance <span class="op">=</span> instance</span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> instance</span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DifmapSession(metaclass<span class="op">=</span>_SingletonMeta):</span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>    ...</span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> cleanup(<span class="va">self</span>):</span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>.uv_loaded <span class="op">=</span> <span class="va">False</span></span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>        <span class="bu">type</span>(<span class="va">self</span>)._instance <span class="op">=</span> <span class="va">None</span>   <span class="co"># libère le slot singleton</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>cleanup()</code> remet <code>_instance = None</code> — la prochaine instanciation réussira.</p>
+</section>
+<section id="correction-astrométrique-du-demi-pixel" class="level3">
+<h3 class="anchored" data-anchor-id="correction-astrométrique-du-demi-pixel">Correction astrométrique du demi-pixel</h3>
+<p>C’est un point subtil qui affecte toutes les mesures de position. Les algorithmes FFT de Difmap placent l’origine mathématique à l’indice <code>N/2</code> (sur un pixel entier). Matplotlib, lui, place l’origine au centre géométrique <strong>entre</strong> les pixels pour une image de taille paire.</p>
+<p>Sans correction, toute mesure de position est décalée de <strong>0.5 pixel</strong> = <code>0.5 × cellsize</code> mas.</p>
+<p>La correction est appliquée dans <code>get_map_package()</code> :</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># difmap_wrapper/imaging.py</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> get_map_package(<span class="va">self</span>, cellsize: <span class="bu">float</span>) <span class="op">-&gt;</span> <span class="bu">dict</span>:</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    nx <span class="op">=</span> hdr.get(<span class="st">'NX'</span>, <span class="dv">512</span>)</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    ny <span class="op">=</span> hdr.get(<span class="st">'NY'</span>, <span class="dv">512</span>)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    demi_pixel <span class="op">=</span> <span class="fl">0.5</span> <span class="op">*</span> cellsize   <span class="co"># décalage à corriger (en mas)</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    extent_corrige <span class="op">=</span> [</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>         (nx <span class="op">/</span> <span class="fl">2.0</span>) <span class="op">*</span> cellsize <span class="op">+</span> demi_pixel,   <span class="co"># bord gauche (RA+, as conventions)</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>        <span class="op">-</span>(nx <span class="op">/</span> <span class="fl">2.0</span>) <span class="op">*</span> cellsize <span class="op">+</span> demi_pixel,   <span class="co"># bord droit  (RA-)</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>        <span class="op">-</span>(ny <span class="op">/</span> <span class="fl">2.0</span>) <span class="op">*</span> cellsize <span class="op">-</span> demi_pixel,   <span class="co"># bord bas    (Dec-)</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>         (ny <span class="op">/</span> <span class="fl">2.0</span>) <span class="op">*</span> cellsize <span class="op">-</span> demi_pixel    <span class="co"># bord haut   (Dec+)</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>    ...</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Explication des signes :</strong></p>
+<pre><code>Centre image Difmap (index N/2) :
+  mathématiquement à la position 0,0
+
+Centre géométrique Matplotlib :
+  entre le pixel N/2 et N/2+1
+  décalage = +0.5 pixel vers la droite
+
+Correction : ajouter +demi_pixel au bord gauche
+             soustraire -demi_pixel au bord bas</code></pre>
+<p>Ce paramètre <code>extent</code> est utilisé directement dans <code>imshow()</code> — aucun calcul supplémentaire n’est nécessaire côté utilisateur.</p>
+</section>
+<section id="restauration-de-la-grille-après-uvweight" class="level3">
+<h3 class="anchored" data-anchor-id="restauration-de-la-grille-après-uvweight">Restauration de la grille après <code>uvweight</code></h3>
+<p>Appeler <code>uvweight()</code> détruit la grille interne du moteur C (effet de bord Difmap). Sans correction, un <code>invert()</code> après <code>uvweight()</code> produit une image vide ou une erreur.</p>
+<p>La solution : <code>DifmapImager</code> mémorise la dernière taille de grille et la réapplique automatiquement après chaque <code>uvweight()</code> et <code>uvtaper()</code> :</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># difmap_wrapper/imaging.py</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> mapsize(<span class="va">self</span>, size, cellsize):</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>._native.mapsize(size, cellsize)</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>._last_mapsize <span class="op">=</span> size        <span class="co"># mémorisé</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>._last_cellsize <span class="op">=</span> cellsize   <span class="co"># mémorisé</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> uvweight(<span class="va">self</span>, ...):</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>    ...</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>._native.uvweight(b, e, dorad)</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    <span class="va">self</span>._reissue_mapsize_if_needed()   <span class="co"># restaure la grille</span></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _reissue_mapsize_if_needed(<span class="va">self</span>):</span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="va">self</span>._last_mapsize <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span>:</span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._native.mapsize(<span class="va">self</span>._last_mapsize, <span class="va">self</span>._last_cellsize)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="hiérarchie-des-exceptions" class="level3">
+<h3 class="anchored" data-anchor-id="hiérarchie-des-exceptions">Hiérarchie des exceptions</h3>
+<div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># difmap_wrapper/exceptions.py</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DifmapError(<span class="pp">Exception</span>):</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Échec du moteur C (fichier corrompu, grille invalide, FFT, etc.)."""</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> DifmapStateError(DifmapError):</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Opération dans le mauvais ordre ou état incohérent.</span></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a><span class="co">    Levée par la couche Python AVANT d'atteindre le C.</span></span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a><span class="co">    Exemples : invert() sans mapsize(), session déjà active.</span></span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a><span class="co">    """</span></span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>    <span class="cf">pass</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>DifmapStateError</code> est interceptée avant d’atteindre le C — c’est un garde-fou Python. <code>DifmapError</code> remonte depuis le binding quand le moteur C retourne un code non nul.</p>
+<p><strong>Ordre de propagation :</strong></p>
+<pre><code>Appel Python
+    ↓
+Vérification d'état Python → DifmapStateError si état invalide
+    ↓
+Appel Cython → native_xxx()
+    ↓
+Code de retour ≠ 0 → DifmapError
+    ↓
+Segfault évité</code></pre>
+<hr>
+</section>
+</section>
+<section id="notes-pour-les-contributeurs" class="level2">
+<h2 class="anchored" data-anchor-id="notes-pour-les-contributeurs">Notes pour les contributeurs</h2>
+<section id="ajouter-une-nouvelle-fonction-c" class="level3">
+<h3 class="anchored" data-anchor-id="ajouter-une-nouvelle-fonction-c">Ajouter une nouvelle fonction C</h3>
+<p>Voir <a href="./09_contribuer.html">Contribuer</a> pour le guide pas-à-pas.</p>
+</section>
+<section id="modifier-get_map_package" class="level3">
+<h3 class="anchored" data-anchor-id="modifier-get_map_package">Modifier <code>get_map_package()</code></h3>
+<p>Si vous ajoutez des clés au dictionnaire retourné, vérifiez que <code>Visualizer.plot_image()</code> ne fait pas d’hypothèses sur les clés absentes (elle teste uniquement <code>'data'</code> et <code>'extent'</code>).</p>
+</section>
+<section id="modifier-le-nombre-darguments-de-native_select" class="level3">
+<h3 class="anchored" data-anchor-id="modifier-le-nombre-darguments-de-native_select">Modifier le nombre d’arguments de <code>native_select()</code></h3>
+<p>La signature dans <code>cdifmap.pxd</code> doit correspondre exactement à celle dans <code>difmap_api.h</code>. Toute divergence produit un crash à l’import du module.</p>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+    var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+    var mailtoRegex = new RegExp(/^mailto:/);
+      var filterRegex = new RegExp('/' + window.location.host + '/');
+    var isInternal = (href) => {
+        return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+    }
+    // Inspect non-navigation links and adorn them if external
+ 	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool)');
+    for (var i=0; i<links.length; i++) {
+      const link = links[i];
+      if (!isInternal(link.href)) {
+        // undo the damage that might have been done by quarto-nav.js in the case of
+        // links that we want to consider external
+        if (link.dataset.originalHref !== undefined) {
+          link.href = link.dataset.originalHref;
+        }
+      }
+    }
+  function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+    const config = {
+      allowHTML: true,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start',
+    };
+    if (contentFn) {
+      config.content = contentFn;
+    }
+    if (onTriggerFn) {
+      config.onTrigger = onTriggerFn;
+    }
+    if (onUntriggerFn) {
+      config.onUntrigger = onUntriggerFn;
+    }
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      if (note) {
+        return note.innerHTML;
+      } else {
+        return "";
+      }
+    });
+  }
+  const xrefs = window.document.querySelectorAll('a.quarto-xref');
+  const processXRef = (id, note) => {
+    // Strip column container classes
+    const stripColumnClz = (el) => {
+      el.classList.remove("page-full", "page-columns");
+      if (el.children) {
+        for (const child of el.children) {
+          stripColumnClz(child);
+        }
+      }
+    }
+    stripColumnClz(note)
+    if (id === null || id.startsWith('sec-')) {
+      // Special case sections, only their first couple elements
+      const container = document.createElement("div");
+      if (note.children && note.children.length > 2) {
+        container.appendChild(note.children[0].cloneNode(true));
+        for (let i = 1; i < note.children.length; i++) {
+          const child = note.children[i];
+          if (child.tagName === "P" && child.innerText === "") {
+            continue;
+          } else {
+            container.appendChild(child.cloneNode(true));
+            break;
+          }
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(container);
+        }
+        return container.innerHTML
+      } else {
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        return note.innerHTML;
+      }
+    } else {
+      // Remove any anchor links if they are present
+      const anchorLink = note.querySelector('a.anchorjs-link');
+      if (anchorLink) {
+        anchorLink.remove();
+      }
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(note);
+      }
+      // TODO in 1.5, we should make sure this works without a callout special case
+      if (note.classList.contains("callout")) {
+        return note.outerHTML;
+      } else {
+        return note.innerHTML;
+      }
+    }
+  }
+  for (var i=0; i<xrefs.length; i++) {
+    const xref = xrefs[i];
+    tippyHover(xref, undefined, function(instance) {
+      instance.disable();
+      let url = xref.getAttribute('href');
+      let hash = undefined; 
+      if (url.startsWith('#')) {
+        hash = url;
+      } else {
+        try { hash = new URL(url).hash; } catch {}
+      }
+      if (hash) {
+        const id = hash.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note !== null) {
+          try {
+            const html = processXRef(id, note.cloneNode(true));
+            instance.setContent(html);
+          } finally {
+            instance.enable();
+            instance.show();
+          }
+        } else {
+          // See if we can fetch this
+          fetch(url.split('#')[0])
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.getElementById(id);
+            if (note !== null) {
+              const html = processXRef(id, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      } else {
+        // See if we can fetch a full url (with no hash to target)
+        // This is a special case and we should probably do some content thinning / targeting
+        fetch(url)
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const htmlDoc = parser.parseFromString(html, "text/html");
+          const note = htmlDoc.querySelector('main.content');
+          if (note !== null) {
+            // This should only happen for chapter cross references
+            // (since there is no id in the URL)
+            // remove the first header
+            if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+              note.children[0].remove();
+            }
+            const html = processXRef(null, note);
+            instance.setContent(html);
+          } 
+        }).finally(() => {
+          instance.enable();
+          instance.show();
+        });
+      }
+    }, function(instance) {
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            div.style.left = 0;
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+        // Handle positioning of the toggle
+    window.addEventListener(
+      "resize",
+      throttle(() => {
+        elRect = undefined;
+        if (selectedAnnoteEl) {
+          selectCodeLines(selectedAnnoteEl);
+        }
+      }, 10)
+    );
+    function throttle(fn, ms) {
+    let throttle = false;
+    let timer;
+      return (...args) => {
+        if(!throttle) { // first call gets through
+            fn.apply(this, args);
+            throttle = true;
+        } else { // all the others get throttled
+            if(timer) clearTimeout(timer); // cancel #2
+            timer = setTimeout(() => {
+              fn.apply(this, args);
+              timer = throttle = false;
+            }, ms);
+        }
+      };
+    }
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+<p>difmap_smartedit v2.5.0 — wrapper Python pour Difmap (Caltech)</p>
+</div>   
+    <div class="nav-footer-center">
+      &nbsp;
+    </div>
+    <div class="nav-footer-right">
+      <ul class="footer-items list-unstyled">
+    <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/iimavne/DIFMAP">
+      <i class="bi bi-github" role="img">
+</i> 
+    </a>
+  </li>  
+</ul>
+    </div>
+  </div>
+</footer>
+
+
+
+
+</body></html>

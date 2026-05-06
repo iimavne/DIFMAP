@@ -1,26 +1,50 @@
 # Function reference {.doc .doc-index}
 
-## DifmapSession - Gestion de l'Environnement
+## Session et cycle de vie
 
-Gestion de l'environnement et de la mémoire RAM.
-
-| | |
-| --- | --- |
-| [session.DifmapSession](session.DifmapSession.qmd#difmap_wrapper.session.DifmapSession) | Façade principale pour piloter l'environnement Difmap en toute sécurité. |
-
-## DifmapImager - Imagerie
-
-Traitement des visibilités et création de cartes FITS.
+Gestion de l'environnement et du cycle de vie du moteur C.
 
 | | |
 | --- | --- |
-| [imaging.DifmapImager](imaging.DifmapImager.qmd#difmap_wrapper.imaging.DifmapImager) | Moteur de rendu mathématique pour la génération d'images astrophysiques. |
+| [DifmapSession](DifmapSession.qmd#difmap_wrapper.DifmapSession) | Point d'entrée principal pour analyser des données radio-interférométriques. |
+
+## Données UV — Observation
+
+Sélection, extraction et flagging des visibilités.
+
+| | |
+| --- | --- |
+| [Observation](Observation.qmd#difmap_wrapper.Observation) | Accès aux données UV chargées : sélection, flagging et extraction. |
+
+## Imagerie — DifmapImager
+
+Grille d'image, pondération UV et transformée de Fourier inverse.
+
+| | |
+| --- | --- |
+| [DifmapImager](DifmapImager.qmd#difmap_wrapper.DifmapImager) | Outils pour créer une image à partir des visibilités chargées. |
+
+## Visualisation — Visualizer
+
+Graphiques statiques Matplotlib.
+
+| | |
+| --- | --- |
+| [Visualizer](Visualizer.qmd#difmap_wrapper.Visualizer) | Graphiques statiques pour explorer les données UV et les images. |
+
+## Traitement parallèle
+
+Traitement batch sur processus OS séparés.
+
+| | |
+| --- | --- |
+| [DifmapBatchManager](DifmapBatchManager.qmd#difmap_wrapper.DifmapBatchManager) | Orchestrateur de traitement parallèle pour Difmap. |
 
 ## Exceptions
 
-Sécurisation du moteur C.
+Hiérarchie d'exceptions du wrapper.
 
 | | |
 | --- | --- |
-| [exceptions.DifmapError](exceptions.DifmapError.qmd#difmap_wrapper.exceptions.DifmapError) | Exception de base pour toutes les erreurs liées au moteur C de Difmap. |
-| [exceptions.DifmapStateError](exceptions.DifmapStateError.qmd#difmap_wrapper.exceptions.DifmapStateError) | Levée lorsqu'une action est tentée dans le mauvais ordre. |
+| [DifmapError](DifmapError.qmd#difmap_wrapper.DifmapError) | Exception de base pour toutes les erreurs liées au moteur C de Difmap. |
+| [DifmapStateError](DifmapStateError.qmd#difmap_wrapper.DifmapStateError) | Levée lorsqu'une action est tentée dans le mauvais ordre. |

@@ -1,0 +1,119 @@
+---
+title: "Contexte et Existant"
+---
+
+Ce chapitre explique ce qu'est Difmap, pourquoi il était difficile à automatiser, et quels verrous structurels ont dû être levés pour construire ce wrapper.
+
+## Qu'est-ce que Difmap ?
+
+**Difmap** est un logiciel de traitement de données radio-interférométriques développé au Caltech vers 1994 par Martin Shepherd. Il est utilisé mondialement pour :
+
+- **L'imagerie VLBI** (Very Long Baseline Interferometry) : reconstruction d'images de trous noirs (EHT/M87, Sgr A*), jets relativistes, noyaux actifs de galaxies.
+- La **déconvolution CLEAN** : algorithme itératif pour extraire la structure réelle d'une source à partir d'une image bruitée (Dirty Map).
+- L'**auto-calibration** (*self-calibration*) : correction des erreurs de phase et d'amplitude des antennes.
+- La **modélisation analytique** : ajustement de composantes ponctuelles et gaussiennes.
+
+Ses algorithmes C/Fortran (~100 000 lignes) sont validés par trente ans de publications. **Le moteur de calcul est conservé intact** dans ce wrapper — seule l'interface change.
+
+---
+
+## Structure du code source Difmap
+
+| Dossier | Rôle |
+|:--------|:-----|
+| `difmap_src/` | Cœur algorithmique : FFT, CLEAN, modélisation de sources, auto-cal |
+| `slalib_src/` | Bibliothèque astronomique bas-niveau (éphémérides, transformées de coordonnées) |
+| `fits_src/` | Lecture/écriture de fichiers FITS |
+| `sphere_src/` | Interpréteur SPHERE — langage de script interne, Turing-complet |
+| `binding/` | *Nouveau* — binding Cython (ajouté par ce projet) |
+
+---
+
+## Deux fichiers structurellement critiques
+
+### `f77main.f` — Le point d'entrée Fortran
+
+Le programme Difmap démarre en Fortran 77. Ce fichier initialise les structures globales C avant que tout autre code s'exécute. Pour utiliser les algorithmes C depuis Python, il faut contourner ce point d'entrée et initialiser l'état autrement.
+
+### `difmap.c` — Le chef d'orchestre (7 700 lignes)
+
+Ce fichier est le plus important du projet. Il :
+
+1. Possède les **pointeurs vers les objets métier critiques** : `vlbob` (observation) et `vlbmap` (image courante), déclarés `static` — invisibles en dehors de `difmap.c`.
+2. Lie les **fonctions mathématiques** (FFT, CLEAN, select) à l'interpréteur SPHERE.
+3. Est le seul fichier qui possède un accès simultané à toutes les variables globales.
+
+C'est dans ce fichier que les *getters/setters* de la façade C ont été injectés (voir [Implémentation technique](08_implementation.qmd)).
+
+---
+
+## Objets C en mémoire
+
+Trois structures C coexistent en RAM pendant une session :
+
+```{mermaid}
+graph LR
+    subgraph RAM["Mémoire du processus"]
+        vlbob["vlbob : Observation*\n(obs.h)\n· antennes\n· coordonnées source\n· visibilités (amp, phase, poids)"]
+        vlbmap["vlbmap : Mapcln*\n(mapcln.h)\n· grille pixels float*\n· faisceau float*\n· nx, ny, cellsize"]
+        model["model : Model*\n(model.h)\n· composantes analytiques\n· sources ponctuelles\n· gaussiennes, disques"]
+    end
+
+    vlbob  -.-|"pointeur"| vlbmap
+    vlbmap -.-|"pointeur"| model
+
+    style RAM fill:#fef2f2,stroke:#991b1b
+    style vlbob fill:#fee2e2,stroke:#dc2626
+    style vlbmap fill:#fee2e2,stroke:#dc2626
+    style model fill:#fee2e2,stroke:#dc2626
+```
+
+| Objet C | Fichier en-tête | Contenu clé |
+|:--------|:----------------|:------------|
+| `Observation` (`vlbob`) | `obs.h` | Antennes, coordonnées de la source, tableaux de visibilités (amplitude, phase, poids, temps) |
+| `Mapcln` (`vlbmap`) | `mapcln.h` | Grille de pixels de l'image courante. `float *map` = adresse directe des pixels en RAM |
+| `Model` / `Modcmp` | `model.h` | Liste des composantes analytiques du modèle (sources ponctuelles, gaussiennes, disques uniformes) |
+
+---
+
+## Les trois verrous de l'architecture originale
+
+L'approche historique d'automatisation consistait à injecter des commandes textuelles dans l'interpréteur SPHERE de Difmap, puis à relire les résultats depuis des fichiers FITS écrits sur disque. Cette méthode fonctionne pour quelques traitements manuels, mais ne passe pas à l'échelle pour des pipelines automatisés.
+
+::: {.callout-important}
+### Verrou 1 — SPHERE comme seul point d'accès
+
+Les fonctions mathématiques C (`native_invert`, `native_select`, etc.) ne sont pas exportées. L'unique chemin d'appel passe par l'interpréteur SPHERE, via injection de texte. Python n'a aucun accès direct aux calculs C.
+
+**Conséquence :** chaque opération nécessite un aller-retour texte par un interpréteur. Lent, fragile, non-déboguable.
+:::
+
+::: {.callout-important}
+### Verrou 2 — I/O disque obligatoires
+
+Sans accès direct à la RAM C, Python doit ordonner à Difmap d'**écrire l'image sur disque** (commande `wfits`), puis la relire avec `astropy.io.fits`.
+
+**Conséquence :** sur un pipeline de 10 000 images, l'écriture/lecture disque répétée est rédhibitoire (des dizaines de Go d'I/O, latence disque à chaque étape).
+:::
+
+::: {.callout-important}
+### Verrou 3 — État global non-rentrant
+
+`vlbob` et `vlbmap` sont des pointeurs `static` : **un seul état par processus**. Deux threads appelant `observe()` simultanément écriraient sur le même pointeur → corruption mémoire garantie.
+
+**Conséquence :** aucun multi-threading possible. L'automatisation parallèle requiert une architecture différente.
+:::
+
+---
+
+## La solution retenue
+
+Pour lever ces trois verrous **sans modifier les algorithmes**, l'approche est un **binding Cython natif** :
+
+1. **Bypass SPHERE** : injection de *getters/setters* C directement dans `difmap.c`, exposés via un header `difmap_api.h`. Le binding Cython appelle ces fonctions directement, sans passer par l'interpréteur texte.
+
+2. **Zéro I/O disque** : les pixels de l'image sont lus directement depuis la RAM C via un Typed Memoryview. NumPy pointe sur la même adresse mémoire — aucune copie, aucun fichier intermédiaire.
+
+3. **Singleton sécurisé + processus séparés** : le pattern Singleton Python (`_SingletonMeta`) prévient la création accidentelle de deux sessions dans le même processus. Pour le parallélisme, `DifmapBatchManager` lance des **processus OS distincts**, chacun avec son propre espace mémoire.
+
+L'architecture complète est décrite dans [Architecture du wrapper](07_architecture.qmd).

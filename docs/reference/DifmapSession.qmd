@@ -1,0 +1,101 @@
+# DifmapSession { #difmap_wrapper.DifmapSession }
+
+```python
+DifmapSession()
+```
+
+Point d'entrée principal pour analyser des données radio-interférométriques.
+
+Charge des fichiers de visibilités FITS/UVFITS et donne accès aux données
+brutes, à l'imagerie et aux graphiques. Une seule instance peut être active
+à la fois (le moteur C utilise une mémoire globale).
+
+S'utilise de préférence comme gestionnaire de contexte pour garantir
+la libération des ressources.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name   | Type         | Description                                             |
+|--------|--------------|---------------------------------------------------------|
+| obs    | Observation  | Données UV, sélection de polarisation, flagging.        |
+| imager | DifmapImager | Imagerie : grille, pondération, transformée de Fourier. |
+| vis    | Visualizer   | Graphiques statiques (couverture UV, radplot, carte).   |
+
+## Examples {.doc-section .doc-section-examples}
+
+Chargement et accès aux données avec gestionnaire de contexte :
+
+```python
+>>> with DifmapSession() as session:
+...     session.observe("data/source.uvfits")
+...     session.obs.select(pol="RR")
+...     data = session.obs.get_data()
+...     print(data["amp"].mean())
+0.312
+```
+
+Utilisation sans `with` — cleanup manuel obligatoire :
+
+```python
+>>> session = DifmapSession()
+>>> session.observe("data/source.uvfits")
+>>> # ... travail ...
+>>> session.cleanup()
+```
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [cleanup](#difmap_wrapper.DifmapSession.cleanup) | Libère les ressources et permet de créer une nouvelle session. |
+| [observe](#difmap_wrapper.DifmapSession.observe) | Charge un fichier de visibilités en mémoire. |
+
+### cleanup { #difmap_wrapper.DifmapSession.cleanup }
+
+```python
+DifmapSession.cleanup()
+```
+
+Libère les ressources et permet de créer une nouvelle session.
+
+Appelé automatiquement à la sortie d'un bloc ``with``.
+Après cet appel, une nouvelle ``DifmapSession()`` peut être instanciée.
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.cleanup()
+>>> session2 = DifmapSession()   # OK, le slot est libéré
+```
+
+### observe { #difmap_wrapper.DifmapSession.observe }
+
+```python
+DifmapSession.observe(filepath)
+```
+
+Charge un fichier de visibilités en mémoire.
+
+Si une observation était déjà active, elle est remplacée proprement.
+Après cet appel, ``session.obs.select()`` doit être appelé pour
+choisir la polarisation et activer les données.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type   | Description                                                                | Default    |
+|----------|--------|----------------------------------------------------------------------------|------------|
+| filepath | str    | Chemin vers le fichier FITS ou UVFITS. Exemple : ``"data/source.uvfits"``. | _required_ |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type        | Description                                                            |
+|--------|-------------|------------------------------------------------------------------------|
+|        | DifmapError | Si le fichier est introuvable, corrompu ou dans un format non reconnu. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.observe("data/source.uvfits")
+>>> print(session.obs.source)
+'J0003-066'
+```
