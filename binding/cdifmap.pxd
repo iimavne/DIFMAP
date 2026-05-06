@@ -80,4 +80,15 @@ cdef extern from "difmap_api.h":
     # Auto-calibration
     int native_selfcal(int doamp, int dofloat, float solint)
 
+    # Modèle CLEAN — export des composantes
+    int    native_extract_model()
+    int    native_get_model_ncmp()
+    float* native_get_model_flux()
+    float* native_get_model_x()
+    float* native_get_model_y()
+    float* native_get_model_major()
+    float* native_get_model_ratio()
+    float* native_get_model_phi()
+    int*   native_get_model_type()
+
     int native_cleanup()

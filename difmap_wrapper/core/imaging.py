@@ -3,7 +3,7 @@ from ctypes import Structure, c_char_p, c_int, c_float, c_double, POINTER, byref
 from typing import Optional, Tuple, List, Dict, Any, Union
 import difmap_native
 
-from ..utils.map_geometry import DifmapMapGeometry, get_difmap_contour_levels
+from ..utils.map_geometry import DifmapMapGeometry
 from ..utils.exceptions import DifmapError, DifmapStateError
 
 class DifmapImager:
@@ -351,10 +351,12 @@ class DifmapImager:
             map_data, cellsize, cy
         )
         
+        map_type = self._current_map_type or "dirty"
+        components = self._native.get_model_components() if map_type == "clean" else []
         return {
             "data": display_data,
             "beam_data": self._native.get_beam(),
-            "map_type": self._current_map_type or "dirty",
+            "map_type": map_type,
             "info": {
                 "nx": nx_display,
                 "ny": ny_display,
@@ -364,10 +366,11 @@ class DifmapImager:
                 "bmin": beam.get('BMIN', 0.0),
                 "bpa": beam.get('BPA', 0.0),
                 "rms": beam.get('RMS', 0.0),
-                "map_type": self._current_map_type or "dirty",  # Pour le wrapper GUI
+                "map_type": map_type,
             },
             "extent": extent,
             "windows": self._get_clean_windows(),
+            "model_components": components,
         }
 
     def get_residual_package(self, cellsize: float, cellsize_y: float = None) -> dict:
@@ -588,16 +591,11 @@ class DifmapImager:
         fonctionne correctement après des opérations comme CLEAN.
         """
         try:
-            # Tenter de rafraîchir le faisceau si nécessaire
-            # Cela correspond à appeler uvgrid avec domap=0, dobeam=1
             if hasattr(self._native, 'refresh_beam'):
                 self._native.refresh_beam()
-                # refresh_beam peut déclencher un recalcul/inversion du buffer map
-                # côté C (cf. logs "Inverting map"). Dans ce cas, la carte courante
-                # n'est plus garantie d'être une clean map restaurée.
-                self._current_map_type = "dirty"
+                if self._current_map_type != "clean":
+                    self._current_map_type = "dirty"
         except:
-            # Si la fonction n'existe pas, ignorer - peakwin échouera mais avec un message clair
             pass
 
     def get_elliptical_window(self, center_x: float, center_y: float, 
@@ -648,6 +646,28 @@ class DifmapImager:
         
         return x_min, x_max, y_min, y_max
 
+    def get_model_components(self) -> list:
+        """
+        Retourne la liste des composantes CLEAN du modèle courant.
+
+        Disponible après ``clean()`` ou ``restore()``. Agrège les composantes
+        établies (``model``) et tentatives (``newmod``) du moteur C.
+
+        Returns
+        -------
+        list of dict
+            Chaque dict contient ``'flux'`` (Jy), ``'x'`` (mas), ``'y'`` (mas),
+            ``'major'`` (mas, 0 pour un delta), ``'ratio'``, ``'phi'`` (rad),
+            ``'type'`` (``'delta'``, ``'gaussian'``, …).
+
+        Examples
+        --------
+        >>> session.imager.clean(500, 0.05)
+        >>> comps = session.imager.get_model_components()
+        >>> print(f"{len(comps)} composantes, flux total = {sum(c['flux'] for c in comps):.3f} Jy")
+        """
+        return self._native.get_model_components()
+
     def selfcal(self, doamp: bool = False, dofloat: bool = False, solint: float = 0.0) -> None:
         """
         Applique une auto-calibration sur les visibilités.
@@ -697,6 +717,7 @@ class DifmapImager:
         """
         self._session.obs.select(pol=pol)
         self.mapsize(size, cellsize, ny=ny, cellsize_y=cellsize_y)
+        self.clrmod()
         self.invert()
         self.clean(niter, gain)
         # _capture_residual() est appelé dans restore() automatiquement

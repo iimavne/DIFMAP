@@ -8103,6 +8103,82 @@ int native_wfits(const char *filename) {
     return uvf_write(vlbob, filename, 0);
 }
 
+/* =====================================================================
+ * MODÈLE CLEAN — Export des composantes vers Python
+ * ===================================================================== */
+
+static int    model_ncmp_buf   = 0;
+static float *model_flux_buf   = NULL;
+static float *model_x_buf      = NULL;
+static float *model_y_buf      = NULL;
+static float *model_major_buf  = NULL;
+static float *model_ratio_buf  = NULL;
+static float *model_phi_buf    = NULL;
+static int   *model_type_buf   = NULL;
+
+int native_extract_model(void) {
+    if (vlbob == NULL) return -1;
+
+    int n = vlbob->model->ncmp + vlbob->newmod->ncmp;
+
+    free(model_flux_buf);  model_flux_buf  = NULL;
+    free(model_x_buf);     model_x_buf     = NULL;
+    free(model_y_buf);     model_y_buf     = NULL;
+    free(model_major_buf); model_major_buf = NULL;
+    free(model_ratio_buf); model_ratio_buf = NULL;
+    free(model_phi_buf);   model_phi_buf   = NULL;
+    free(model_type_buf);  model_type_buf  = NULL;
+    model_ncmp_buf = 0;
+
+    if (n == 0) return 0;
+
+    model_flux_buf  = (float*)malloc(n * sizeof(float));
+    model_x_buf     = (float*)malloc(n * sizeof(float));
+    model_y_buf     = (float*)malloc(n * sizeof(float));
+    model_major_buf = (float*)malloc(n * sizeof(float));
+    model_ratio_buf = (float*)malloc(n * sizeof(float));
+    model_phi_buf   = (float*)malloc(n * sizeof(float));
+    model_type_buf  = (int*)  malloc(n * sizeof(int));
+
+    if (!model_flux_buf || !model_x_buf || !model_y_buf || !model_major_buf ||
+        !model_ratio_buf || !model_phi_buf || !model_type_buf) return -1;
+
+    double rad2mas = 180.0 * 3600.0 * 1000.0 / M_PI;
+    int i = 0;
+    Modcmp *cmp;
+
+    for (cmp = vlbob->model->head; cmp; cmp = cmp->next, i++) {
+        model_flux_buf[i]  = cmp->flux;
+        model_x_buf[i]     = (float)(cmp->x   * rad2mas);
+        model_y_buf[i]     = (float)(cmp->y   * rad2mas);
+        model_major_buf[i] = (float)(cmp->major * rad2mas);
+        model_ratio_buf[i] = cmp->ratio;
+        model_phi_buf[i]   = cmp->phi;
+        model_type_buf[i]  = (int)cmp->type;
+    }
+    for (cmp = vlbob->newmod->head; cmp; cmp = cmp->next, i++) {
+        model_flux_buf[i]  = cmp->flux;
+        model_x_buf[i]     = (float)(cmp->x   * rad2mas);
+        model_y_buf[i]     = (float)(cmp->y   * rad2mas);
+        model_major_buf[i] = (float)(cmp->major * rad2mas);
+        model_ratio_buf[i] = cmp->ratio;
+        model_phi_buf[i]   = cmp->phi;
+        model_type_buf[i]  = (int)cmp->type;
+    }
+
+    model_ncmp_buf = n;
+    return 0;
+}
+
+int    native_get_model_ncmp(void)  { return model_ncmp_buf; }
+float* native_get_model_flux(void)  { return model_flux_buf; }
+float* native_get_model_x(void)    { return model_x_buf; }
+float* native_get_model_y(void)    { return model_y_buf; }
+float* native_get_model_major(void) { return model_major_buf; }
+float* native_get_model_ratio(void) { return model_ratio_buf; }
+float* native_get_model_phi(void)   { return model_phi_buf; }
+int*   native_get_model_type(void)  { return model_type_buf; }
+
 /* Signatures officielles de l'éditeur Difmap (depuis obedit.c) */
 int ed_integ(Observation *ob, Subarray *sub, int ut, int cif, int doflag, int selbase, int selstat, int selchan, int selif, int index);
 int ed_flush(Observation *ob);

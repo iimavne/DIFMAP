@@ -71,6 +71,17 @@ float native_get_window_ymax(int index);
 /* Auto-calibration */
 int native_selfcal(int doamp, int dofloat, float solint);
 
+/* Modèle CLEAN — export des composantes */
+int    native_extract_model(void);
+int    native_get_model_ncmp(void);
+float* native_get_model_flux(void);
+float* native_get_model_x(void);
+float* native_get_model_y(void);
+float* native_get_model_major(void);
+float* native_get_model_ratio(void);
+float* native_get_model_phi(void);
+int*   native_get_model_type(void);
+
 int native_cleanup(void);
 
 #endif

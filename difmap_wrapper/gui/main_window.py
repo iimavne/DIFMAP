@@ -323,17 +323,10 @@ class MainWindow(QMainWindow):
         self.control_panel.btn_compute.clicked.connect(self._compute_dirty_map)
         self.control_panel.btn_compute_clean.clicked.connect(self._compute_clean_map)
         self.control_panel.btn_refresh_view.clicked.connect(self._refresh_current_map_tab)
+        self.control_panel.chk_show_model_map.toggled.connect(self._on_show_model_map_changed)
         self.control_panel.combo_pol.currentTextChanged.connect(self._change_polarization)
         self.control_panel.ifs_range_changed.connect(self._on_ifs_range_changed)
         
-        # Connexions des fenêtres CLEAN
-        self.control_panel.btn_addwin.clicked.connect(self._add_clean_window)
-        self.control_panel.btn_delwin.clicked.connect(self._delete_clean_windows)
-        self.control_panel.btn_peakwin.clicked.connect(self._add_peak_window)
-        if hasattr(self.control_panel, 'btn_del_last_win'):
-            self.control_panel.btn_del_last_win.clicked.connect(self._delete_last_clean_window)
-        if hasattr(self.control_panel, 'btn_del_this_win'):
-            self.control_panel.btn_del_this_win.clicked.connect(self._delete_this_clean_window)
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.control_panel.combo_rad_mode.currentIndexChanged.connect(
             lambda idx: self.radplot_widget.set_display_mode(idx)
@@ -413,6 +406,12 @@ class MainWindow(QMainWindow):
             ctrl.chk_residuals.setVisible(has_data and is_radplot and has_model)
             ctrl.chk_errors.setVisible(has_data and is_radplot)
             ctrl.chk_conjugate.setVisible(has_data and is_uv)
+
+        # Gestion du checkbox Show Model pour les Maps
+        ctrl.chk_show_model_map.setVisible(is_map)
+        if is_map:
+            # Rétablir l'état précédent du checkbox pour les Maps
+            pass  # L'état est géré par le toggled signal
 
         if is_radplot:
             ctrl.chk_conjugate.blockSignals(True)
@@ -687,26 +686,6 @@ class MainWindow(QMainWindow):
             self.log_console.log(err_msg)
             QMessageBox.critical(self, "Imaging Error", err_msg)
 
-    def _add_clean_window(self):
-        """Ajoute une fenêtre CLEAN depuis les coordonnées du ControlPanel."""
-        try:
-            xa, xb, ya, yb = self.control_panel.get_window_params()
-            if None in (xa, xb, ya, yb):
-                QMessageBox.warning(self, "Invalid coordinates", 
-                                 "Please enter valid numeric coordinates.")
-                return
-            
-            self.session.imager.addwin(xa, xb, ya, yb)
-            self._last_added_window = (min(xa, xb), max(xa, xb), min(ya, yb), max(ya, yb))
-            self.log_console.log(f"Added CLEAN window: ({xa}, {xb}, {ya}, {yb}) mas")
-            self._refresh_clean_windows_overlay()
-            self._refresh_residual_map()
-            
-        except Exception as e:
-            err_msg = f"Failed to add CLEAN window: {e}"
-            self.log_console.log_error(err_msg)
-            QMessageBox.critical(self, "Window Error", err_msg)
-
     def _add_clean_window_from_coords(self, xa, xb, ya, yb):
         """Ajoute une fenêtre CLEAN depuis les coordonnées de la souris."""
         try:
@@ -773,11 +752,10 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Window Error", err_msg)
 
     def _add_peak_window(self):
-        """Ajoute une fenêtre autour du pic de flux."""
+        """Ajoute une fenêtre autour du pic de flux (taille par défaut DIFMAP = 1.0 FWHM)."""
         try:
-            size = self.control_panel.get_peak_size()
-            self.session.imager.peakwin(size=size)
-            self.log_console.log(f"Added peak window with size {size}")
+            self.session.imager.peakwin(size=1.0)
+            self.log_console.log("Added peak window (1.0 FWHM)")
             windows = self.session.imager._get_clean_windows()
             if windows:
                 self._last_added_window = windows[-1]
@@ -798,6 +776,12 @@ class MainWindow(QMainWindow):
                 err_msg = f"Failed to add peak window: {e}"
                 self.log_console.log_error(err_msg)
                 QMessageBox.critical(self, "Window Error", err_msg)
+
+    def _on_show_model_map_changed(self, checked: bool) -> None:
+        """Callback quand le checkbox Show Model pour Maps change."""
+        current_tab = self.tabs.currentIndex()
+        if current_tab == TabIndex.CLEAN:
+            self._refresh_clean_map()
 
     def _refresh_current_map_tab(self):
         """Rafraîchit l'onglet de carte actif sans recalculer."""
@@ -877,6 +861,8 @@ class MainWindow(QMainWindow):
             contour_mode, contour_absmin, contour_absmax, contour_factor, contour_custom = (
                 self.control_panel.get_contour_params()
             )
+            show_model = self.control_panel.chk_show_model_map.isChecked()
+            model_components = clean_package.get('model_components', [])
             self.clean_map_widget.plot_map(
                 map_data=clean_package['data'],
                 cellsize=info.get('cellsize', cellsize),
@@ -891,6 +877,8 @@ class MainWindow(QMainWindow):
                 contour_absmax=contour_absmax,
                 contour_factor=contour_factor,
                 contour_custom=contour_custom,
+                show_model=show_model,
+                model_components=model_components,
             )
             data = clean_package.get('data')
             frozen = dict(clean_package)
@@ -902,6 +890,10 @@ class MainWindow(QMainWindow):
             info_frozen = clean_package.get('info')
             if isinstance(info_frozen, dict):
                 frozen['info'] = dict(info_frozen)
+            # Copie profonde des model_components pour éviter les références partagées
+            model_comps = clean_package.get('model_components')
+            if model_comps:
+                frozen['model_components'] = [dict(cmp) for cmp in model_comps]
             self._last_clean_package = frozen
         except Exception as e:
             self.log_console.log_error(f"Failed to refresh clean map: {e}")
@@ -921,6 +913,8 @@ class MainWindow(QMainWindow):
             windows = self.session.imager._get_clean_windows()
             pkg = self._last_clean_package
             info = pkg.get('info', {})
+            show_model = self.control_panel.chk_show_model_map.isChecked()
+            model_components = pkg.get('model_components', [])
             self.clean_map_widget.plot_map(
                 map_data=pkg['data'],
                 cellsize=info.get('cellsize', cellsize),
@@ -935,6 +929,8 @@ class MainWindow(QMainWindow):
                 contour_absmax=contour_absmax,
                 contour_factor=contour_factor,
                 contour_custom=contour_custom,
+                show_model=show_model,
+                model_components=model_components,
             )
         except Exception:
             return

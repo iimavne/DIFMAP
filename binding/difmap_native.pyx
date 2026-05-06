@@ -342,6 +342,57 @@ def get_windows() -> list:
 # AUTO-CALIBRATION
 # =====================================================================
 
+def get_model_components() -> list:
+    """
+    Retourne la liste des composantes CLEAN du modèle courant.
+
+    Agrège les composantes de ``vlbob->model`` (établi) et ``vlbob->newmod``
+    (tentatives du dernier ``clean()``).
+
+    Returns
+    -------
+    list of dict
+        Chaque dict contient :
+        - ``'flux'``  : flux en Jy
+        - ``'x'``     : décalage RA en mas (positif = Est)
+        - ``'y'``     : décalage Dec en mas (positif = Nord)
+        - ``'major'`` : grand axe en mas (0 pour delta)
+        - ``'ratio'`` : rapport axial minor/major
+        - ``'phi'``   : angle de position en radians (N→E)
+        - ``'type'``  : ``'delta'``, ``'gaussian'``, ``'disk'``, etc.
+    """
+    _TYPE_NAMES = ['delta', 'gaussian', 'disk', 'ellipsoid', 'ring', 'rectangle', 'sz']
+
+    if cdifmap.native_extract_model() != 0:
+        return []
+
+    cdef int n = cdifmap.native_get_model_ncmp()
+    if n == 0:
+        return []
+
+    cdef float* flux  = cdifmap.native_get_model_flux()
+    cdef float* x     = cdifmap.native_get_model_x()
+    cdef float* y     = cdifmap.native_get_model_y()
+    cdef float* major = cdifmap.native_get_model_major()
+    cdef float* ratio = cdifmap.native_get_model_ratio()
+    cdef float* phi   = cdifmap.native_get_model_phi()
+    cdef int*   typ   = cdifmap.native_get_model_type()
+
+    result = []
+    for i in range(n):
+        t = typ[i]
+        result.append({
+            'flux':  float(flux[i]),
+            'x':     float(x[i]),
+            'y':     float(y[i]),
+            'major': float(major[i]),
+            'ratio': float(ratio[i]),
+            'phi':   float(phi[i]),
+            'type':  _TYPE_NAMES[t] if 0 <= t < len(_TYPE_NAMES) else 'unknown',
+        })
+    return result
+
+
 def selfcal(int doamp=0, int dofloat=0, float solint=0.0) -> int:
     """Applique une auto-calibration (phase seule par défaut, équivalent à 'selfcal' difmap)."""
     cdef int ret = cdifmap.native_selfcal(doamp, dofloat, solint)

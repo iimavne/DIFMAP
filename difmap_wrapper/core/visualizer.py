@@ -113,30 +113,37 @@ class Visualizer:
         return ax
 
     def radplot(self, ax=None, figsize=(10, 6), color='black', alpha=0.5, s=1,
-                title=None, save_path: str = None, show: bool = True, **kwargs):
+                title=None, show_model: bool = True,
+                model_color: str = 'red', model_alpha: float = 0.7, model_s: float = 1,
+                save_path: str = None, show: bool = True, **kwargs):
         """
-        Affiche l'amplitude des visibilités en fonction de leur rayon UV.
+        Affiche l'amplitude des visibilités en fonction du rayon UV.
 
-        Ce graphique (aussi appelé "amplitude vs uv-distance") donne une vue
-        rapide de la structure de la source : une source ponctuelle donne une
-        ligne horizontale, une source étendue montre une décroissance.
+        Si un modèle CLEAN est disponible (après ``clean()``), superpose
+        l'amplitude du modèle en rouge avec ``show_model=True``.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes, optional
-            Axe sur lequel dessiner. Si absent, une nouvelle figure est créée.
+            Axe sur lequel dessiner.
         figsize : tuple of float, optional
             Taille ``(largeur, hauteur)`` en pouces. Par défaut ``(10, 6)``.
         color : str, optional
-            Couleur des points. Par défaut ``'black'``.
+            Couleur des points observés. Par défaut ``'black'``.
         alpha : float, optional
-            Transparence des points. Par défaut ``0.5``.
+            Transparence des points observés. Par défaut ``0.5``.
         s : float, optional
-            Taille des marqueurs. Par défaut ``1``.
+            Taille des marqueurs observés. Par défaut ``1``.
         title : str, optional
-            Titre du graphique. Généré automatiquement si absent.
-        **kwargs
-            Paramètres supplémentaires transmis à ``matplotlib.axes.Axes.scatter``.
+            Titre du graphique.
+        show_model : bool, optional
+            Superpose l'amplitude du modèle si disponible. Par défaut ``True``.
+        model_color : str, optional
+            Couleur des points du modèle. Par défaut ``'red'``.
+        model_alpha : float, optional
+            Transparence des points du modèle. Par défaut ``0.7``.
+        model_s : float, optional
+            Taille des marqueurs du modèle. Par défaut ``1``.
 
         Returns
         -------
@@ -144,6 +151,8 @@ class Visualizer:
 
         Examples
         --------
+        >>> session.vis.radplot()                        # données + modèle si dispo
+        >>> session.vis.radplot(show_model=False)        # données seules
         >>> session.vis.radplot(color='navy', alpha=0.3, s=0.5)
         """
         data = self._native.get_uv_data()
@@ -151,30 +160,37 @@ class Visualizer:
             print("Aucune donnée UV. Appelez select() avant radplot().")
             return None
 
-        u = data['u']
-        v = data['v']
+        u   = data['u']
+        v   = data['v']
         amp = data['amp']
         uv_radius = np.sqrt(u**2 + v**2) / 1e6
 
-        # Suivi de la création de la figure
-        created_fig = False
-        if ax is None:
+        created_fig = ax is None
+        if created_fig:
             fig, ax = plt.subplots(figsize=figsize)
-            created_fig = True
 
-        ax.scatter(uv_radius, amp, s=s, color=color, alpha=alpha, **kwargs)
+        # Données observées
+        ax.scatter(uv_radius, amp, s=s, color=color, alpha=alpha,
+                   label='Observé', **kwargs)
+
+        # Modèle CLEAN superposé
+        if show_model:
+            modamp = data.get('modamp')
+            if modamp is not None and np.any(modamp != 0):
+                ax.scatter(uv_radius, modamp, s=model_s, color=model_color,
+                           alpha=model_alpha, label='Modèle', zorder=3)
+                ax.legend(loc='upper right', fontsize=8, framealpha=0.7)
+
         ax.set_xlabel(r"Rayon UV ($M\lambda$)")
         ax.set_ylabel("Amplitude (Jy)")
         source_name = self._session.obs.source
-        ax.set_title(title or f"Radplot (Amplitude vs Rayon) : {source_name}")
+        ax.set_title(title or f"Radplot : {source_name}")
         ax.set_ylim(bottom=0)
         ax.grid(True, linestyle=':', alpha=0.6)
 
-        # Sauvegarde de la figure si demandée
         if save_path:
             ax.get_figure().savefig(save_path, bbox_inches='tight')
 
-        # Gestion de l'affichage et de la mémoire
         if created_fig:
             if show:
                 plt.show()
@@ -277,35 +293,78 @@ class Visualizer:
     @staticmethod
     def _vis_add_annotations(ax, data, map_type, info=None,
                               drawn_levels=None, contour_mode='pct'):
-        """Annotations texte style difmap (maplot.c:1664-1703)."""
+        """
+        Bloc d'annotations style PGPLOT — coin supérieur droit, contenu par type de carte.
+
+        Clean map  : Peak, RMS, SNR, Beam FWHM, niveaux de contours
+        Dirty map  : Range affiché, RMS
+        Residual   : Peak résiduel, RMS
+        """
+        peak_val = float(np.nanmax(np.abs(data)))
+        dmin     = float(np.nanmin(data))
+        dmax     = float(np.nanmax(data))
+
+        # Calcul RMS (zone centrale pour éviter les bords)
+        ny, nx = data.shape
+        cy, cx = ny // 2, nx // 2
+        margin = max(ny // 8, 4)
+        rms_zone = data[cy - margin:cy + margin, cx - margin:cx + margin]
+        rms = float(np.sqrt(np.nanmean(rms_zone ** 2))) if rms_zone.size > 0 else 0.0
+
         lines = []
+
         if map_type == "clean":
-            lines.append(f"Map peak: {float(np.nanmax(data)):.3g} Jy/beam")
-        else:
-            lines.append(
-                f"Displayed range: {float(np.nanmin(data)):.3g} □ "
-                f"{float(np.nanmax(data)):.3g} Jy/beam"
-            )
-        if drawn_levels:
-            peak = Visualizer._vis_central_peak(data)
-            if (contour_mode or '').lower() in {'custom', 'clevs'}:
-                lvl_strs = [f"{l:.3g}" for l in drawn_levels]
-                lines.append("Contours (Jy/b): " + ", ".join(lvl_strs))
-            elif peak != 0:
-                pct_strs = [f"{l / peak * 100:.3g}" for l in drawn_levels]
-                lines.append("Contours %: " + ", ".join(pct_strs))
-        if map_type == "clean" and info:
-            bmaj = info.get('bmaj', 0.0)
-            bmin = info.get('bmin', 0.0)
-            bpa  = info.get('bpa',  0.0)
-            if bmaj > 0 and bmin > 0:
-                lines.append(f"Beam FWHM: {bmaj:.3g} × {bmin:.3g} (mas) at {bpa:.3g}°")
-        y = 0.03
-        for line in lines:
-            ax.text(0.02, y, line, transform=ax.transAxes,
-                    fontsize=7, color='white', va='bottom', ha='left',
-                    bbox=dict(boxstyle='round,pad=0.15', facecolor='black', alpha=0.4, linewidth=0))
-            y += 0.08
+            snr = dmax / rms if rms > 0 else 0.0
+            lines.append(("Peak",    f"{dmax:.4g} Jy/beam"))
+            lines.append(("RMS",     f"{rms:.3g} Jy/beam"))
+            lines.append(("SNR",     f"{snr:.1f}"))
+            if info:
+                bmaj = info.get('bmaj', 0.0)
+                bmin = info.get('bmin', 0.0)
+                bpa  = info.get('bpa',  0.0)
+                if bmaj > 0 and bmin > 0:
+                    lines.append(("Beam", f"{bmaj:.3g}″ × {bmin:.3g}″  PA {bpa:.1f}°"))
+            if drawn_levels:
+                cpeak = Visualizer._vis_central_peak(data)
+                if (contour_mode or '').lower() in {'custom', 'clevs'}:
+                    lvl_str = ", ".join(f"{l:.3g}" for l in drawn_levels[:6])
+                    lines.append(("Levels Jy/b", lvl_str))
+                elif cpeak != 0:
+                    pct_str = ", ".join(f"{l / cpeak * 100:.2g}" for l in drawn_levels[:6])
+                    lines.append(("Contours %", pct_str))
+
+        elif map_type == "residual":
+            lines.append(("Peak res.", f"{dmax:.4g} Jy/beam"))
+            lines.append(("Min  res.", f"{dmin:.4g} Jy/beam"))
+            lines.append(("RMS",       f"{rms:.3g} Jy/beam"))
+
+        else:  # dirty
+            lines.append(("Range", f"{dmin:.3g}  –  {dmax:.3g} Jy/beam"))
+            lines.append(("RMS",   f"{rms:.3g} Jy/beam"))
+
+        if not lines:
+            return
+
+        # Rendu : boîte unique en haut à droite
+        text_content = "\n".join(
+            f"{k:<12} {v}" for k, v in lines
+        )
+        ax.text(
+            0.98, 0.98, text_content,
+            transform=ax.transAxes,
+            fontsize=7.5,
+            color='white',
+            va='top', ha='right',
+            fontfamily='monospace',
+            bbox=dict(
+                boxstyle='round,pad=0.4',
+                facecolor='#0a0a0a',
+                alpha=0.65,
+                linewidth=0.8,
+                edgecolor='#444444',
+            ),
+            zorder=10,
+        )
 
     @staticmethod
     def plot_clean_map(img_dict: dict, windows=None, ax=None,
@@ -315,6 +374,7 @@ class Visualizer:
                        contour_mode: str = 'pct',
                        contour_absmin: float = 1.0, contour_absmax: float = 100.0,
                        contour_factor: float = 2.0, contour_custom=None,
+                       show_model: bool = False,
                        save_path: str = None, show: bool = True) -> 'plt.Axes':
         """
         Affichage scientifique d'une Clean Map, Residual Map ou Dirty Map,
@@ -412,7 +472,64 @@ class Visualizer:
                 linewidth=1.3, edgecolor='cyan', facecolor='none', linestyle='--', alpha=0.85
             ))
 
-        # 5. Ellipse faisceau propre (uniquement pour carte restaurée)
+        # 5. Composantes du modèle CLEAN (optionnel, show_model=True)
+        # Logique exacte de DIFMAP modplot.c:cmpplot():
+        # - type == delta → affiche '+' (symbole 2 PGPLOT)
+        # - type != delta → affiche ellipse (major, ratio, phi)
+        # Couleurs selon DIFMAP modplot.c:31-70:
+        # - freepar=0 (fixed) + flux>0 → color 10 (lime/green)
+        # - freepar=0 (fixed) + flux<0 → color 2 (red)
+        # Les composantes CLEAN sont toujours freepar=0 (fixed)
+        # Vérification des limites comme DIFMAP modplot.c:74
+        if show_model:
+            import math
+            from matplotlib.patches import Ellipse as _Ellipse
+            
+            # Récupérer les limites d'affichage
+            xa, xb = extent[0], extent[1]
+            ya, yb = extent[2], extent[3]
+            if xa > xb:
+                xa, xb = xb, xa
+            if ya > yb:
+                ya, yb = yb, ya
+            
+            for cmp in img_dict.get('model_components', []):
+                cx, cy = cmp['x'], cmp['y']
+                cmp_type = cmp.get('type', 'delta')
+                major = cmp.get('major', 0.0)
+                flux = cmp.get('flux', 0.0)
+                
+                # Vérifier si le centre est visible (comme DIFMAP cmpplot:74)
+                visible = (cx >= xa and cx <= xb and cy >= ya and cy <= yb)
+                if not visible:
+                    continue  # Ne pas afficher les composantes hors limites
+                
+                # Couleur selon le signe du flux (comme DIFMAP)
+                if flux >= 0:
+                    color = 'lime'      # PGPLOT color 10 (green/yellow)
+                else:
+                    color = 'red'        # PGPLOT color 2 (red)
+                
+                # Delta components: afficher '+' uniquement
+                if cmp_type == 'delta' or major <= 0:
+                    ax.plot(cx, cy, '+', color=color, markersize=5,
+                            markeredgewidth=0.8, alpha=0.9, zorder=6)
+                else:
+                    # Composantes étendues: afficher ellipse uniquement
+                    phi_rad = cmp.get('phi', 0.0)
+                    ratio = cmp.get('ratio', 1.0)
+                    angle_deg = 90.0 - math.degrees(phi_rad)
+                    minor = major * ratio
+                    ax.add_patch(_Ellipse(
+                        (cx, cy),
+                        width=minor,
+                        height=major,
+                        angle=angle_deg,
+                        facecolor='none', edgecolor=color,
+                        linewidth=0.8, alpha=0.9, zorder=6
+                    ))
+
+        # 6. Ellipse faisceau propre (uniquement pour carte restaurée)
         if map_type == "clean":
             bmaj = info.get('bmaj', 0.0)
             bmin = info.get('bmin', 0.0)
@@ -447,13 +564,14 @@ class Visualizer:
         return ax
 
     @staticmethod
-    def plot_image(img_dict: dict, cmap: str = None, figsize: tuple = (8, 6),
+    def plot_image(img_dict: dict, ax=None, cmap: str = None, figsize: tuple = (8, 6),
                    title: str = None, xlim=None, ylim=None,
                    scale: str = 'linear', vmin=None, vmax=None,
                    contour_mode: str = 'pct',
                    contour_absmin: float = 1.0, contour_absmax: float = 100.0,
                    contour_factor: float = 2.0, contour_custom=None,
-                   save_path: str = None, show: bool = True, **kwargs) -> None:
+                   show_model: bool = False,
+                   save_path: str = None, show: bool = True, **kwargs) -> 'plt.Axes':
         """
         Affiche une image astrophysique avec sa barre de couleur et ses axes astrométriques.
 
@@ -501,6 +619,7 @@ class Visualizer:
         if map_type == "clean":
             return Visualizer.plot_clean_map(
                 img_dict,
+                ax=ax,
                 cmap=cmap or 'inferno',
                 figsize=figsize,
                 title=title or "Clean Map",
@@ -508,6 +627,7 @@ class Visualizer:
                 contour_mode=contour_mode, contour_absmin=contour_absmin,
                 contour_absmax=contour_absmax, contour_factor=contour_factor,
                 contour_custom=contour_custom,
+                show_model=show_model,
                 save_path=save_path,
                 show=show,
             )
@@ -525,11 +645,14 @@ class Visualizer:
         x_lin = np.linspace(xmax_e, xmin_e, nx_px)
         y_lin = np.linspace(ymin_e, ymax_e, ny_px)
 
-        fig, ax = plt.subplots(figsize=figsize)
+        created_fig = ax is None
+        if created_fig:
+            fig, ax = plt.subplots(figsize=figsize)
+
         norm = Visualizer._make_norm(scale, vmin, vmax, data)
         im = ax.imshow(data, extent=astrometric_extent, origin='lower', cmap=cmap,
                        aspect='equal', norm=norm, **kwargs)
-        fig.colorbar(im, ax=ax, label='Flux (Jy/beam)')
+        ax.get_figure().colorbar(im, ax=ax, label='Flux (Jy/beam)')
 
         # Contours difmap (négatifs rouges, positifs blancs)
         peak = Visualizer._vis_central_peak(data)
@@ -549,13 +672,16 @@ class Visualizer:
         if ylim is not None:
             ax.set_ylim(ylim)
 
-        if save_path:
-            fig.savefig(save_path, bbox_inches='tight')
+        if save_path and created_fig:
+            ax.get_figure().savefig(save_path, bbox_inches='tight')
 
-        if show:
-            plt.show()
-        else:
-            plt.close(fig)
+        if created_fig:
+            if show:
+                plt.show()
+            else:
+                plt.close(ax.get_figure())
+
+        return ax
     def mapplot(self, img_dict: dict = None, **kwargs):
         """
         Affiche l'image actuellement en mémoire.
@@ -583,7 +709,7 @@ class Visualizer:
         >>> session.vis.mapplot(title="Dirty Map après inversion")
         """
         if img_dict is None:
-            from .exceptions import DifmapStateError
+            from ..utils.exceptions import DifmapStateError
             if self._session.imager._last_cellsize is None:
                 raise DifmapStateError(
                     "Astrométrie inconnue. Veuillez exécuter mapsize() avant mapplot()."

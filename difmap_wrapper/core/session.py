@@ -23,6 +23,21 @@ class _SingletonMeta(type):
         cls._instance = instance
         return instance
 
+    def force_reset(cls) -> None:
+        """
+        Libère le verrou singleton sans passer par l'instance.
+
+        À utiliser uniquement dans un notebook Jupyter quand le kernel a planté
+        et que l'instance précédente est inaccessible. N'appelle aucun destructeur
+        C — les ressources natives sont perdues (acceptable après un crash kernel).
+
+        Examples
+        --------
+        >>> DifmapSession.force_reset()
+        >>> session = DifmapSession()   # OK
+        """
+        cls._instance = None
+
 
 class DifmapSession(metaclass=_SingletonMeta):
     """

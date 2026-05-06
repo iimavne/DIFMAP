@@ -587,201 +587,195 @@ class ControlPanel(QDockWidget):
 
         self.main_layout.addWidget(self.group_display)
 
-    def _build_imaging(self):
-        """
-        Construit la section « 5. IMAGING ENGINE ».
+    # ─────────────────────────────────────────────────────────────
+    # Helpers visuels
+    # ─────────────────────────────────────────────────────────────
 
-        Crée les champs mapsize, cellsize, la pondération UV, le taper gaussien
-        et le bouton « Compute Dirty Map ».
-        """
+    def _subsection_header(self, text: str) -> QLabel:
+        """En-tête de sous-section — ligne colorée avec texte en majuscules."""
+        lbl = QLabel(text.upper())
+        lbl.setStyleSheet(f"""
+            color: {D.ASTRAL_ACCENT};
+            font-size: 9px;
+            font-weight: bold;
+            letter-spacing: 1.5px;
+            padding: 6px 0 2px 0;
+            background: transparent;
+        """)
+        return lbl
+
+    def _thin_sep(self) -> QWidget:
+        """Ligne de séparation fine entre sous-sections."""
+        sep = QWidget()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet(f"background-color: {D.ASTRAL_MUTED}; margin: 2px 0;")
+        return sep
+
+    def _row(self, *items) -> QHBoxLayout:
+        """Crée un QHBoxLayout peuplé des widgets/labels fournis."""
+        h = QHBoxLayout()
+        h.setSpacing(6)
+        for item in items:
+            if isinstance(item, str):
+                lbl = QLabel(item)
+                lbl.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 10px;")
+                h.addWidget(lbl)
+            else:
+                h.addWidget(item)
+        return h
+
+    # ─────────────────────────────────────────────────────────────
+    # Section Imaging
+    # ─────────────────────────────────────────────────────────────
+
+    def _build_imaging(self):
         self.group_imaging = CollapsibleSection("4. IMAGING")
         layout = self.group_imaging.content_layout
+        layout.setSpacing(4)
 
-        h = QHBoxLayout()
-        self.input_mapsize  = QLineEdit("512")
+        # ── GRID ─────────────────────────────────────────────────
+        layout.addWidget(self._subsection_header("Grid"))
+
+        h_grid = QHBoxLayout()
+        h_grid.setSpacing(6)
+        self.input_mapsize = QLineEdit("512")
+        self.input_mapsize.setFixedWidth(52)
+        self.input_mapsize.setToolTip("Taille de la grille FFT (puissance de 2 recommandée)")
         self.input_cellsize = QLineEdit("0.1")
-        h.addWidget(QLabel("Size:")); h.addWidget(self.input_mapsize)
-        h.addWidget(QLabel("Cell:")); h.addWidget(self.input_cellsize)
-        layout.addLayout(h)
+        self.input_cellsize.setFixedWidth(52)
+        self.input_cellsize.setToolTip("Taille du pixel en mas")
+        h_grid.addWidget(QLabel("Size:")); h_grid.addWidget(self.input_mapsize)
+        h_grid.addWidget(QLabel("Cell (mas):")); h_grid.addWidget(self.input_cellsize)
+        h_grid.addStretch()
+        layout.addLayout(h_grid)
 
-        layout.addWidget(QLabel("UV Weighting:"))
+        h_wt = QHBoxLayout()
+        h_wt.setSpacing(6)
+        h_wt.addWidget(QLabel("Weighting:"))
         self.combo_weight = QComboBox()
         self.combo_weight.addItems(["None", "Natural", "Uniform", "Briggs"])
-        layout.addWidget(self.combo_weight)
+        self.combo_weight.setToolTip("Pondération des baselines UV")
+        h_wt.addWidget(self.combo_weight)
+        layout.addLayout(h_wt)
 
-        layout.addWidget(QLabel("Gaussian Taper (Mλ):"))
+        h_tap = QHBoxLayout()
+        h_tap.setSpacing(6)
+        h_tap.addWidget(QLabel("Taper (Mλ):"))
         self.input_taper = QLineEdit("0")
-        layout.addWidget(self.input_taper)
+        self.input_taper.setFixedWidth(52)
+        self.input_taper.setToolTip("Taper gaussien — 0 = aucun")
+        h_tap.addWidget(self.input_taper)
+        h_tap.addStretch()
+        layout.addLayout(h_tap)
 
-        self.btn_compute = PrimaryButton("Compute Dirty Map")
+        self.btn_compute = PrimaryButton("⊞  Dirty Map")
+        self.btn_compute.setToolTip("Calculer la Dirty Map (invert)")
         layout.addWidget(self.btn_compute)
 
-        # ── Séparateur CLEAN ──────────────────────────────────────
-        sep_clean = QWidget()
-        sep_clean.setFixedHeight(1)
-        sep_clean.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 6px 0;")
-        layout.addWidget(sep_clean)
+        # ── CLEAN ─────────────────────────────────────────────────
+        layout.addWidget(self._thin_sep())
+        layout.addWidget(self._subsection_header("Clean"))
 
-        layout.addWidget(QLabel("CLEAN — Iterations (niter):"))
+        h_nc = QHBoxLayout()
+        h_nc.setSpacing(6)
+        h_nc.addWidget(QLabel("Niter:"))
         self.input_niter = QLineEdit("100")
-        layout.addWidget(self.input_niter)
-
-        h_gain = QHBoxLayout()
-        h_gain.addWidget(QLabel("Gain:"))
+        self.input_niter.setFixedWidth(52)
+        self.input_niter.setToolTip("Nombre d'itérations CLEAN")
+        h_nc.addWidget(self.input_niter)
+        h_nc.addWidget(QLabel("Gain:"))
         self.input_gain = QLineEdit("0.05")
-        h_gain.addWidget(self.input_gain)
-        layout.addLayout(h_gain)
+        self.input_gain.setFixedWidth(46)
+        self.input_gain.setToolTip("Gain de boucle CLEAN (0–1)")
+        h_nc.addWidget(self.input_gain)
+        h_nc.addStretch()
+        layout.addLayout(h_nc)
 
-        self.btn_compute_clean = PrimaryButton("Compute Clean Map")
+        self.btn_compute_clean = PrimaryButton("▶  Clean Map")
+        self.btn_compute_clean.setToolTip("Calculer la Clean Map (invert → clean → restore)")
         layout.addWidget(self.btn_compute_clean)
 
-        # ── Séparateur CLEAN WINDOWS ─────────────────────────────
-        sep_windows = QWidget()
-        sep_windows.setFixedHeight(1)
-        sep_windows.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 6px 0;")
-        layout.addWidget(sep_windows)
+        # ── DISPLAY ───────────────────────────────────────────────
+        layout.addWidget(self._thin_sep())
+        layout.addWidget(self._subsection_header("Display"))
 
-        layout.addWidget(QLabel("CLEAN WINDOWS:"))
-        
-        # Boutons de gestion des fenêtres
-        h_win = QHBoxLayout()
-        self.btn_addwin = SecondaryButton("Add Window")
-        self.btn_delwin = SecondaryButton("Delete All")
-        self.btn_del_last_win = SecondaryButton("Delete Last")
-        self.btn_del_this_win = SecondaryButton("Delete This")
-        self.btn_peakwin = SecondaryButton("Peak Window")
-        h_win.addWidget(self.btn_addwin)
-        h_win.addWidget(self.btn_delwin)
-        h_win.addWidget(self.btn_del_last_win)
-        h_win.addWidget(self.btn_del_this_win)
-        h_win.addWidget(self.btn_peakwin)
-        layout.addLayout(h_win)
-        
-        # Champs pour ajouter une fenêtre manuelle
-        layout.addWidget(QLabel("Add Window (mas):"))
-        h_coords = QHBoxLayout()
-        self.input_xa = QLineEdit("-5")
-        self.input_xb = QLineEdit("5")
-        self.input_ya = QLineEdit("-5")
-        self.input_yb = QLineEdit("5")
-        h_coords.addWidget(QLabel("X1:")); h_coords.addWidget(self.input_xa)
-        h_coords.addWidget(QLabel("X2:")); h_coords.addWidget(self.input_xb)
-        h_coords.addWidget(QLabel("Y1:")); h_coords.addWidget(self.input_ya)
-        h_coords.addWidget(QLabel("Y2:")); h_coords.addWidget(self.input_yb)
-        layout.addLayout(h_coords)
-        
-        # Taille pour peakwin
-        h_peak = QHBoxLayout()
-        h_peak.addWidget(QLabel("Peak size:"))
-        self.input_peak_size = QLineEdit("1.0")
-        h_peak.addWidget(self.input_peak_size)
-        layout.addLayout(h_peak)
-
-        # ── Séparateur DISPLAY ─────────────────────────────────────
-        sep_disp = QWidget()
-        sep_disp.setFixedHeight(1)
-        sep_disp.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 6px 0;")
-        layout.addWidget(sep_disp)
-
-        # Color scale [mapfunc]
-        layout.addWidget(QLabel("Color scale  [mapfunc]:"))
+        h_sc = QHBoxLayout(); h_sc.setSpacing(6)
+        h_sc.addWidget(QLabel("Scale:"))
         self.combo_scale = QComboBox()
         self.combo_scale.addItems(["Linear", "Log", "Sqrt"])
-        layout.addWidget(self.combo_scale)
+        self.combo_scale.setToolTip("Échelle de couleur (mapfunc)")
+        h_sc.addWidget(self.combo_scale)
+        layout.addLayout(h_sc)
 
-        h_range = QHBoxLayout()
+        h_range = QHBoxLayout(); h_range.setSpacing(6)
         h_range.addWidget(QLabel("Min:"))
-        self.input_vmin = QLineEdit()
-        self.input_vmin.setPlaceholderText("auto")
+        self.input_vmin = QLineEdit(); self.input_vmin.setPlaceholderText("auto")
         h_range.addWidget(self.input_vmin)
         h_range.addWidget(QLabel("Max:"))
-        self.input_vmax = QLineEdit()
-        self.input_vmax.setPlaceholderText("auto")
+        self.input_vmax = QLineEdit(); self.input_vmax.setPlaceholderText("auto")
         h_range.addWidget(self.input_vmax)
         layout.addLayout(h_range)
 
-        # ── Séparateur CONTOURS ────────────────────────────────────
-        sep_ctr = QWidget()
-        sep_ctr.setFixedHeight(1)
-        sep_ctr.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 6px 0;")
-        layout.addWidget(sep_ctr)
-
-        # Contour level mode [levs / loglevs]
-        layout.addWidget(QLabel("Contour levels  [levs/loglevs]:"))
+        # Contours
+        h_ctr = QHBoxLayout(); h_ctr.setSpacing(6)
+        h_ctr.addWidget(QLabel("Contours:"))
         self.combo_contour_mode = QComboBox()
-        self.combo_contour_mode.addItems(["Standard %", "Log levels [loglevs]", "Custom"])
-        layout.addWidget(self.combo_contour_mode)
+        self.combo_contour_mode.addItems(["Standard %", "Log", "Custom"])
+        self.combo_contour_mode.setToolTip("levs / loglevs / niveaux personnalisés")
+        h_ctr.addWidget(self.combo_contour_mode)
+        layout.addLayout(h_ctr)
 
-        # Log levels parameters (shown only in Log mode)
         self._widget_log_params = QWidget()
         h_log = QHBoxLayout(self._widget_log_params)
-        h_log.setContentsMargins(0, 0, 0, 0)
-        h_log.setSpacing(4)
+        h_log.setContentsMargins(0, 0, 0, 0); h_log.setSpacing(4)
         h_log.addWidget(QLabel("Min%:"))
-        self.input_absmin = QLineEdit("1")
-        self.input_absmin.setFixedWidth(40)
+        self.input_absmin = QLineEdit("1"); self.input_absmin.setFixedWidth(38)
         h_log.addWidget(self.input_absmin)
         h_log.addWidget(QLabel("Max%:"))
-        self.input_absmax = QLineEdit("100")
-        self.input_absmax.setFixedWidth(40)
+        self.input_absmax = QLineEdit("100"); self.input_absmax.setFixedWidth(38)
         h_log.addWidget(self.input_absmax)
         h_log.addWidget(QLabel("×:"))
-        self.input_factor = QLineEdit("2")
-        self.input_factor.setFixedWidth(36)
+        self.input_factor = QLineEdit("2"); self.input_factor.setFixedWidth(34)
         h_log.addWidget(self.input_factor)
         self._widget_log_params.setVisible(False)
         layout.addWidget(self._widget_log_params)
 
-        # Custom levels field (shown only in Custom mode)
         self._widget_custom_levels = QWidget()
         v_custom = QVBoxLayout(self._widget_custom_levels)
-        v_custom.setContentsMargins(0, 0, 0, 0)
-        v_custom.setSpacing(2)
+        v_custom.setContentsMargins(0, 0, 0, 0); v_custom.setSpacing(2)
         v_custom.addWidget(QLabel("Levels Jy/b (comma-sep):"))
         self.input_custom_levels = QLineEdit()
-        self.input_custom_levels.setPlaceholderText("e.g. -0.001, 0.001, 0.005")
+        self.input_custom_levels.setPlaceholderText("ex: -0.001, 0.001, 0.005")
         v_custom.addWidget(self.input_custom_levels)
         self._widget_custom_levels.setVisible(False)
         layout.addWidget(self._widget_custom_levels)
 
-        # ── Séparateur DISPLAY AREA ───────────────────────────────
-        sep_area = QWidget()
-        sep_area.setFixedHeight(1)
-        sep_area.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 6px 0;")
-        layout.addWidget(sep_area)
+        # Zone d'affichage
+        h_ax = QHBoxLayout(); h_ax.setSpacing(6)
+        h_ax.addWidget(QLabel("X (mas):"))
+        self.input_xmin = QLineEdit(); self.input_xmin.setPlaceholderText("auto")
+        self.input_xmax = QLineEdit(); self.input_xmax.setPlaceholderText("auto")
+        h_ax.addWidget(self.input_xmin); h_ax.addWidget(QLabel("→")); h_ax.addWidget(self.input_xmax)
+        layout.addLayout(h_ax)
 
-        # Zone d'affichage personnalisable
-        layout.addWidget(QLabel("Display Area (mas):"))
-        h_area = QHBoxLayout()
-        h_area.addWidget(QLabel("Xmin:"))
-        self.input_xmin = QLineEdit()
-        self.input_xmin.setPlaceholderText("auto")
-        h_area.addWidget(self.input_xmin)
-        h_area.addWidget(QLabel("Xmax:"))
-        self.input_xmax = QLineEdit()
-        self.input_xmax.setPlaceholderText("auto")
-        h_area.addWidget(self.input_xmax)
-        layout.addLayout(h_area)
-        
-        h_area2 = QHBoxLayout()
-        h_area2.addWidget(QLabel("Ymin:"))
-        self.input_ymin = QLineEdit()
-        self.input_ymin.setPlaceholderText("auto")
-        h_area2.addWidget(self.input_ymin)
-        h_area2.addWidget(QLabel("Ymax:"))
-        self.input_ymax = QLineEdit()
-        self.input_ymax.setPlaceholderText("auto")
-        h_area2.addWidget(self.input_ymax)
-        layout.addLayout(h_area2)
+        h_ay = QHBoxLayout(); h_ay.setSpacing(6)
+        h_ay.addWidget(QLabel("Y (mas):"))
+        self.input_ymin = QLineEdit(); self.input_ymin.setPlaceholderText("auto")
+        self.input_ymax = QLineEdit(); self.input_ymax.setPlaceholderText("auto")
+        h_ay.addWidget(self.input_ymin); h_ay.addWidget(QLabel("→")); h_ay.addWidget(self.input_ymax)
+        layout.addLayout(h_ay)
 
-        self.btn_refresh_view = SecondaryButton("Refresh View")
-        self.btn_refresh_view.setToolTip(
-            "Appliquer les paramètres d'affichage et de contours sans recalculer"
-        )
+        # Checkbox Show Model pour les cartes (comme PGPLOT 'M')
+        self.chk_show_model_map = QCheckBox("Show Model Components  [M]")
+        self.chk_show_model_map.setToolTip("Afficher les composantes CLEAN sur la carte")
+        self.chk_show_model_map.setChecked(False)
+        layout.addWidget(self.chk_show_model_map)
+
+        self.btn_refresh_view = SecondaryButton("↻  Refresh View")
+        self.btn_refresh_view.setToolTip("Appliquer l'affichage sans recalculer la carte")
         layout.addWidget(self.btn_refresh_view)
 
         self.combo_contour_mode.currentIndexChanged.connect(self._on_contour_mode_changed)
-
         self.main_layout.addWidget(self.group_imaging)
 
     def _on_contour_mode_changed(self, index: int) -> None:
@@ -809,31 +803,6 @@ class ControlPanel(QDockWidget):
         except ValueError:
             vmax = None
         return scale, vmin, vmax
-
-    def get_window_params(self) -> tuple:
-        """
-        Retourne les coordonnées de la fenêtre depuis les champs input.
-        
-        Returns
-        -------
-        tuple
-            (xa, xb, ya, yb) en float ou None si invalide
-        """
-        try:
-            xa = float(self.input_xa.text())
-            xb = float(self.input_xb.text())
-            ya = float(self.input_ya.text())
-            yb = float(self.input_yb.text())
-            return xa, xb, ya, yb
-        except ValueError:
-            return None, None, None, None
-    
-    def get_peak_size(self) -> float:
-        """Retourne la taille pour peakwin."""
-        try:
-            return float(self.input_peak_size.text())
-        except ValueError:
-            return 1.0
 
     def get_display_area_params(self) -> tuple:
         """

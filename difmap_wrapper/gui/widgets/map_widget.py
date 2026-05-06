@@ -4,71 +4,64 @@ from matplotlib.colors import Normalize, LogNorm, PowerNorm
 from matplotlib.offsetbox import AnchoredOffsetbox, AuxTransformBox
 from matplotlib.widgets import RectangleSelector
 from matplotlib.backend_bases import cursors
-from PyQt6.QtWidgets import QLabel, QComboBox, QPushButton, QHBoxLayout, QWidget
+from PyQt6.QtWidgets import QLabel, QPushButton, QComboBox, QHBoxLayout, QWidget
 from PyQt6.QtCore import Qt
 from .base_plot_widget import BasePlotWidget
 from difmap_wrapper.gui.utils import MatplotlibStyler
 from difmap_wrapper.gui.styles import DesignSystem
-from difmap_wrapper.utils.map_geometry import DifmapMapGeometry, get_difmap_contour_levels
+from difmap_wrapper.utils.map_geometry import DifmapMapGeometry
+from difmap_wrapper.core.visualizer import Visualizer
 from difmap_wrapper.utils.map_annotations import create_pgplot_style_annotations, DifmapMapAnnotations
 
-# Style pour la toolbar des cartes
-_MAP_TOOLBAR_QSS = f"""
+D = DesignSystem
+
+_TOOLBAR_QSS = f"""
 QWidget#MapToolbar {{
-    background-color: {DesignSystem.SURFACE_ALT};
-    border-bottom: 1px solid {DesignSystem.BORDER};
+    background-color: {D.SURFACE_ALT};
+    border-bottom: 1px solid {D.BORDER};
     padding: 4px 0;
     height: 32px;
 }}
 QPushButton {{
-    background-color: {DesignSystem.SURFACE};
-    color: {DesignSystem.TEXT};
-    border: 1px solid {DesignSystem.BORDER};
+    background-color: {D.SURFACE};
+    color: {D.TEXT};
+    border: 1px solid {D.BORDER};
     border-radius: 5px;
     padding: 4px 10px;
     font-size: 10px;
     min-height: 26px;
     min-width: 70px;
 }}
-QPushButton:hover  {{
-    background-color: {DesignSystem.SURFACE_ALT};
-    border-color: {DesignSystem.PRIMARY};
-    color: {DesignSystem.TEXT};
+QPushButton:hover {{
+    background-color: {D.SURFACE_ALT};
+    border-color: {D.PRIMARY};
+    color: {D.TEXT};
 }}
 QPushButton:pressed {{
-    background-color: {DesignSystem.BORDER_LIGHT};
-    border-color: {DesignSystem.PRIMARY_ACTIVE};
-    color: {DesignSystem.TEXT};
+    background-color: {D.BORDER_LIGHT};
+    border-color: {D.PRIMARY_ACTIVE};
+    color: {D.TEXT};
 }}
 QLabel {{
-    color: {DesignSystem.TEXT_MUTED};
+    color: {D.TEXT_MUTED};
     font-size: 10px;
     font-weight: bold;
     background: transparent;
     padding-left: 4px;
 }}
 QComboBox {{
-    background-color: {DesignSystem.SURFACE};
-    color: {DesignSystem.TEXT};
-    border: 1px solid {DesignSystem.BORDER};
+    background-color: {D.SURFACE};
+    color: {D.TEXT};
+    border: 1px solid {D.BORDER};
     border-radius: 5px;
-    padding: 2px 6px;
+    padding: 3px 8px;
     font-size: 10px;
+    min-width: 160px;
     min-height: 26px;
 }}
-QComboBox:hover {{
-    border-color: {DesignSystem.PRIMARY};
-}}
-QComboBox::drop-down {{
-    border: none;
-    width: 20px;
-}}
-QComboBox::down-arrow {{
-    image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 4px solid {DesignSystem.TEXT_MUTED};
-}}
+QComboBox:hover {{ border-color: {D.PRIMARY}; }}
+QComboBox::drop-down {{ border: none; width: 18px; }}
+QComboBox::down-arrow {{ width: 10px; height: 10px; }}
 """
 
 
@@ -120,10 +113,7 @@ def _make_norm(scale: str, vmin, vmax, data: np.ndarray):
 
 def _compute_contour_levels(peak, mode='pct', absmin=1.0, absmax=100.0,
                              factor=2.0, custom=None):
-    """
-    Calcule les niveaux de contours selon Difmap en utilisant map_geometry.py.
-    """
-    return get_difmap_contour_levels(peak, mode, absmin, absmax, factor, custom)
+    return Visualizer._compute_contour_levels(peak, mode, absmin, absmax, factor, custom)
 
 
 def _draw_contours(ax, map_data, x_coords, y_coords, peak, lw=0.6,
@@ -225,113 +215,121 @@ class MapPlotWidget(BasePlotWidget):
     _cmap: str = "inferno"
     _map_type: str = "dirty"  # "dirty" | "clean" | "residual"
 
+    _MAP_TOOLS = [
+        ("Navigate  [R]",      "NAVIGATE"),
+        ("Zoom Box  [Z]",      "ZOOM"),
+        ("Add Window  [W]",    "ADD_WINDOW"),
+    ]
+
     def __init__(self, parent=None):
         super().__init__(parent=parent, figsize=(6, 6), include_toolbar=True, layout_type='constrained')
-        self.toolbar.setMinimumHeight(32)
-        self.toolbar.setMaximumHeight(32)
-        self.toolbar.setStyleSheet(
-            f"background-color: {DesignSystem.SURFACE_ALT}; "
-            f"border-bottom: 1px solid {DesignSystem.BORDER};"
-        )
+        # Hide matplotlib NavigationToolbar — we use our own combo-based toolbar
+        self.toolbar.setVisible(False)
+
         self.image = None
         self.cbar = None
-        
-        # Sélection de fenêtres CLEAN avec la souris
+
+        # CLEAN window selection
         self.window_selector = None
         self.window_selection_mode = False
         self.selected_window = None
-        
-        # Connecter les événements de souris
+
         self.canvas.mpl_connect('button_press_event', self._on_mouse_press)
         self.canvas.mpl_connect('key_press_event', self._on_key_press)
-        
-        # Créer la toolbar locale pour les fenêtres CLEAN
+
         self._build_map_toolbar()
 
-    # Outils disponibles pour les cartes
-    _MAP_TOOLS = [
-        ("Navigate  [R]",         "NAVIGATE"),
-        ("Zoom Box  [Z]",         "ZOOM"),
-        ("Add Window  [W]",       "ADD_WINDOW"),
-        ("Peak Window  [P]",      "PEAK_WINDOW"),
-        ("Delete Windows  [D]",   "DELETE_WINDOWS"),
-    ]
-
     def _build_map_toolbar(self) -> None:
-        """Crée la mini-toolbar pour les opérations sur les cartes."""
-        # Créer une toolbar locale au-dessus du canvas
-        toolbar_widget = QWidget()
-        toolbar_widget.setObjectName("MapToolbar")
-        toolbar_widget.setStyleSheet(_MAP_TOOLBAR_QSS)
-        toolbar_widget.setFixedHeight(32)
-        
-        layout = QHBoxLayout(toolbar_widget)
-        layout.setContentsMargins(4, 2, 4, 2)
-        layout.setSpacing(4)
-        
-        # Label Tools
-        layout.addWidget(QLabel("  Tools:"))
-        
-        # Combo pour les outils
+        """Toolbar — même pattern que UV/Radplot : combo d'outils + boutons d'action."""
+        row = self.plot_toolbar_row
+        row.setObjectName("MapToolbar")
+        row.setStyleSheet(_TOOLBAR_QSS)
+        row.setFixedHeight(32)
+        row.setVisible(True)
+        lay = self.plot_toolbar_layout
+
+        lay.addWidget(QLabel("  Tools:"))
+
         self._tool_combo = QComboBox()
-        self._tool_combo.setToolTip("Outil actif (raccourci clavier)")
+        self._tool_combo.setToolTip("Active tool (keyboard shortcut)")
         for label, data in self._MAP_TOOLS:
             self._tool_combo.addItem(label, data)
-        layout.addWidget(self._tool_combo)
-        
-        # Boutons d'action rapide
-        self._btn_add_window = QPushButton("Add Window")
-        self._btn_add_window.setToolTip("Ajouter une fenêtre (W) — cliquer pour activer/désactiver")
-        self._btn_add_window.setCheckable(True)
-        self._btn_add_window.clicked.connect(self._on_add_window_btn_clicked)
-        layout.addWidget(self._btn_add_window)
-        
-        self._btn_peak_window = QPushButton("Peak Window")
-        self._btn_peak_window.setToolTip("Fenêtre autour du pic (P)")
-        self._btn_peak_window.clicked.connect(self._add_peak_window)
-        layout.addWidget(self._btn_peak_window)
-        
-        self._btn_delete_windows = QPushButton("Delete All")
-        self._btn_delete_windows.setToolTip("Supprimer toutes les fenêtres (D)")
-        self._btn_delete_windows.clicked.connect(self._delete_all_windows)
-        layout.addWidget(self._btn_delete_windows)
-        
-        layout.addStretch()
-        
-        # Insérer la toolbar avant le canvas dans le layout
-        main_layout = self.layout
-        main_layout.insertWidget(0, toolbar_widget)
-        
-        # Connecter le changement d'outil
-        self._tool_combo.currentIndexChanged.connect(self._on_tool_changed)
+        lay.addWidget(self._tool_combo)
 
-    def _on_add_window_btn_clicked(self, checked: bool) -> None:
-        """Gère le clic sur le bouton Add Window (checkable)."""
-        if checked:
-            self._activate_window_selection_mode()
-        else:
-            self._exit_window_selection_mode()
+        lay.addSpacing(10)
+
+        self._btn_peak_window   = QPushButton("Peak Win  [P]")
+        self._btn_delete_windows = QPushButton("Del All  [D]")
+        self._btn_reset          = QPushButton("Reset  [Home]")
+        self._btn_dezoom         = QPushButton("Dezoom  [O]")
+
+        self._btn_peak_window.setToolTip("Ajouter une fenêtre autour du pic de flux")
+        self._btn_delete_windows.setToolTip("Supprimer toutes les fenêtres CLEAN")
+        self._btn_reset.setToolTip("Revenir à la vue complète")
+        self._btn_dezoom.setToolTip("Dézoomer (vue précédente)")
+
+        for btn in (self._btn_peak_window, self._btn_delete_windows,
+                    self._btn_reset, self._btn_dezoom):
+            lay.addWidget(btn)
+
+        lay.addStretch()
+
+        self._tool_combo.currentIndexChanged.connect(self._on_tool_changed)
+        self._btn_peak_window.clicked.connect(self._add_peak_window)
+        self._btn_delete_windows.clicked.connect(self._delete_all_windows)
+        self._btn_reset.clicked.connect(self._reset_view)
+        self._btn_dezoom.clicked.connect(self._dezoom)
 
     def _on_tool_changed(self, index: int) -> None:
-        """Gère le changement d'outil sélectionné."""
-        tool = self._tool_combo.currentData()
-
-        if tool == "ADD_WINDOW":
-            self._activate_window_selection_mode()
-        elif tool == "PEAK_WINDOW":
-            self._add_peak_window()
-            # Revenir à Navigate après l'action one-shot
-            self._tool_combo.blockSignals(True)
-            self._tool_combo.setCurrentIndex(0)
-            self._tool_combo.blockSignals(False)
-        elif tool == "DELETE_WINDOWS":
-            self._delete_all_windows()
-            # Revenir à Navigate après l'action one-shot
-            self._tool_combo.blockSignals(True)
-            self._tool_combo.setCurrentIndex(0)
-            self._tool_combo.blockSignals(False)
-        elif tool in ("NAVIGATE", "ZOOM"):
+        if index < 0:
+            return
+        mode = self._tool_combo.itemData(index)
+        if mode == "NAVIGATE":
             self._exit_window_selection_mode()
+            self._deactivate_mpl_tools()
+        elif mode == "ZOOM":
+            self._exit_window_selection_mode()
+            self._activate_mpl_zoom()
+        elif mode == "ADD_WINDOW":
+            self._deactivate_mpl_tools()
+            self._activate_window_selection_mode()
+        self.canvas.setFocus()
+
+    def _deactivate_mpl_tools(self) -> None:
+        if self.toolbar is None:
+            return
+        mode_str = str(getattr(self.toolbar, 'mode', '')).lower()
+        if 'zoom' in mode_str:
+            self.toolbar.zoom()
+        elif 'pan' in mode_str:
+            self.toolbar.pan()
+
+    def _activate_mpl_zoom(self) -> None:
+        if self.toolbar is None:
+            return
+        mode_str = str(getattr(self.toolbar, 'mode', '')).lower()
+        if 'pan' in mode_str:
+            self.toolbar.pan()
+        if 'zoom' not in mode_str:
+            self.toolbar.zoom()
+
+    def _reset_view(self) -> None:
+        if self.toolbar:
+            self.toolbar.home()
+        self.canvas.setFocus()
+
+    def _dezoom(self) -> None:
+        if self.toolbar:
+            self.toolbar.back()
+        self.canvas.setFocus()
+
+    def _sync_combo_to(self, tool_data: str) -> None:
+        """Sync the combo to the given tool data value without triggering signals."""
+        idx = next((i for i in range(self._tool_combo.count())
+                    if self._tool_combo.itemData(i) == tool_data), 0)
+        self._tool_combo.blockSignals(True)
+        self._tool_combo.setCurrentIndex(idx)
+        self._tool_combo.blockSignals(False)
 
     def _add_peak_window(self):
         """Ajoute une fenêtre autour du pic depuis la toolbar."""
@@ -412,26 +410,28 @@ class MapPlotWidget(BasePlotWidget):
             self.draw()
             return
 
+        # Récupérer les limites personnalisées depuis le ControlPanel si disponibles
+        xmin = xmax = ymin = ymax = None
+        try:
+            parent = self.parent()
+            while parent and hasattr(parent, 'parent'):
+                if hasattr(parent, 'control_panel'):
+                    xmin, xmax, ymin, ymax = parent.control_panel.get_display_area_params()
+                    break
+                parent = parent.parent()
+        except:
+            pass  # Ignorer les erreurs, utiliser les valeurs par défaut
+        
+        # Si des limites personnalisées sont définies, on doit recadrer même si extent est fourni
+        custom_limits = any(v is not None for v in (xmin, xmax, ymin, ymax))
+        
         # Utiliser la géométrie DIFMAP exacte
-        if extent is not None:
-            # Utiliser l'extent fourni (déjà calculé)
+        if extent is not None and not custom_limits:
+            # Utiliser l'extent fourni (déjà calculé) sans recadrage
             cropped_data = map_data
             astrometric_extent = extent
             nx_crop, ny_crop = cropped_data.shape[1], cropped_data.shape[0]
         else:
-            # Récupérer les limites personnalisées depuis le ControlPanel si disponibles
-            xmin = xmax = ymin = ymax = None
-            try:
-                # Tenter de récupérer les paramètres depuis le ControlPanel
-                parent = self.parent()
-                while parent and hasattr(parent, 'parent'):
-                    if hasattr(parent, 'control_panel'):
-                        xmin, xmax, ymin, ymax = parent.control_panel.get_display_area_params()
-                        break
-                    parent = parent.parent()
-            except:
-                pass  # Ignorer les erreurs, utiliser les valeurs par défaut
-            
             # Appliquer le crop DIFMAP avec limites personnalisées ou par défaut
             cropped_data, astrometric_extent, nx_crop, ny_crop = DifmapMapGeometry.crop_map_data(
                 map_data, cellsize, cellsize_y,
@@ -488,18 +488,38 @@ class MapPlotWidget(BasePlotWidget):
             self._toggle_window_selection_mode()
 
     def _on_key_press(self, event):
-        """Gère les touches clavier pour la sélection de fenêtres."""
-        if event.key == 'w':
+        if event.key == 'r':
+            self._sync_combo_to("NAVIGATE")
+            self._exit_window_selection_mode()
+            self._deactivate_mpl_tools()
+        elif event.key == 'z':
+            self._sync_combo_to("ZOOM")
+            self._exit_window_selection_mode()
+            self._activate_mpl_zoom()
+        elif event.key == 'w':
             self._toggle_window_selection_mode()
         elif event.key == 'p':
             self._add_peak_window()
         elif event.key == 'd':
             self._delete_all_windows()
+        elif event.key == 'm':
+            self._toggle_show_model()
         elif event.key == 'escape':
+            self._sync_combo_to("NAVIGATE")
             self._exit_window_selection_mode()
+            self._deactivate_mpl_tools()
+
+    def _toggle_show_model(self):
+        """Toggle l'affichage des composantes du modèle (comme PGPLOT 'M')."""
+        parent = self.parent()
+        while parent and hasattr(parent, 'parent'):
+            if hasattr(parent, 'control_panel'):
+                chk = parent.control_panel.chk_show_model_map
+                chk.setChecked(not chk.isChecked())
+                break
+            parent = parent.parent()
 
     def _activate_window_selection_mode(self):
-        """Active le mode de sélection de fenêtres."""
         self.window_selection_mode = True
         if self.window_selector is None:
             self.window_selector = RectangleSelector(
@@ -515,39 +535,22 @@ class MapPlotWidget(BasePlotWidget):
             )
         else:
             self.window_selector.set_active(True)
-        self.ax.set_title(
-            f"{self._map_title} [Mode Fenêtre — Clic gauche: dessiner, Clic droit/W: quitter]"
-        )
         self.canvas.set_cursor(cursors.SELECT_REGION)
-        self._btn_add_window.blockSignals(True)
-        self._btn_add_window.setChecked(True)
-        self._btn_add_window.blockSignals(False)
-        self._tool_combo.blockSignals(True)
-        self._tool_combo.setCurrentIndex(2)  # "Add Window"
-        self._tool_combo.blockSignals(False)
+        self._sync_combo_to("ADD_WINDOW")
 
     def _toggle_window_selection_mode(self):
-        """Bascule le mode de sélection de fenêtres (raccourci clavier W)."""
         if self.window_selection_mode:
             self._exit_window_selection_mode()
         else:
             self._activate_window_selection_mode()
 
     def _exit_window_selection_mode(self):
-        """Quitte le mode de sélection de fenêtres."""
         self.window_selection_mode = False
         if self.window_selector:
             self.window_selector.set_active(False)
             self.window_selector = None
-        self.ax.set_title(self._map_title)
         self.canvas.set_cursor(cursors.POINTER)
-        # Remettre le combo et le bouton en état "Navigate"
-        self._btn_add_window.blockSignals(True)
-        self._btn_add_window.setChecked(False)
-        self._btn_add_window.blockSignals(False)
-        self._tool_combo.blockSignals(True)
-        self._tool_combo.setCurrentIndex(0)  # "Navigate"
-        self._tool_combo.blockSignals(False)
+        self._sync_combo_to("NAVIGATE")
         self.draw()
 
     def _start_window_selection(self):
@@ -584,7 +587,6 @@ class MapPlotWidget(BasePlotWidget):
         self._exit_window_selection_mode()
 
     def enable_window_selection(self):
-        """Active manuellement le mode de sélection de fenêtres."""
         self._activate_window_selection_mode()
 
 class DirtyMapPlotWidget(MapPlotWidget):
@@ -657,7 +659,8 @@ class CleanMapPlotWidget(MapPlotWidget):
                  beam_info=None, windows=None,
                  scale='linear', vmin=None, vmax=None,
                  contour_mode='pct', contour_absmin=1.0, contour_absmax=100.0,
-                 contour_factor=2.0, contour_custom=None, extent=None):
+                 contour_factor=2.0, contour_custom=None, extent=None,
+                 show_model=False, model_components=None):
         """
         Affiche la Clean Map avec contours, ellipse de faisceau et fenêtres CLEAN.
 
@@ -704,26 +707,28 @@ class CleanMapPlotWidget(MapPlotWidget):
             self.draw()
             return
 
+        # Récupérer les limites personnalisées depuis le ControlPanel si disponibles
+        xmin = xmax = ymin = ymax = None
+        try:
+            parent = self.parent()
+            while parent and hasattr(parent, 'parent'):
+                if hasattr(parent, 'control_panel'):
+                    xmin, xmax, ymin, ymax = parent.control_panel.get_display_area_params()
+                    break
+                parent = parent.parent()
+        except:
+            pass  # Ignorer les erreurs, utiliser les valeurs par défaut
+        
+        # Si des limites personnalisées sont définies, on doit recadrer même si extent est fourni
+        custom_limits = any(v is not None for v in (xmin, xmax, ymin, ymax))
+        
         # Utiliser la géométrie DIFMAP exacte
-        if extent is not None:
-            # Utiliser l'extent fourni (déjà calculé)
+        if extent is not None and not custom_limits:
+            # Utiliser l'extent fourni (déjà calculé) sans recadrage
             cropped_data = map_data
             astrometric_extent = extent
             nx_crop, ny_crop = cropped_data.shape[1], cropped_data.shape[0]
         else:
-            # Récupérer les limites personnalisées depuis le ControlPanel si disponibles
-            xmin = xmax = ymin = ymax = None
-            try:
-                # Tenter de récupérer les paramètres depuis le ControlPanel
-                parent = self.parent()
-                while parent and hasattr(parent, 'parent'):
-                    if hasattr(parent, 'control_panel'):
-                        xmin, xmax, ymin, ymax = parent.control_panel.get_display_area_params()
-                        break
-                    parent = parent.parent()
-            except:
-                pass  # Ignorer les erreurs, utiliser les valeurs par défaut
-            
             # Appliquer le crop DIFMAP avec limites personnalisées ou par défaut
             cropped_data, astrometric_extent, nx_crop, ny_crop = DifmapMapGeometry.crop_map_data(
                 map_data, cellsize, cellsize_y,
@@ -837,6 +842,75 @@ class CleanMapPlotWidget(MapPlotWidget):
         if beam_info:
             map_info.update(beam_info)
             
+        # 6. Composantes du modèle CLEAN (si show_model=True)
+        # Logique exacte de DIFMAP modplot.c:cmpplot():
+        # - type == delta → affiche '+' (symbole 2 PGPLOT)
+        # - type != delta → affiche ellipse (major, ratio, phi)
+        # Couleurs selon DIFMAP modplot.c:31-70:
+        # - freepar=0 (fixed) + flux>0 → color 10 (lime/green)
+        # - freepar=0 (fixed) + flux<0 → color 2 (red)
+        # Les composantes CLEAN sont toujours freepar=0 (fixed)
+        # Vérification des limites comme DIFMAP modplot.c:74
+        if show_model and model_components:
+            import math
+            # Récupérer les limites d'affichage (xa < xb, ya < yb)
+            xa, xb = astrometric_extent[0], astrometric_extent[1]
+            ya, yb = astrometric_extent[2], astrometric_extent[3]
+            if xa > xb:
+                xa, xb = xb, xa
+            if ya > yb:
+                ya, yb = yb, ya
+            
+            nhidden = 0  # Compteur de composantes hors limites
+            for cmp in model_components:
+                cx, cy = cmp['x'], cmp['y']
+                cmp_type = cmp.get('type', 'delta')
+                major = cmp.get('major', 0.0)
+                flux = cmp.get('flux', 0.0)
+                
+                # Vérifier si le centre est visible (comme DIFMAP cmpplot:74)
+                visible = (cx >= xa and cx <= xb and cy >= ya and cy <= yb)
+                if not visible:
+                    nhidden += 1
+                    continue  # Ne pas afficher les composantes hors limites
+                
+                # Couleur selon le signe du flux (comme DIFMAP)
+                # Les composantes CLEAN sont fixed (freepar=0)
+                if flux >= 0:
+                    color = 'lime'      # PGPLOT color 10 (green/yellow)
+                else:
+                    color = 'red'        # PGPLOT color 2 (red)
+                
+                # Delta components: afficher '+'
+                if cmp_type == 'delta' or major <= 0:
+                    self.ax.plot(cx, cy, '+', color=color, markersize=6,
+                                markeredgewidth=1.0, alpha=0.9, zorder=6)
+                else:
+                    # Composantes étendues (gaussian, disk, ellipsoid, ring, etc.)
+                    # DIFMAP: phi = angle du grand axe depuis Nord vers Est (radians)
+                    # Matplotlib: angle antihoraire depuis l'axe X (Est)
+                    # Conversion: angle_mpl = 90° - phi_deg
+                    phi_rad = cmp.get('phi', 0.0)
+                    ratio = cmp.get('ratio', 1.0)
+                    angle_deg = 90.0 - math.degrees(phi_rad)
+                    
+                    # el_define() en DIFMAP: minor = major * ratio
+                    # Matplotlib: width = minor, height = major
+                    minor = major * ratio
+                    self.ax.add_patch(Ellipse(
+                        (cx, cy),
+                        width=minor,
+                        height=major,
+                        angle=angle_deg,
+                        facecolor='none', edgecolor=color,
+                        linewidth=0.8, alpha=0.9, zorder=6
+                    ))
+            
+            # Signaler les composantes hors limites (comme DIFMAP maplot.c:2215-2218)
+            if nhidden > 0:
+                import logging
+                logging.info(f"[MODEL] {nhidden} composante(s) hors de la zone d'affichage")
+
         _add_map_annotations(self.ax, self.fig, cropped_data, "clean",
                               beam_info=beam_info, contour_levels=drawn,
                               contour_mode=contour_mode, map_info=map_info)
