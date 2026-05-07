@@ -105,7 +105,11 @@ class MainWindow(QMainWindow):
         """Charge un fichier FITS dans le moteur et rafraîchit l'UI."""
         try:
             self.log_console.log(f"Loading: {filepath}...")
+            from PyQt6.QtWidgets import QApplication
+            QApplication.processEvents()  # force immediate log display before C operation
             self.session.observe(filepath)
+            # Remettre à zéro l'état UI qui appartient à la session précédente
+            self._last_clean_package = None
             available_pols = self.session.obs.available_polarizations()
             preferred_pol = "I" if "I" in available_pols else (available_pols[0] if available_pols else "I")
             self.control_panel.set_available_polarizations(available_pols, current=preferred_pol)
@@ -208,7 +212,9 @@ class MainWindow(QMainWindow):
                 observation=self.session.obs,
             )
 
+            self.tabs.blockSignals(True)
             self.tabs.setCurrentIndex(current_idx)
+            self.tabs.blockSignals(False)
             self._on_tab_changed(current_idx)
         finally:
             self._bulk_reloading = False
@@ -327,6 +333,21 @@ class MainWindow(QMainWindow):
         self.control_panel.chk_show_model_map.toggled.connect(self._on_show_model_map_changed)
         self.control_panel.combo_pol.currentTextChanged.connect(self._change_polarization)
         self.control_panel.ifs_range_changed.connect(self._on_ifs_range_changed)
+
+        # Auto-refresh des cartes quand les paramètres d'affichage changent.
+        # Ne recalcul pas la carte (pas de CLEAN), seulement un re-render.
+        try:
+            self.control_panel.combo_scale.currentIndexChanged.connect(self._refresh_current_map_tab)
+            self.control_panel.input_vmin.editingFinished.connect(self._refresh_current_map_tab)
+            self.control_panel.input_vmax.editingFinished.connect(self._refresh_current_map_tab)
+
+            self.control_panel.combo_contour_mode.currentIndexChanged.connect(self._refresh_current_map_tab)
+            self.control_panel.input_absmin.editingFinished.connect(self._refresh_current_map_tab)
+            self.control_panel.input_absmax.editingFinished.connect(self._refresh_current_map_tab)
+            self.control_panel.input_factor.editingFinished.connect(self._refresh_current_map_tab)
+            self.control_panel.input_custom_levels.editingFinished.connect(self._refresh_current_map_tab)
+        except Exception:
+            pass
         
         self.tabs.currentChanged.connect(self._on_tab_changed)
         self.control_panel.combo_rad_mode.currentIndexChanged.connect(
@@ -451,9 +472,10 @@ class MainWindow(QMainWindow):
             ctrl.chk_conjugate.setChecked(conj_visible)
             ctrl.chk_conjugate.blockSignals(False)
         if not is_radplot:
-            ctrl.chk_model.setChecked(False)
-            ctrl.chk_residuals.setChecked(False)
-            ctrl.chk_errors.setChecked(False)
+            for chk in [ctrl.chk_model, ctrl.chk_residuals, ctrl.chk_errors]:
+                chk.blockSignals(True)
+                chk.setChecked(False)
+                chk.blockSignals(False)
 
         tb.action_save.setVisible(has_data)
 
@@ -682,17 +704,19 @@ class MainWindow(QMainWindow):
         try:
             niter = int(self.control_panel.input_niter.text())
             gain  = float(self.control_panel.input_gain.text())
+            cutoff = float(self.control_panel.input_cutoff.text())
             mapsize, cellsize, taper_val = self._apply_imaging_params()
             
+            cutoff_str = f", cutoff: {cutoff}" if cutoff > 0 else ""
             self.log_console.log(
-                f"CLEAN cycle — niter: {niter}, gain: {gain}, taper: {taper_val} Mλ"
+                f"CLEAN cycle — niter: {niter}, gain: {gain}{cutoff_str}, taper: {taper_val} Mλ"
             )
 
             # 1. Inversion (Dirty Map)
             self.session.imager.invert()
             
             # 2. CLEAN (cherche les composants dans les fenêtres)
-            self.session.imager.clean(niter, gain)
+            self.session.imager.clean(niter, gain, cutoff)
             
             # 3. Restore (convolue le modèle et ajoute au résiduel)
             self.session.imager.restore()
@@ -782,6 +806,7 @@ class MainWindow(QMainWindow):
     def _add_peak_window(self):
         """Ajoute une fenêtre autour du pic de flux (taille par défaut DIFMAP = 1.0 FWHM)."""
         try:
+            current_idx = self.tabs.currentIndex()
             self.session.imager.peakwin(size=1.0)
             self.log_console.log("Added peak window (1.0 FWHM)")
             windows = self.session.imager._get_clean_windows()
@@ -789,6 +814,12 @@ class MainWindow(QMainWindow):
                 self._last_added_window = windows[-1]
             self._refresh_clean_windows_overlay()
             self._refresh_residual_map()
+
+            # Ne pas basculer d'onglet: le refresh du résiduel est un update secondaire.
+            try:
+                self.tabs.setCurrentIndex(current_idx)
+            except Exception:
+                pass
             
         except Exception as e:
             # Gérer spécifiquement le cas où aucune carte n'est disponible

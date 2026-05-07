@@ -4,6 +4,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.colors import Normalize, LogNorm, PowerNorm
 from matplotlib.offsetbox import AnchoredOffsetbox, AuxTransformBox
+import re
+from datetime import datetime
 
 class Visualizer:
     """
@@ -211,6 +213,24 @@ class Visualizer:
         return dmax if abs(dmax) > abs(dmin) else dmin
 
     @staticmethod
+    def _imageable_zone_peak(full_data: np.ndarray) -> float:
+        """Pic signé sur la zone imageable (centre 1/4..3/4 de la carte).
+
+        DIFMAP/PGPLOT calcule typiquement les contours sur une zone "imageable"
+        centrale plutôt que sur l'intégralité des bords.
+        """
+        ny, nx = full_data.shape
+        y0, y1 = ny // 4, 3 * ny // 4
+        x0, x1 = nx // 4, 3 * nx // 4
+        y0 = max(0, y0)
+        x0 = max(0, x0)
+        y1 = min(ny, y1)
+        x1 = min(nx, x1)
+        if y1 <= y0 or x1 <= x0:
+            return Visualizer._vis_central_peak(full_data)
+        return Visualizer._vis_central_peak(full_data[y0:y1, x0:x1])
+
+    @staticmethod
     def _make_norm(scale: str, vmin, vmax, data: np.ndarray):
         """Normalisation matplotlib équivalente à mapfunc de difmap (linear/log/sqrt)."""
         dmin = float(np.nanmin(data))
@@ -239,9 +259,22 @@ class Visualizer:
 
         mode = (mode or 'pct').lower()
         if mode in {'custom', 'clevs'}:
+            # DIFMAP: levs est en % du pic tant que cmul<=0 (cas standard)
+            # Ici, on suit ce comportement: les niveaux custom sont interprétés en % du pic.
             if not custom:
                 return []
-            return [float(v) for v in custom if v != 0]
+            if peak is None or float(peak) == 0.0:
+                return []
+            out = []
+            for x in custom:
+                try:
+                    v = float(x)
+                except Exception:
+                    continue
+                if not np.isfinite(v) or v == 0.0:
+                    continue
+                out.append(v * float(peak) / 100.0)
+            return out
 
         if mode in {'pct', 'levs', 'default', 'standard'}:
             return [pct * peak / 100.0 for pct in (-1.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0)]
@@ -254,9 +287,17 @@ class Visualizer:
         factor = abs(float(factor))
         if absmin > absmax:
             absmin, absmax = absmax, absmin
-        if absmin < 1.0e-5 or absmax < 1.0e-5 or factor <= 1.0:
+
+        # DIFMAP: loglevs génère des niveaux en % du pic avec un facteur ~2
+        # et sature typiquement à 100%.
+        absmax = min(absmax, 100.0)
+        if factor <= 1.0:
+            factor = 2.0
+
+        if absmin < 1.0e-5 or absmax < 1.0e-5:
             return []
 
+        # loglevs N  =>  -N, +N, +2N, +4N, ... (jusqu'à 100%)
         pct_levels = [-absmin]
         val = absmin
         while val <= absmax:
@@ -279,15 +320,27 @@ class Visualizer:
         cmin = float(np.nanmin(data))
         cmax = float(np.nanmax(data))
         visible = [l for l in levels if cmin < l < cmax]
+        if not visible:
+            return []
+
+        pos_levels = sorted([l for l in visible if l >= 0])
+        neg_levels = sorted([l for l in visible if l < 0])
+
         drawn = []
-        for level in visible:
+        if pos_levels:
             ax.contour(
-                x_lin, y_lin, data, levels=[level],
-                colors='white' if level >= 0 else 'red',
-                linewidths=lw, linestyles='solid',
-                alpha=0.9 if level >= 0 else 0.85
+                x_lin, y_lin, data, levels=pos_levels,
+                colors='white', linewidths=lw, linestyles='solid',
+                alpha=1.0
             )
-            drawn.append(level)
+            drawn.extend(pos_levels)
+        if neg_levels:
+            ax.contour(
+                x_lin, y_lin, data, levels=neg_levels,
+                colors='red', linewidths=lw, linestyles='solid',
+                alpha=1.0
+            )
+            drawn.extend(neg_levels)
         return drawn
 
     @staticmethod
@@ -325,7 +378,7 @@ class Visualizer:
                 if bmaj > 0 and bmin > 0:
                     lines.append(("Beam", f"{bmaj:.3g}″ × {bmin:.3g}″  PA {bpa:.1f}°"))
             if drawn_levels:
-                cpeak = Visualizer._vis_central_peak(data)
+                cpeak = Visualizer._imageable_zone_peak(data)
                 if (contour_mode or '').lower() in {'custom', 'clevs'}:
                     lvl_str = ", ".join(f"{l:.3g}" for l in drawn_levels[:6])
                     lines.append(("Levels Jy/b", lvl_str))
@@ -345,24 +398,140 @@ class Visualizer:
         if not lines:
             return
 
-        # Rendu : boîte unique en haut à droite
-        text_content = "\n".join(
-            f"{k:<12} {v}" for k, v in lines
-        )
+        # Rendu : texte en bas de l'axe, en dehors de la grille
+        # Ne pas utiliser xlabel (ça modifie le layout et crée une marge)
+
+        # Construire un bloc proche de ce que DIFMAP/PGPLOT affiche (maplot.c)
+        formatted_lines: list[str] = []
+
+        session = getattr(ax, '_difmap_session', None)
+        source = None
+        pol = None
+        if session is not None:
+            try:
+                source = session.obs.source
+            except Exception:
+                source = None
+            try:
+                pol = session.obs.get_polarization()
+            except Exception:
+                pol = None
+
+        header_text = ""
+        try:
+            header_text = difmap_native.get_header_text() or ""
+        except Exception:
+            header_text = ""
+
+        # Fréquence moyenne en GHz depuis le tableau du header
+        freq_ghz = 0.0
+        if header_text:
+            freqs = []
+            for m in re.finditer(r"^\s*\d+\s+\d+\s+([0-9.]+e[+-]\d+)", header_text, flags=re.MULTILINE):
+                try:
+                    freqs.append(float(m.group(1)))
+                except Exception:
+                    continue
+            if freqs:
+                freq_ghz = float(np.mean(freqs)) / 1e9
+
+        # Date si présente
+        date_str = ""
+        if header_text:
+            m = re.search(r"\b(19|20)\d{2}\s+[A-Za-z]{3}\s+\d{1,2}\b", header_text)
+            if m:
+                date_str = m.group(0)
+
+        # Stations: utiliser indices tel_a/tel_b pour déduire Ntel puis noms
+        stations_str = ""
+        try:
+            uv = difmap_native.get_uv_data() or {}
+            tel_a = uv.get('tel_a')
+            tel_b = uv.get('tel_b')
+            sub = uv.get('subarray')
+            if tel_a is not None and tel_b is not None and len(tel_a) and len(tel_b):
+                n_tel = int(max(int(np.max(tel_a)), int(np.max(tel_b)))) + 1
+                isub = int(sub[0]) if sub is not None and len(sub) else 0
+                codes = []
+                for itel in range(n_tel):
+                    name = difmap_native.get_telescope_name(isub, itel)
+                    if not name:
+                        continue
+                    code = name.strip().upper()[:2]
+                    codes.append(code)
+                if codes:
+                    # difmap affiche souvent une concaténation compacte
+                    stations_str = "".join(sorted(set(codes)))
+        except Exception:
+            stations_str = ""
+
+        # Map center: tenter d'extraire RA/Dec du header (sinon placeholder)
+        ra = "00 00 00.000"
+        dec = "+00 00 00.000"
+        if header_text:
+            m = re.search(r"RA\s*[=:]\s*([0-9:.\s]+)\s*,?\s*Dec\s*[=:]\s*([+\-0-9:.\s]+)", header_text, flags=re.IGNORECASE)
+            if m:
+                ra = " ".join(m.group(1).strip().replace(':', ' ').split())
+                dec = " ".join(m.group(2).strip().replace(':', ' ').split())
+
+        # Lignes de tête
+        map_label = (map_type or 'dirty').capitalize()
+        pol_txt = pol or "XX"
+        if stations_str:
+            formatted_lines.append(f"{map_label} {pol_txt} map.  Array: {stations_str}")
+        else:
+            formatted_lines.append(f"{map_label} {pol_txt} map.")
+
+        src = source or "Unknown"
+        if freq_ghz > 0 and date_str:
+            formatted_lines.append(f"{src}  at {freq_ghz:.3f} GHz  {date_str}")
+        elif freq_ghz > 0:
+            formatted_lines.append(f"{src}  at {freq_ghz:.3f} GHz")
+        elif date_str:
+            formatted_lines.append(f"{src}  {date_str}")
+        else:
+            formatted_lines.append(f"{src}  {datetime.now().strftime('%Y %b %d')}")
+
+        # Infos par type de map
+        dmin = float(np.nanmin(data))
+        dmax = float(np.nanmax(data))
+        rms = float(info.get('rms', 0.0)) if isinstance(info, dict) else 0.0
+
+        formatted_lines.append(f"Map center:  RA: {ra},  Dec: {dec} (2000.0)")
+        formatted_lines.append(f"Displayed range: {dmin:.4g} to {dmax:.4g} Jy/beam")
+
+        if map_type == 'clean':
+            formatted_lines.append(f"Map peak: {dmax:.4g} Jy/beam")
+            if drawn_levels:
+                cpeak = Visualizer._imageable_zone_peak(data)
+                if cpeak != 0:
+                    pct_levels = [float(lvl) / cpeak * 100.0 for lvl in drawn_levels if np.isfinite(lvl)]
+                    show = pct_levels[:8]
+                    suffix = " ..." if len(pct_levels) > 8 else ""
+                    formatted_lines.append(
+                        "Contours %: " + " ".join(f"{p:.0g}" for p in show) + suffix
+                    )
+            if isinstance(info, dict):
+                bmaj = float(info.get('bmaj', 0.0) or 0.0)
+                bmin = float(info.get('bmin', 0.0) or 0.0)
+                bpa = float(info.get('bpa', 0.0) or 0.0)
+                if bmaj > 0 and bmin > 0:
+                    formatted_lines.append(f"Beam FWHM: {bmaj:.3g} × {bmin:.3g} (mas) at {bpa:.2f}°")
+
+        if map_type in {'residual', 'clean'} and rms > 0:
+            formatted_lines.append(f"RMS: {rms:.4g} Jy/beam")
+            peak_abs = float(np.nanmax(np.abs(data)))
+            formatted_lines.append(f"{peak_abs / rms:.1f}σ")
+
+        text_content = "\n".join(formatted_lines)
         ax.text(
-            0.98, 0.98, text_content,
+            0.5, -0.12, text_content,
             transform=ax.transAxes,
+            ha='center', va='top',
             fontsize=7.5,
-            color='white',
-            va='top', ha='right',
             fontfamily='monospace',
-            bbox=dict(
-                boxstyle='round,pad=0.4',
-                facecolor='#0a0a0a',
-                alpha=0.65,
-                linewidth=0.8,
-                edgecolor='#444444',
-            ),
+            color='black',
+            clip_on=False,
             zorder=10,
         )
 
@@ -445,19 +614,25 @@ class Visualizer:
         astrometric_extent = [xmax_e, xmin_e, ymin_e, ymax_e]
 
         ny_px, nx_px = data.shape
-        x_lin = np.linspace(xmax_e, xmin_e, nx_px)
-        y_lin = np.linspace(ymin_e, ymax_e, ny_px)
+        x_pixel_size = (xmin_e - xmax_e) / nx_px
+        y_pixel_size = (ymax_e - ymin_e) / ny_px
+        x_coords = np.linspace(xmax_e, xmin_e, nx_px, endpoint=False) + x_pixel_size / 2
+        y_coords = np.linspace(ymin_e, ymax_e, ny_px, endpoint=False) + y_pixel_size / 2
+        x_grid, y_grid = np.meshgrid(x_coords, y_coords)
 
         # 1. Image de fond
+        scale_l = (scale or 'linear').lower()
+        data_show = np.ma.masked_less_equal(data, 0.0) if scale_l == 'log' else data
         norm = Visualizer._make_norm(scale, vmin, vmax, data)
-        im = ax.imshow(data, origin='lower', extent=astrometric_extent, cmap=cmap,
+        im = ax.imshow(data_show, origin='lower', extent=astrometric_extent, cmap=cmap,
                        aspect='equal', norm=norm)
         ax.get_figure().colorbar(im, ax=ax, label='Flux (Jy/beam)', fraction=0.046, pad=0.04)
 
         # 3. Contours isophotes
-        peak = Visualizer._vis_central_peak(data)
+        # Difmap calcule les niveaux sur la zone "imageable" (centre), pas sur les bords
+        peak = Visualizer._imageable_zone_peak(data)
         drawn = Visualizer._vis_draw_contours(
-            ax, data, x_lin, y_lin, peak,
+            ax, data, x_grid, y_grid, peak,
             mode=contour_mode, absmin=contour_absmin, absmax=contour_absmax,
             factor=contour_factor, custom=contour_custom
         )
@@ -545,13 +720,14 @@ class Visualizer:
                     pad=0.0, borderpad=1.5, frameon=False
                 ))
 
-        # 6. Annotations texte
+        # 6. Annotations texte (en bas, en dehors de la grille)
         Visualizer._vis_add_annotations(ax, data, map_type, info=info,
                                          drawn_levels=drawn, contour_mode=contour_mode)
 
         ax.set_xlabel("Décalage RA (mas)")
         ax.set_ylabel("Décalage Dec (mas)")
         ax.set_title(title)
+        # Note: xlabel est défini dans _vis_add_annotations
 
         if save_path and created_fig:
             ax.get_figure().savefig(save_path, bbox_inches='tight')
@@ -649,28 +825,32 @@ class Visualizer:
         if created_fig:
             fig, ax = plt.subplots(figsize=figsize)
 
+        scale_l = (scale or 'linear').lower()
+        data_show = np.ma.masked_less_equal(data, 0.0) if scale_l == 'log' else data
         norm = Visualizer._make_norm(scale, vmin, vmax, data)
-        im = ax.imshow(data, extent=astrometric_extent, origin='lower', cmap=cmap,
+        im = ax.imshow(data_show, extent=astrometric_extent, origin='lower', cmap=cmap,
                        aspect='equal', norm=norm, **kwargs)
         ax.get_figure().colorbar(im, ax=ax, label='Flux (Jy/beam)')
 
-        # Contours difmap (négatifs rouges, positifs blancs)
-        peak = Visualizer._vis_central_peak(data)
-        drawn = Visualizer._vis_draw_contours(
-            ax, data, x_lin, y_lin, peak,
-            mode=contour_mode, absmin=contour_absmin, absmax=contour_absmax,
-            factor=contour_factor, custom=contour_custom
-        )
+        # IMPORTANT: Difmap n'affiche les contours QUE sur les clean maps restaurées (ncmp > 0)
+        # Voir difmap.c:3855: docont = mappar.docont && ((vlbmap->ncmp && domap) || ...)
+        # Dirty et Residual maps n'ont JAMAIS de contours
+        # Pas de contours, pas d'annotations de niveaux pour dirty/residual
         Visualizer._vis_add_annotations(ax, data, map_type,
-                                         drawn_levels=drawn, contour_mode=contour_mode)
+                                         drawn_levels=None, contour_mode='none')
 
         ax.set_title(title)
         ax.set_xlabel("Décalage RA (mas)")
         ax.set_ylabel("Décalage Dec (mas)")
+        # Coller l'affichage à l'extent exact par défaut (évite la marge "cadre")
         if xlim is not None:
             ax.set_xlim(xlim)
+        else:
+            ax.set_xlim(astrometric_extent[0], astrometric_extent[1])
         if ylim is not None:
             ax.set_ylim(ylim)
+        else:
+            ax.set_ylim(astrometric_extent[2], astrometric_extent[3])
 
         if save_path and created_fig:
             ax.get_figure().savefig(save_path, bbox_inches='tight')

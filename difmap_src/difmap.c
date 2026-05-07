@@ -8014,6 +8014,12 @@ int native_mapsize(int nx, float cellsize, int ny, float cellsize_y) {
 
 int native_invert(void) {
     if(vlbmap == NULL || vlbob == NULL) return -1;
+    /* Force recalculation of both map and beam.
+     * uvinvert() refuses to run when domap==0 && dobeam==0 (interprets this
+     * as "nothing requested"), which happens after a previous invert() cleared
+     * the flags.  Setting them here ensures invert() is always honoured. */
+    vlbmap->dobeam = 1;
+    vlbmap->domap  = MAP_IS_STALE;
     if(uvinvert(vlbob, vlbmap, invpar.uvmin, invpar.uvmax, invpar.gauval,
                 invpar.gaurad, invpar.dorad, invpar.errpow, invpar.uvbin)) return -1;
     respar.e_bmin = vlbmap->e_bmin;
@@ -8022,11 +8028,18 @@ int native_invert(void) {
     return 0;
 }
 
-int native_clean(int niter, float gain) {
+/*
+ * Wrapper natif pour l'algorithme CLEAN.
+ * Paramètres :
+ *   niter  - nombre max d'itérations (si < 0, arrêt au premier négatif)
+ *   gain   - gain de boucle CLEAN (0 < gain < 1)
+ *   cutoff - seuil de flux résiduel pour arrêt (Jy/beam, 0 = pas de limite)
+ */
+int native_clean(int niter, float gain, float cutoff) {
     Model *clnmod;
     Modcmp *cmp;
     if (vlbob == NULL || vlbmap == NULL) return -1;
-    clnmod = mapclean(vlbob, vlbmap, vlbwins, niter, 0.0f, gain, 1);
+    clnmod = mapclean(vlbob, vlbmap, vlbwins, niter, cutoff, gain, 1);
     if (!clnmod) return -1;
     if (count_antenna_beams(vlbob->ab) > 0) {
         for (cmp = clnmod->head; cmp; cmp = cmp->next)
@@ -8255,23 +8268,27 @@ int l_extract_uv(void) {
 
     /* 2. RÉALLOCATION */
     if(count > uv_buffer_size) {
-        flat_u = (float*)realloc(flat_u, count * sizeof(float));
-        flat_v = (float*)realloc(flat_v, count * sizeof(float));
-        flat_amp = (float*)realloc(flat_amp, count * sizeof(float));
-        flat_wgt = (float*)realloc(flat_wgt, count * sizeof(float));
-        
-        flat_tel_a = (int*)realloc(flat_tel_a, count * sizeof(int));
-        flat_tel_b = (int*)realloc(flat_tel_b, count * sizeof(int));
-        flat_time = (double*)realloc(flat_time, count * sizeof(double));
-        flat_subarray = (int*)realloc(flat_subarray, count * sizeof(int));
-        flat_if = (int*)realloc(flat_if, count * sizeof(int));
-        flat_vis_ptrs = (Visibility**)realloc(flat_vis_ptrs, count * sizeof(Visibility*));
-        flat_modamp = (float*)realloc(flat_modamp, count * sizeof(float)); 
-        flat_modphs = (float*)realloc(flat_modphs, count * sizeof(float));
-
-        flat_ut = (int*)realloc(flat_ut, count * sizeof(int));
-        flat_ibase = (int*)realloc(flat_ibase, count * sizeof(int));
-        vis_phs = realloc(vis_phs, count * sizeof(float));
+#define SAFE_REALLOC(ptr, n, type) do { \
+    void *_tmp = realloc((ptr), (n) * sizeof(type)); \
+    if (!_tmp) { return -1; } \
+    (ptr) = (type*)_tmp; \
+} while(0)
+        SAFE_REALLOC(flat_u,        count, float);
+        SAFE_REALLOC(flat_v,        count, float);
+        SAFE_REALLOC(flat_amp,      count, float);
+        SAFE_REALLOC(flat_wgt,      count, float);
+        SAFE_REALLOC(flat_tel_a,    count, int);
+        SAFE_REALLOC(flat_tel_b,    count, int);
+        SAFE_REALLOC(flat_time,     count, double);
+        SAFE_REALLOC(flat_subarray, count, int);
+        SAFE_REALLOC(flat_if,       count, int);
+        SAFE_REALLOC(flat_vis_ptrs, count, Visibility*);
+        SAFE_REALLOC(flat_modamp,   count, float);
+        SAFE_REALLOC(flat_modphs,   count, float);
+        SAFE_REALLOC(flat_ut,       count, int);
+        SAFE_REALLOC(flat_ibase,    count, int);
+        SAFE_REALLOC(vis_phs,       count, float);
+#undef SAFE_REALLOC
     }
     
     uv_buffer_size = count;
@@ -8509,5 +8526,23 @@ int native_cleanup(void) {
     invpar.errpow = 0.0f;
     invpar.uvbin = 0.0f;
     invpar.dorad = 0;
+
+    free(flat_u);         flat_u         = NULL;
+    free(flat_v);         flat_v         = NULL;
+    free(flat_amp);       flat_amp       = NULL;
+    free(flat_wgt);       flat_wgt       = NULL;
+    free(flat_modamp);    flat_modamp    = NULL;
+    free(flat_modphs);    flat_modphs    = NULL;
+    free(flat_tel_a);     flat_tel_a     = NULL;
+    free(flat_tel_b);     flat_tel_b     = NULL;
+    free(flat_time);      flat_time      = NULL;
+    free(flat_subarray);  flat_subarray  = NULL;
+    free(flat_if);        flat_if        = NULL;
+    free(flat_vis_ptrs);  flat_vis_ptrs  = NULL;
+    free(vis_phs);        vis_phs        = NULL;
+    free(flat_ut);        flat_ut        = NULL;
+    free(flat_ibase);     flat_ibase     = NULL;
+    uv_buffer_size = 0;
+
     return 0;
 }

@@ -124,16 +124,36 @@ class DifmapSession(metaclass=_SingletonMeta):
             raise DifmapError(f"Fichier introuvable : {filepath}")
         if self.uv_loaded:
             self._native_cleanup()
-            self.imager.uvtaper(0, 0)
         ret = self._native.observe(filepath)
         if ret != 0:
             raise DifmapError(f"Échec du chargement : {filepath} (format non reconnu ou fichier corrompu)")
         self.uv_loaded = True
 
     def _native_cleanup(self) -> None:
-        """Remet à zéro l'état interne sans libérer le slot singleton."""
+        """Libère les buffers C et remet à zéro l'état Python avant un rechargement."""
         self.uv_loaded = False
-        # native_observe (appelé juste après) réinitialise l'état C via obs_end() + invpar = invdef
+        # Déconnecter les éditeurs AVANT de libérer les buffers C pour éviter
+        # tout accès C depuis un callback résiduel pendant la transition
+        for editor in list(self.obs._editors):
+            try:
+                editor.cleanup()
+            except Exception:
+                pass
+        self.obs._editors.clear()
+        self._native.cleanup()
+        # Réinitialiser l'état Python pour ne pas garder en RAM les données de l'ancien fichier
+        self.imager._last_residual_map = None
+        self.imager._last_mapsize = None
+        self.imager._last_cellsize = None
+        self.imager._last_ny = None
+        self.imager._last_cellsize_y = None
+        self.imager._current_map_type = None
+        self.imager._current_uvtaper = None
+        self.imager._current_uvweight = None
+        self.imager.active_windows = []
+        self.obs.masque_flagges = None
+        self.obs.historique_coupes.clear()
+        self.obs.invalidate_cache()
 
     def cleanup(self) -> None:
         """
@@ -147,5 +167,6 @@ class DifmapSession(metaclass=_SingletonMeta):
         >>> session.cleanup()
         >>> session2 = DifmapSession()   # OK, le slot est libéré
         """
-        self.uv_loaded = False
+        if self.uv_loaded:
+            self._native_cleanup()
         type(self)._instance = None

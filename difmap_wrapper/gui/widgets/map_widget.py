@@ -11,7 +11,9 @@ from difmap_wrapper.gui.utils import MatplotlibStyler
 from difmap_wrapper.gui.styles import DesignSystem
 from difmap_wrapper.utils.map_geometry import DifmapMapGeometry
 from difmap_wrapper.core.visualizer import Visualizer
-from difmap_wrapper.utils.map_annotations import create_pgplot_style_annotations, DifmapMapAnnotations
+import difmap_native
+import re
+from datetime import datetime
 
 D = DesignSystem
 
@@ -141,20 +143,20 @@ def _draw_contours(ax, map_data, x_coords, y_coords, peak, lw=0.6,
         pos_levels = [l for l in visible if l >= 0]
         neg_levels = [l for l in visible if l < 0]
         
-        # Contours positifs en blanc - approche haute résolution
+        # Contours positifs en blanc
         if pos_levels:
             cs_pos = ax.contour(
                 x_coords, y_coords, map_data, levels=pos_levels,
-                colors='white', linewidths=lw*0.5, linestyles='solid',
+                colors='white', linewidths=lw, linestyles='solid',
                 alpha=1.0
             )
             drawn.extend(pos_levels)
         
-        # Contours négatifs en rouge - approche haute résolution
+        # Contours négatifs en rouge
         if neg_levels:
             cs_neg = ax.contour(
                 x_coords, y_coords, map_data, levels=neg_levels,
-                colors='red', linewidths=lw*0.5, linestyles='solid',
+                colors='red', linewidths=lw, linestyles='solid',
                 alpha=1.0
             )
             drawn.extend(neg_levels)
@@ -166,7 +168,7 @@ def _add_map_annotations(ax, fig, map_data, map_type, beam_info=None,
                           contour_levels=None, contour_mode='pct',
                           observation_data=None, map_info=None):
     """
-    Ajoute les annotations texte style PGPLOT propre et moderne.
+    Ajoute les annotations texte en bas de l'axe (en dehors de la grille).
     """
     # Préparer les informations pour map_annotations.py
     if map_info is None:
@@ -176,31 +178,155 @@ def _add_map_annotations(ax, fig, map_data, map_type, beam_info=None,
     if beam_info:
         map_info.update(beam_info)
     
-    # Créer les annotations style PGPLOT
-    annotations_dict = create_pgplot_style_annotations(
-        map_data, map_info, observation_data, contour_levels
-    )
+    # Calculer les stats locales
+    dmin = float(np.nanmin(map_data))
+    dmax = float(np.nanmax(map_data))
+    peak_val = float(np.nanmax(np.abs(map_data)))
     
-    main_text = annotations_dict['main_text']
+    # RMS (zone centrale)
+    ny, nx = map_data.shape
+    cy, cx = ny // 2, nx // 2
+    margin = max(ny // 8, 4)
+    rms_zone = map_data[cy - margin:cy + margin, cx - margin:cx + margin]
+    rms = float(np.sqrt(np.nanmean(rms_zone ** 2))) if rms_zone.size > 0 else 0.0
     
-    if main_text:
-        # Solution minimaliste : annotation petite et discrète
-        # Réduire le texte pour ne pas cacher l'image
-        lines = main_text.split('\n')
-        essential_lines = []
-        
-        for line in lines:
-            line = line.strip()
-            # Garder seulement les infos critiques
-            if any(keyword in line for keyword in ['Peak:', 'Beam:', 'Map:']):
-                essential_lines.append(line)
-        
-        if essential_lines:
-            compact_text = '\n'.join(essential_lines[:3])  # Max 3 lignes
-            ax.text(0.02, 0.98, compact_text, transform=ax.transAxes,
-                    fontsize=6, color=DesignSystem.ASTRAL_ACCENT, va='top', ha='left',
-                    bbox=dict(boxstyle='round,pad=0.2', facecolor=DesignSystem.SURFACE_ALT, 
-                              edgecolor=DesignSystem.ASTRAL_ACCENT, alpha=0.8, linewidth=1))
+    formatted_lines: list[str] = []
+
+    header_text = ""
+    try:
+        header_text = difmap_native.get_header_text() or ""
+    except Exception:
+        header_text = ""
+
+    freq_ghz = 0.0
+    if header_text:
+        freqs = []
+        for m in re.finditer(r"^\s*\d+\s+\d+\s+([0-9.]+e[+-]\d+)", header_text, flags=re.MULTILINE):
+            try:
+                freqs.append(float(m.group(1)))
+            except Exception:
+                continue
+        if freqs:
+            freq_ghz = float(np.mean(freqs)) / 1e9
+
+    date_str = ""
+    if header_text:
+        m = re.search(r"\b(19|20)\d{2}\s+[A-Za-z]{3}\s+\d{1,2}\b", header_text)
+        if m:
+            date_str = m.group(0)
+
+    stations_str = ""
+    try:
+        uv = difmap_native.get_uv_data() or {}
+        tel_a = uv.get('tel_a')
+        tel_b = uv.get('tel_b')
+        sub = uv.get('subarray')
+        if tel_a is not None and tel_b is not None and len(tel_a) and len(tel_b):
+            n_tel = int(max(int(np.max(tel_a)), int(np.max(tel_b)))) + 1
+            isub = int(sub[0]) if sub is not None and len(sub) else 0
+            codes = []
+            for itel in range(n_tel):
+                name = difmap_native.get_telescope_name(isub, itel)
+                if not name:
+                    continue
+                code = name.strip().upper()[:2]
+                codes.append(code)
+            if codes:
+                stations_str = "".join(sorted(set(codes)))
+    except Exception:
+        stations_str = ""
+
+    # Source/Pol (fallback robust)
+    try:
+        source = difmap_native.get_source()
+    except Exception:
+        source = "UNKNOWN"
+    try:
+        pol = difmap_native.get_polarization()
+    except Exception:
+        pol = "XX"
+
+    ra = "00 00 00.000"
+    dec = "+00 00 00.000"
+    if header_text:
+        m = re.search(
+            r"^\s*OBSRA\s*=\s*\"?([^\"\n]+)\"?\s*$", header_text,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        n = re.search(
+            r"^\s*OBSDEC\s*=\s*\"?([^\"\n]+)\"?\s*$", header_text,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        if m and n:
+            ra = " ".join(m.group(1).strip().replace(':', ' ').split())
+            dec = " ".join(n.group(1).strip().replace(':', ' ').split())
+        else:
+            m = re.search(
+                r"RA\s*[=:]\s*([0-9hms:.\s]+)\s*[,;]?\s*Dec\s*[=:]\s*([+\-0-9dms:.\s]+)",
+                header_text,
+                flags=re.IGNORECASE,
+            )
+            if m:
+                ra = " ".join(m.group(1).strip().replace(':', ' ').split())
+                dec = " ".join(m.group(2).strip().replace(':', ' ').split())
+
+    map_label = (map_type or 'dirty').capitalize()
+    if stations_str:
+        formatted_lines.append(f"{map_label} {pol} map.  Array: {stations_str}")
+    else:
+        formatted_lines.append(f"{map_label} {pol} map.")
+
+    if freq_ghz > 0 and date_str:
+        formatted_lines.append(f"{source}  at {freq_ghz:.3f} GHz  {date_str}")
+    elif freq_ghz > 0:
+        formatted_lines.append(f"{source}  at {freq_ghz:.3f} GHz")
+    elif date_str:
+        formatted_lines.append(f"{source}  {date_str}")
+    else:
+        formatted_lines.append(f"{source}  {datetime.now().strftime('%Y %b %d')}")
+
+    formatted_lines.append(f"Map center:  RA: {ra},  Dec: {dec} (2000.0)")
+    formatted_lines.append(f"Displayed range: {dmin:.4g} to {dmax:.4g} Jy/beam")
+
+    if map_type == "clean":
+        formatted_lines.append(f"Map peak: {dmax:.4g} Jy/beam")
+        if contour_levels:
+            cpeak = _imageable_zone_peak(map_data)
+            if cpeak != 0:
+                pct_levels = [float(lvl) / cpeak * 100.0 for lvl in contour_levels if np.isfinite(lvl)]
+                show = pct_levels[:8]
+                suffix = " ..." if len(pct_levels) > 8 else ""
+                formatted_lines.append(
+                    "Contours %: " + " ".join(f"{p:.0g}" for p in show) + suffix
+                )
+
+        bmaj = float(map_info.get('bmaj', 0.0) or 0.0)
+        bmin = float(map_info.get('bmin', 0.0) or 0.0)
+        bpa = float(map_info.get('bpa', 0.0) or 0.0)
+        if bmaj > 0 and bmin > 0:
+            formatted_lines.append(f"Beam FWHM: {bmaj:.3g} × {bmin:.3g} (mas) at {bpa:.2f}°")
+
+    if map_type in {"residual", "clean"} and rms > 0:
+        formatted_lines.append(f"RMS: {rms:.4g} Jy/beam")
+        peak_abs = float(np.nanmax(np.abs(map_data)))
+        formatted_lines.append(f"{peak_abs / rms:.1f}σ")
+
+    if formatted_lines:
+        text_content = "\n".join(formatted_lines)
+        ax.text(
+            0.5, -0.12, text_content,
+            transform=ax.transAxes,
+            ha='center', va='top',
+            fontsize=7.5,
+            fontfamily='monospace',
+            color=DesignSystem.TEXT,
+            clip_on=False,
+            zorder=10,
+        )
+
+    # Les labels scientifiques restent des labels d'axes
+    ax.set_xlabel("Décalage RA (mas)", fontsize=9)
+    ax.set_ylabel("Décalage Dec (mas)", fontsize=9)
 
 
 class MapPlotWidget(BasePlotWidget):
@@ -410,37 +536,24 @@ class MapPlotWidget(BasePlotWidget):
             self.draw()
             return
 
-        # Récupérer les limites personnalisées depuis le ControlPanel si disponibles
-        xmin = xmax = ymin = ymax = None
-        try:
-            parent = self.parent()
-            while parent and hasattr(parent, 'parent'):
-                if hasattr(parent, 'control_panel'):
-                    xmin, xmax, ymin, ymax = parent.control_panel.get_display_area_params()
-                    break
-                parent = parent.parent()
-        except:
-            pass  # Ignorer les erreurs, utiliser les valeurs par défaut
-        
-        # Si des limites personnalisées sont définies, on doit recadrer même si extent est fourni
-        custom_limits = any(v is not None for v in (xmin, xmax, ymin, ymax))
-        
         # Utiliser la géométrie DIFMAP exacte
-        if extent is not None and not custom_limits:
+        if extent is not None:
             # Utiliser l'extent fourni (déjà calculé) sans recadrage
             cropped_data = map_data
             astrometric_extent = extent
             nx_crop, ny_crop = cropped_data.shape[1], cropped_data.shape[0]
         else:
-            # Appliquer le crop DIFMAP avec limites personnalisées ou par défaut
+            # Appliquer le crop DIFMAP par défaut
             cropped_data, astrometric_extent, nx_crop, ny_crop = DifmapMapGeometry.crop_map_data(
                 map_data, cellsize, cellsize_y,
-                xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax
+                xmin=None, xmax=None, ymin=None, ymax=None
             )
 
+        scale_l = (scale or 'linear').lower()
+        data_show = np.ma.masked_less_equal(cropped_data, 0.0) if scale_l == 'log' else cropped_data
         norm = _make_norm(scale, vmin, vmax, cropped_data)
         self.image = self.ax.imshow(
-            cropped_data, cmap=self._cmap, origin='lower', extent=astrometric_extent, norm=norm
+            data_show, cmap=self._cmap, origin='lower', extent=astrometric_extent, norm=norm
         )
         self.ax.set_aspect('equal', adjustable='box')
 
@@ -450,19 +563,9 @@ class MapPlotWidget(BasePlotWidget):
             fraction=0.046, pad=0.04
         )
 
-        # Ajouter les contours si demandé
-        if contour_mode != 'none':
-            peak = _imageable_zone_peak(map_data)
-            contour_levels = _compute_contour_levels(
-                peak, mode=contour_mode, absmin=contour_absmin, 
-                absmax=contour_absmax, factor=contour_factor, custom=contour_custom
-            )
-            x_coords = np.linspace(astrometric_extent[0], astrometric_extent[1], cropped_data.shape[1] + 1)[:-1]
-            y_coords = np.linspace(astrometric_extent[2], astrometric_extent[3], cropped_data.shape[0] + 1)[:-1]
-            _draw_contours(self.ax, cropped_data, x_coords, y_coords, peak, mode=contour_mode,
-                          absmin=contour_absmin, absmax=contour_absmax, factor=contour_factor, custom=contour_custom)
-        else:
-            contour_levels = []
+        # DIFMAP: pas de contours sur Dirty/Residual maps.
+        # Les contours sont uniquement tracés sur la Clean Map restaurée.
+        contour_levels = []
 
         if windows:
             for (xa, xb, ya, yb) in windows:
@@ -707,38 +810,25 @@ class CleanMapPlotWidget(MapPlotWidget):
             self.draw()
             return
 
-        # Récupérer les limites personnalisées depuis le ControlPanel si disponibles
-        xmin = xmax = ymin = ymax = None
-        try:
-            parent = self.parent()
-            while parent and hasattr(parent, 'parent'):
-                if hasattr(parent, 'control_panel'):
-                    xmin, xmax, ymin, ymax = parent.control_panel.get_display_area_params()
-                    break
-                parent = parent.parent()
-        except:
-            pass  # Ignorer les erreurs, utiliser les valeurs par défaut
-        
-        # Si des limites personnalisées sont définies, on doit recadrer même si extent est fourni
-        custom_limits = any(v is not None for v in (xmin, xmax, ymin, ymax))
-        
         # Utiliser la géométrie DIFMAP exacte
-        if extent is not None and not custom_limits:
+        if extent is not None:
             # Utiliser l'extent fourni (déjà calculé) sans recadrage
             cropped_data = map_data
             astrometric_extent = extent
             nx_crop, ny_crop = cropped_data.shape[1], cropped_data.shape[0]
         else:
-            # Appliquer le crop DIFMAP avec limites personnalisées ou par défaut
+            # Appliquer le crop DIFMAP par défaut
             cropped_data, astrometric_extent, nx_crop, ny_crop = DifmapMapGeometry.crop_map_data(
                 map_data, cellsize, cellsize_y,
-                xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax
+                xmin=None, xmax=None, ymin=None, ymax=None
             )
 
         # 1. Image de fond
+        scale_l = (scale or 'linear').lower()
+        data_show = np.ma.masked_less_equal(cropped_data, 0.0) if scale_l == 'log' else cropped_data
         norm = _make_norm(scale, vmin, vmax, cropped_data)
         self.image = self.ax.imshow(
-            cropped_data, cmap=self._cmap, origin='lower', extent=astrometric_extent, norm=norm
+            data_show, cmap=self._cmap, origin='lower', extent=astrometric_extent, norm=norm
         )
         self.ax.set_aspect('equal', adjustable='box')
 
@@ -749,16 +839,12 @@ class CleanMapPlotWidget(MapPlotWidget):
         )
 
         # 2. Contours isophotes - SEULEMENT sur la clean map (comme difmap.c:3855)
-        # Les contours ne sont tracés que sur les cartes restaurées (clean map)
-        # selon difmap.c:3855: docont = mappar.docont && ((vlbmap->ncmp && domap) || ...)
+        # Ici on est dans le widget CleanMap, donc on trace les contours si demandés.
         drawn = []
-        # Vérifier si c'est une clean map via map_type ou ncmp dans beam_info
-        map_type = beam_info.get('map_type', 'dirty') if beam_info else 'dirty'
-        ncmp = beam_info.get('ncmp', 0) if beam_info else 0
-        is_clean_map = (map_type == 'clean') or (ncmp > 0)
-        
-        if is_clean_map:
-            peak = _imageable_zone_peak(map_data)
+        if contour_mode != 'none':
+            # Peak calculé sur la zone "imageable" de la carte AFFICHÉE (croppée),
+            # pour correspondre à ce que l'utilisateur voit et à Difmap.
+            peak = _imageable_zone_peak(cropped_data)
             # Coordonnées des CENTRES des pixels (comme PGPLOT tr[] matrix)
             # extent = [xmax, xmin, ymin, ymax] selon convention Difmap
             # Les centres des pixels sont au milieu de chaque cellule

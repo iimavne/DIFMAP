@@ -212,7 +212,8 @@ class DifmapMapGeometry:
         yinc = cy * 1e-3 * np.pi / (180.0 * 3600.0)
         
         if xmin is None or xmax is None or ymin is None or ymax is None:
-            # Zone par défaut
+            # Crop par défaut de Difmap: quart central (nx/4 à 3*nx/4)
+            # Voir maplot.c:setarea() lignes 404-407
             xa, xb, ya, yb = DifmapMapGeometry.get_default_area(nx, ny)
         else:
             # Zone personnalisée

@@ -403,6 +403,12 @@ class DifmapImager:
         display_data, extent, nx_display, ny_display = self._display_map_data(
             self._last_residual_map, cellsize, cy
         )
+        # RMS calculé depuis la zone centrale des données résiduelles (pas depuis le beam)
+        ny_d, nx_d = display_data.shape
+        cy_d, cx_d = ny_d // 2, nx_d // 2
+        margin = max(ny_d // 8, 4)
+        rms_zone = display_data[cy_d - margin:cy_d + margin, cx_d - margin:cx_d + margin]
+        actual_rms = float(np.sqrt(np.nanmean(rms_zone ** 2))) if rms_zone.size > 0 else 0.0
         return {
             "data": display_data,
             "beam_data": self._native.get_beam(),
@@ -415,7 +421,7 @@ class DifmapImager:
                 "bmaj": beam.get('BMAJ', 0.0),
                 "bmin": beam.get('BMIN', 0.0),
                 "bpa": beam.get('BPA', 0.0),
-                "rms": beam.get('RMS', 0.0),
+                "rms": actual_rms,
             },
             "extent": extent,
             "windows": self._get_clean_windows(),
@@ -438,7 +444,7 @@ class DifmapImager:
         # Réinitialiser les flags pour permettre un nouveau invert
         self._native.reset_map_flags()
 
-    def clean(self, niter: int = 100, gain: float = 0.05) -> None:
+    def clean(self, niter: int = 100, gain: float = 0.05, cutoff: float = 0.0) -> None:
         """
         Déconvolue la Dirty Map par l'algorithme CLEAN natif.
 
@@ -450,15 +456,45 @@ class DifmapImager:
         ----------
         niter : int, optional
             Nombre maximum d'itérations CLEAN. Par défaut 100.
+            
+            **Comportement spécial** : si ``niter < 0``, le CLEAN s'arrête
+            au premier composant négatif détecté. Utile pour les sources
+            compactes où l'on veut éviter de nettoyer les artefacts négatifs
+            autour de la source (lobes latéraux). Par exemple ``niter=-100``
+            permet jusqu'à 100 itérations mais s'arrête dès qu'un pixel
+            négatif est sélectionné.
+            
         gain : float, optional
             Gain de boucle CLEAN (entre 0 et 1). Par défaut 0.05.
+            Valeurs typiques : 0.1 pour sources compactes, 0.05 pour
+            structures étendues.
+            
+        cutoff : float, optional
+            Seuil de flux résiduel pour arrêt automatique (Jy/beam).
+            Par défaut 0.0 (pas de limite). Le CLEAN s'arrête quand le
+            pic résiduel absolu tombe sous ce seuil. Utile pour :
+            
+            - Éviter de nettoyer sous le niveau du bruit
+            - Contrôler finement la profondeur de déconvolution
+            - Sources multi-échelles où l'émission diffuse a un flux
+              plus faible que les sources ponctuelles
 
         Raises
         ------
         DifmapError
             Si le moteur C retourne une erreur (carte ou observation absente).
+
+        Examples
+        --------
+        CLEAN standard pour source compacte :
+        
+        >>> session.imager.clean(niter=-200, gain=0.1)  # arrêt au 1er négatif
+        
+        CLEAN profond avec contrôle du bruit :
+        
+        >>> session.imager.clean(niter=1000, gain=0.05, cutoff=0.003)  # arrêt à 3 mJy
         """
-        if self._native.clean(niter, gain) != 0:
+        if self._native.clean(niter, gain, cutoff) != 0:
             raise DifmapError("Échec de la déconvolution CLEAN.")
 
     def restore(self) -> None:
@@ -709,18 +745,34 @@ class DifmapImager:
             raise DifmapError("Échec de l'auto-calibration (selfcal).")
 
     def make_clean_map(self, size: int, cellsize: float, niter: int = 100, gain: float = 0.05,
-                       pol: Polarization = "I", ny: int = None, cellsize_y: float = None) -> dict:
+                       cutoff: float = 0.0, pol: Polarization = "I", ny: int = None, 
+                       cellsize_y: float = None) -> dict:
         """
         Orchestre la création d'une Clean Map de A à Z.
 
         Capture automatiquement la Residual Map entre ``clean()`` et ``restore()``.
         Le résiduel est accessible via ``get_residual_package()`` après l'appel.
+        
+        Parameters
+        ----------
+        size, cellsize : int, float
+            Dimensions de la grille (voir ``mapsize()``).
+        niter : int
+            Max d'itérations. Si négatif, arrêt au 1er composant négatif.
+        gain : float
+            Gain de boucle CLEAN (0 < gain < 1).
+        cutoff : float
+            Seuil de flux résiduel pour arrêt (Jy/beam). 0 = pas de limite.
+        pol : str
+            Polarisation à imager ("I", "RR", "LL", etc.).
+        ny, cellsize_y : int, float, optional
+            Pour grille rectangulaire.
         """
         self._session.obs.select(pol=pol)
         self.mapsize(size, cellsize, ny=ny, cellsize_y=cellsize_y)
         self.clrmod()
         self.invert()
-        self.clean(niter, gain)
+        self.clean(niter, gain, cutoff)
         # _capture_residual() est appelé dans restore() automatiquement
         self.restore()
         return self.get_map_package(cellsize, cellsize_y=cellsize_y)

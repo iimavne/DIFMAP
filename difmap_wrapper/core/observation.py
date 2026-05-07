@@ -39,6 +39,10 @@ class Observation:
         self.masque_flagges: np.ndarray | None = None
         self.historique_coupes: list = []
 
+        # Cache get_data() : évite de réappeler l_extract_uv() si rien n'a changé
+        self._cached_raw_data: dict | None = None
+        self._data_dirty: bool = True
+
         # Observer pattern : liste des éditeurs Matplotlib enregistrés
         self._editors: list = []
 
@@ -72,6 +76,11 @@ class Observation:
     # =========================================================
     # C3 / M6 : API données
     # =========================================================
+
+    def invalidate_cache(self) -> None:
+        """Force un réextraction UV au prochain appel à get_data()."""
+        self._data_dirty = True
+        self._cached_raw_data = None
 
     def reset_flags(self, n_visibilities: int) -> None:
         """
@@ -135,7 +144,10 @@ class Observation:
         """
         if not self._session.uv_loaded:
             raise DifmapStateError("Aucune observation chargée.")
-        data = self._native.get_uv_data()
+        if self._data_dirty or self._cached_raw_data is None:
+            self._cached_raw_data = self._native.get_uv_data()
+            self._data_dirty = False
+        data = self._cached_raw_data
         n = len(data.get('u', []))
         if self.masque_flagges is None or len(self.masque_flagges) != n:
             self.reset_flags(n)
@@ -235,10 +247,11 @@ class Observation:
         pol = pol.upper()
         if self._native.select(pol, ifs[0], ifs[1], channels[0], channels[1]) != 0:
             raise DifmapError(f"Échec de la sélection (Pol: {pol})")
-            
+
         # Réinitialisation du masque (comme on l'a corrigé tout à l'heure)
         self.masque_flagges = None
         self.historique_coupes.clear()
+        self.invalidate_cache()
 
         # On demande au C sur quelle polarisation il est vraiment ---
         try:
@@ -285,6 +298,7 @@ class Observation:
             raise DifmapError(f"Échec de set_if_range({if_beg}, {if_end})")
         self.masque_flagges = None
         self.historique_coupes.clear()
+        self.invalidate_cache()
 
     @property
     def nif(self) -> int:
@@ -371,7 +385,9 @@ class Observation:
         """
         indices_c = np.asarray(indices, dtype=np.int32)
         if len(indices_c) > 0:
-            return self._native.flag_data(indices_c)
+            result = self._native.flag_data(indices_c)
+            self.invalidate_cache()
+            return result
         return 0
 
     def unflag_data(self, indices) -> int:
@@ -390,7 +406,9 @@ class Observation:
         """
         indices_c = np.asarray(indices, dtype=np.int32)
         if len(indices_c) > 0:
-            return self._native.unflag_data(indices_c)
+            result = self._native.unflag_data(indices_c)
+            self.invalidate_cache()
+            return result
         return 0
 
     def save_wobs(self, filepath: str) -> bool:

@@ -677,12 +677,13 @@ class ControlPanel(QDockWidget):
         layout.addWidget(self._thin_sep())
         layout.addWidget(self._subsection_header("Clean"))
 
+        # Ligne 1: Niter et Gain
         h_nc = QHBoxLayout()
         h_nc.setSpacing(6)
         h_nc.addWidget(QLabel("Niter:"))
         self.input_niter = QLineEdit("100")
         self.input_niter.setFixedWidth(52)
-        self.input_niter.setToolTip("Nombre d'itérations CLEAN")
+        self.input_niter.setToolTip("Nombre d'itérations CLEAN\n(si négatif: arrêt au 1er composant négatif)")
         h_nc.addWidget(self.input_niter)
         h_nc.addWidget(QLabel("Gain:"))
         self.input_gain = QLineEdit("0.05")
@@ -691,6 +692,18 @@ class ControlPanel(QDockWidget):
         h_nc.addWidget(self.input_gain)
         h_nc.addStretch()
         layout.addLayout(h_nc)
+
+        # Ligne 2: Cutoff
+        h_cutoff = QHBoxLayout()
+        h_cutoff.setSpacing(6)
+        h_cutoff.addWidget(QLabel("Cutoff:"))
+        self.input_cutoff = QLineEdit("0.0")
+        self.input_cutoff.setFixedWidth(60)
+        self.input_cutoff.setToolTip("Seuil de flux résiduel (Jy/beam)\n0 = pas de limite")
+        h_cutoff.addWidget(self.input_cutoff)
+        h_cutoff.addWidget(QLabel("Jy/bm"))
+        h_cutoff.addStretch()
+        layout.addLayout(h_cutoff)
 
         self.btn_compute_clean = PrimaryButton("▶  Clean Map")
         self.btn_compute_clean.setToolTip("Calculer la Clean Map (invert → clean → restore)")
@@ -744,27 +757,12 @@ class ControlPanel(QDockWidget):
         self._widget_custom_levels = QWidget()
         v_custom = QVBoxLayout(self._widget_custom_levels)
         v_custom.setContentsMargins(0, 0, 0, 0); v_custom.setSpacing(2)
-        v_custom.addWidget(QLabel("Levels Jy/b (comma-sep):"))
+        v_custom.addWidget(QLabel("Levels (% of peak):"))
         self.input_custom_levels = QLineEdit()
-        self.input_custom_levels.setPlaceholderText("ex: -0.001, 0.001, 0.005")
+        self.input_custom_levels.setPlaceholderText("ex: -1 1 2 4 8 16 32 64 | 1:64:*2")
         v_custom.addWidget(self.input_custom_levels)
         self._widget_custom_levels.setVisible(False)
         layout.addWidget(self._widget_custom_levels)
-
-        # Zone d'affichage
-        h_ax = QHBoxLayout(); h_ax.setSpacing(6)
-        h_ax.addWidget(QLabel("X (mas):"))
-        self.input_xmin = QLineEdit(); self.input_xmin.setPlaceholderText("auto")
-        self.input_xmax = QLineEdit(); self.input_xmax.setPlaceholderText("auto")
-        h_ax.addWidget(self.input_xmin); h_ax.addWidget(QLabel("→")); h_ax.addWidget(self.input_xmax)
-        layout.addLayout(h_ax)
-
-        h_ay = QHBoxLayout(); h_ay.setSpacing(6)
-        h_ay.addWidget(QLabel("Y (mas):"))
-        self.input_ymin = QLineEdit(); self.input_ymin.setPlaceholderText("auto")
-        self.input_ymax = QLineEdit(); self.input_ymax.setPlaceholderText("auto")
-        h_ay.addWidget(self.input_ymin); h_ay.addWidget(QLabel("→")); h_ay.addWidget(self.input_ymax)
-        layout.addLayout(h_ay)
 
         # Checkbox Show Model pour les cartes (comme PGPLOT 'M')
         self.chk_show_model_map = QCheckBox("Show Model Components  [M]")
@@ -805,28 +803,6 @@ class ControlPanel(QDockWidget):
             vmax = None
         return scale, vmin, vmax
 
-    def get_display_area_params(self) -> tuple:
-        """
-        Retourne les limites de la zone d'affichage personnalisée.
-        
-        Returns
-        -------
-        tuple
-            (xmin, xmax, ymin, ymax) en float ou None si auto
-        """
-        def _parse_float(value):
-            try:
-                return float(value) if value.strip() else None
-            except ValueError:
-                return None
-        
-        xmin = _parse_float(self.input_xmin.text())
-        xmax = _parse_float(self.input_xmax.text())
-        ymin = _parse_float(self.input_ymin.text())
-        ymax = _parse_float(self.input_ymax.text())
-        
-        return xmin, xmax, ymin, ymax
-
     def get_contour_params(self) -> tuple:
         """
         Retourne ``(mode, absmin, absmax, factor, custom_list)`` depuis les contrôles
@@ -856,13 +832,63 @@ class ControlPanel(QDockWidget):
             return 'log', absmin, absmax, factor, None
         if idx == 2:  # Custom
             raw = self.input_custom_levels.text().strip()
-            custom = []
-            if raw:
-                for tok in raw.split(','):
+
+            def _parse_custom_levels(text: str) -> list[float]:
+                if not text:
+                    return []
+                txt = text.replace('..', ':').replace(';', ' ')
+                parts = [p for p in re.split(r"[\s,]+", txt) if p]
+                out: list[float] = []
+                for p in parts:
+                    if ':' in p:
+                        segs = [s for s in p.split(':') if s]
+                        if len(segs) < 2:
+                            continue
+                        try:
+                            start = float(segs[0])
+                            stop = float(segs[1])
+                        except ValueError:
+                            continue
+                        if len(segs) == 2:
+                            out.extend([start, stop])
+                            continue
+                        third = segs[2].strip()
+                        try:
+                            if third.startswith('*'):
+                                factor = float(third[1:])
+                                if factor <= 1:
+                                    continue
+                                v = start
+                                if start <= 0 or stop <= 0:
+                                    continue
+                                while v <= stop:
+                                    out.append(v)
+                                    v *= factor
+                            else:
+                                step = float(third)
+                                if step == 0:
+                                    continue
+                                v = start
+                                if (stop - start) * step < 0:
+                                    step = -step
+                                if step > 0:
+                                    while v <= stop:
+                                        out.append(v)
+                                        v += step
+                                else:
+                                    while v >= stop:
+                                        out.append(v)
+                                        v += step
+                        except ValueError:
+                            continue
+                        continue
                     try:
-                        custom.append(float(tok.strip()))
+                        out.append(float(p))
                     except ValueError:
-                        pass
+                        continue
+                return out
+
+            custom = _parse_custom_levels(raw)
             return 'custom', 1.0, 100.0, 2.0, custom or None
         # Standard %
         return 'pct', 1.0, 100.0, 2.0, None

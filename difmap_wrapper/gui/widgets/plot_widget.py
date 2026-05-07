@@ -278,7 +278,7 @@ class UVPlotWidget(BasePlotWidget):
                 # Force l'activation du crosshair sur le nouvel éditeur
                 self.editor.action_toggle_crosshair(None)
         
-        self.fig.canvas.draw_idle()
+        self.fig.canvas.draw()
 
     def _setup_axes(self):
         """Configure les axes spécifiques au plan UV."""

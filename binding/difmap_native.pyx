@@ -12,6 +12,9 @@ def observe(filepath: str) -> int:
     cdef bytes filepath_bytes = filepath.encode('utf-8')
     return cdifmap.native_observe(filepath_bytes)
 
+def cleanup() -> int:
+    return cdifmap.native_cleanup()
+
 def select(pol: str, if_beg: int, if_end: int, ch_beg: int, ch_end: int) -> int:
     cdef bytes pol_bytes = pol.encode('utf-8')
     return cdifmap.native_select(pol_bytes, if_beg, if_end, ch_beg, ch_end)
@@ -46,8 +49,20 @@ def mapsize(size: int, cellsize: float, ny: int = 0, cellsize_y: float = 0.0) ->
 def invert() -> int:
     return cdifmap.native_invert()
 
-def clean(niter: int, gain: float) -> int:
-    cdef int ret = cdifmap.native_clean(niter, gain)
+def clean(niter: int, gain: float, cutoff: float = 0.0) -> int:
+    """
+    Algorithme CLEAN natif.
+    
+    Parameters
+    ----------
+    niter : int
+        Nombre max d'itérations. Si négatif, arrêt au premier composant négatif.
+    gain : float
+        Gain de boucle CLEAN (0 < gain < 1).
+    cutoff : float
+        Seuil de flux résiduel pour arrêt (Jy/beam). 0 = pas de limite.
+    """
+    cdef int ret = cdifmap.native_clean(niter, gain, cutoff)
     if ret != 0:
         raise RuntimeError("Échec de la déconvolution CLEAN dans le moteur C.")
     return ret
@@ -154,7 +169,6 @@ def get_telescope_name(int isub, int itel) -> str:
     if c_name == NULL:
         return "INCONNU"
         
-    # CORRECTION DU BUFFER OVER-READ : 
     # On force la lecture à 16 octets maximum (taille max d'un nom Difmap)
     # Cela évite de lire le reste de la RAM si le '\0' est manquant en C.
     cdef bytes raw_bytes = c_name[:16]
