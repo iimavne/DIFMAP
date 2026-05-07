@@ -8,6 +8,7 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtCore import Qt
 from .styled_buttons import PrimaryButton, SecondaryButton
 from difmap_wrapper.gui.styles import DesignSystem
+from difmap_wrapper.types import POLARIZATIONS
 
 D = DesignSystem
 
@@ -249,7 +250,7 @@ class ControlPanel(QDockWidget):
         """Met à jour le combo avec les seules polarisations proposées par le fichier."""
         values = [pol for pol in polarizations if pol]
         if not values:
-            values = ["I", "RR", "LL", "RL", "LR"]
+            values = list(POLARIZATIONS)
 
         self.combo_pol.blockSignals(True)
         self.combo_pol.clear()
@@ -264,7 +265,7 @@ class ControlPanel(QDockWidget):
 
         layout.addWidget(QLabel("Polarization:"))
         self.combo_pol = QComboBox()
-        self.combo_pol.addItems(["I", "RR", "LL", "RL", "LR"])
+        self.combo_pol.addItems(list(POLARIZATIONS))
         layout.addWidget(self.combo_pol)
 
         # --- Séparateur ---

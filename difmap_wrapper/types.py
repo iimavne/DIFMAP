@@ -6,6 +6,37 @@ Implémentées comme classes simples (pas d'Enum) pour rester 100%
 compatibles avec les comparaisons string/int existantes dans tout le code.
 Exemples : EditorMode.ZOOM == "ZOOM" → True, TabIndex.UV == 0 → True.
 """
+from typing import Literal
+
+# ---------------------------------------------------------------------------
+# Polarisation — liste exhaustive issue de difmap_src/stokes.c (Stokes_table)
+# Stokes  : I  Q  U  V
+# Circulaire : RR  LL  RL  LR
+# Linéaire   : XX  YY  XY  YX
+# Pseudo-I   : PI  (moyenne des mains parallèles, (RR+LL)/2 ou (XX+YY)/2)
+# ---------------------------------------------------------------------------
+Polarization = Literal[
+    "I",  "Q",  "U",  "V",
+    "RR", "LL", "RL", "LR",
+    "XX", "YY", "XY", "YX",
+    "PI",
+]
+
+# Toutes les valeurs valides comme tuple (utile pour les validations runtime)
+POLARIZATIONS: tuple[str, ...] = (
+    "I",  "Q",  "U",  "V",
+    "RR", "LL", "RL", "LR",
+    "XX", "YY", "XY", "YX",
+    "PI",
+)
+
+# ---------------------------------------------------------------------------
+# Unités UV — le wrapper utilise toujours les Mega-longueurs d'onde (Mλ).
+# La valeur 1e6 est utilisée pour convertir les coordonnées u,v (en λ) vers Mλ.
+# Centraliser ici permet de changer l'unité en un seul endroit si nécessaire.
+# ---------------------------------------------------------------------------
+UV_UNIT_SCALE: float = 1e6   # λ → Mλ
+UV_UNIT_LABEL: str   = "Mλ"
 
 
 class EditorMode:

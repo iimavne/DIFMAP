@@ -1,5 +1,6 @@
 # difmap_wrapper/gui/main_window.py
 import re
+import numpy as np
 import difmap_native
 
 from PyQt6.QtWidgets import QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox
@@ -400,8 +401,35 @@ class MainWindow(QMainWindow):
             ctrl.lbl_rad_mode.setVisible(has_data and is_radplot)
             ctrl.combo_rad_mode.setVisible(has_data and is_radplot)
             ctrl.sep_display.setVisible(has_data and is_radplot)
-            _mod = self.data.get('modamp') if (has_data and self.data) else None
-            has_model = _mod is not None and any(v != 0 for v in _mod)
+
+            # Détection modèle via le compteur C (équivalent ob->hasmod de difmap_src).
+            # On interroge directement les composantes du moteur — jamais les données
+            # cachées (self.data), dont le champ modamp est zéro tant que get_data()
+            # n'a pas été rappelé après clean().
+            has_model = False
+            if has_data and hasattr(self, 'session') and self.session:
+                try:
+                    has_model = len(self.session.imager.get_model_components()) > 0
+                except Exception:
+                    pass
+
+            # Si on arrive sur le radplot avec un modèle dont modamp n'est pas encore
+            # dans les données cachées, on rafraîchit self.data (déclenche moddif() côté C)
+            # puis on recharge le widget — comportement identique à ob->hasmod=1 dans
+            # uvradplt.c qui force le tracé du modèle à la prochaine commande radplot.
+            if is_radplot and has_model and self.session and self.radplot_widget:
+                _mod = self.data.get('modamp') if self.data else None
+                _modamp_stale = (_mod is None or not np.any(np.asarray(_mod) != 0))
+                if _modamp_stale:
+                    try:
+                        self.data = self.session.obs.get_data()
+                        self.radplot_widget.plot_data(
+                            data=self.data,
+                            observation=self.session.obs,
+                        )
+                    except Exception:
+                        pass
+
             ctrl.chk_model.setVisible(has_data and is_radplot and has_model)
             ctrl.chk_residuals.setVisible(has_data and is_radplot and has_model)
             ctrl.chk_errors.setVisible(has_data and is_radplot)

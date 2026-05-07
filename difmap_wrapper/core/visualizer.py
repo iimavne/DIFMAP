@@ -522,8 +522,8 @@ class Visualizer:
                     minor = major * ratio
                     ax.add_patch(_Ellipse(
                         (cx, cy),
-                        width=minor,
-                        height=major,
+                        width=major,
+                        height=minor,
                         angle=angle_deg,
                         facecolor='none', edgecolor=color,
                         linewidth=0.8, alpha=0.9, zorder=6

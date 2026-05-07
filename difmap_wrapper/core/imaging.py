@@ -2,6 +2,7 @@ import numpy as np
 from ctypes import Structure, c_char_p, c_int, c_float, c_double, POINTER, byref
 from typing import Optional, Tuple, List, Dict, Any, Union
 import difmap_native
+from ..types import Polarization
 
 from ..utils.map_geometry import DifmapMapGeometry
 from ..utils.exceptions import DifmapError, DifmapStateError
@@ -708,7 +709,7 @@ class DifmapImager:
             raise DifmapError("Échec de l'auto-calibration (selfcal).")
 
     def make_clean_map(self, size: int, cellsize: float, niter: int = 100, gain: float = 0.05,
-                       pol: str = "I", ny: int = None, cellsize_y: float = None) -> dict:
+                       pol: Polarization = "I", ny: int = None, cellsize_y: float = None) -> dict:
         """
         Orchestre la création d'une Clean Map de A à Z.
 
@@ -724,7 +725,7 @@ class DifmapImager:
         self.restore()
         return self.get_map_package(cellsize, cellsize_y=cellsize_y)
 
-    def make_dirty_map(self, size: int, cellsize: float, pol: str = "I",
+    def make_dirty_map(self, size: int, cellsize: float, pol: Polarization = "I",
                        ny: int = None, cellsize_y: float = None) -> dict:
         """
         Crée une Dirty Map en une seule commande.
@@ -738,7 +739,7 @@ class DifmapImager:
             Nombre de pixels sur l'axe X (puissance de 2 recommandée).
         cellsize : float
             Taille du pixel en milli-arcseconde sur l'axe X.
-        pol : str, optional
+        pol : Polarization, optional
             Polarisation à imager. Par défaut ``"I"`` (Stokes I).
         ny : int, optional
             Nombre de pixels sur l'axe Y. Défaut : identique à ``size``.

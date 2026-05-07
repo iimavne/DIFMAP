@@ -5,6 +5,7 @@ import numpy as np
 import difmap_native
 
 from ..utils.exceptions import DifmapStateError, DifmapError
+from ..types import Polarization
 
 logger = logging.getLogger("difmap.observation")
 
@@ -187,7 +188,7 @@ class Observation:
         logger.info("Nombre de sous-réseaux (Subarrays) : %d", res)
         return res
 
-    def select(self, pol: str = "I", ifs: tuple = (1, 0), channels: tuple = (1, 0)) -> str:
+    def select(self, pol: Polarization = "I", ifs: tuple = (1, 0), channels: tuple = (1, 0)) -> str:
         """
         Sélectionne la polarisation, les IFs et les canaux à analyser.
 
@@ -196,8 +197,10 @@ class Observation:
 
         Parameters
         ----------
-        pol : str, optional
-            Polarisation souhaitée : ``"I"``, ``"RR"``, ``"LL"``, ``"Q"``, etc.
+        pol : Polarization, optional
+            Polarisation souhaitée parmi ``"I"``, ``"Q"``, ``"U"``, ``"V"``,
+            ``"RR"``, ``"LL"``, ``"RL"``, ``"LR"``, ``"XX"``, ``"YY"``,
+            ``"XY"``, ``"YX"``, ``"PI"`` (pseudo-I = mains parallèles moyennées).
             Si la polarisation demandée n'existe pas dans le fichier, le moteur
             bascule sur la plus proche disponible. Par défaut ``"I"``.
         ifs : tuple of int, optional

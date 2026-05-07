@@ -496,7 +496,10 @@ class RadPlotEditor(BasePlotEditor):
             self.scat_modamp.set_visible(self.show_model and not self.show_residuals and has_model_data)
 
         if self.scat_modphs:
-            off_m = np.column_stack((self.uv_radius, self.modphs))
+            u_data = self.data["u"] / 1e6
+            mod_phs = self.modphs - 360.0 * np.floor(self.modphs / 360.0 + 0.5)
+            mod_phs = np.where(u_data < 0, -mod_phs, mod_phs)
+            off_m = np.column_stack((self.uv_radius, mod_phs))
             off_m[mask] = [np.nan, np.nan]
             self.scat_modphs.set_offsets(off_m)
             self.scat_modphs.set_sizes(tailles)
