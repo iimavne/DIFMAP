@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib as mpl
 from matplotlib.patches import Ellipse, Rectangle
 from matplotlib.colors import Normalize, LogNorm, PowerNorm
 from matplotlib.offsetbox import AnchoredOffsetbox, AuxTransformBox
@@ -13,7 +14,6 @@ from difmap_wrapper.utils.map_geometry import DifmapMapGeometry
 from difmap_wrapper.core.visualizer import Visualizer
 import difmap_native
 import re
-from datetime import datetime
 
 D = DesignSystem
 
@@ -77,27 +77,6 @@ def _central_peak(data: np.ndarray) -> float:
     return dmax if abs(dmax) > abs(dmin) else dmin
 
 
-def _imageable_zone_peak(full_data: np.ndarray) -> float:
-    """Pic signé sur la zone imageable (centre 1/4 à 3/4 de la carte).
-    
-    Difmap calcule les niveaux de contours sur la zone imageable complète,
-    pas sur la zone zoomée. La zone imageable est typiquement le centre
-    de la carte (nx/4..3nx/4, ny/4..3ny/4).
-    """
-    ny, nx = full_data.shape
-    # Zone imageable: centre 1/4 à 3/4 de la carte
-    y_start, y_end = ny // 4, 3 * ny // 4
-    x_start, x_end = nx // 4, 3 * nx // 4
-    
-    # S'assurer que les indices sont valides
-    y_start = max(0, y_start)
-    y_end = min(ny, y_end)
-    x_start = max(0, x_start)
-    x_end = min(nx, x_end)
-    
-    imageable_data = full_data[y_start:y_end, x_start:x_end]
-    return _central_peak(imageable_data)
-
 
 def _make_norm(scale: str, vmin, vmax, data: np.ndarray):
     """Normalisation matplotlib équivalente à mapfunc de difmap (linear/log/sqrt)."""
@@ -118,50 +97,31 @@ def _compute_contour_levels(peak, mode='pct', absmin=1.0, absmax=100.0,
     return Visualizer._compute_contour_levels(peak, mode, absmin, absmax, factor, custom)
 
 
-def _draw_contours(ax, map_data, x_coords, y_coords, peak, lw=0.6,
+def _draw_contours(ax, map_data, x_coords, y_coords, peak, lw=0.3,
                    mode='pct', absmin=1.0, absmax=100.0, factor=2.0, custom=None):
     """
     Trace les contours isophotes en suivant la convention PGPLOT de DIFMAP :
-    - négatifs : rouge (color index 2), traits pleins
+    - Contours positifs en blanc
+    - Contours négatifs en rouge
+ (color index 2), traits pleins
     - positifs : blanc (color index 1), traits pleins
     - Utilise les niveaux exacts de DIFMAP
     - Coordonnées précises des pixels pour correspondre à PGPLOT
     Retourne la liste des niveaux tracés (Jy/beam, pour annotation).
     """
-    levels = _compute_contour_levels(peak, mode, absmin, absmax, factor, custom)
-    if not levels:
-        return []
-    
-    cmin = float(np.nanmin(map_data))
-    cmax = float(np.nanmax(map_data))
-    visible = [l for l in levels if cmin < l < cmax]
-    drawn = []
-    
-    # Tracer tous les contours d'un coup pour optimisation
-    if visible:
-        # Séparer niveaux positifs et négatifs pour couleurs différentes
-        pos_levels = [l for l in visible if l >= 0]
-        neg_levels = [l for l in visible if l < 0]
-        
-        # Contours positifs en blanc
-        if pos_levels:
-            cs_pos = ax.contour(
-                x_coords, y_coords, map_data, levels=pos_levels,
-                colors='white', linewidths=lw, linestyles='solid',
-                alpha=1.0
-            )
-            drawn.extend(pos_levels)
-        
-        # Contours négatifs en rouge
-        if neg_levels:
-            cs_neg = ax.contour(
-                x_coords, y_coords, map_data, levels=neg_levels,
-                colors='red', linewidths=lw, linestyles='solid',
-                alpha=1.0
-            )
-            drawn.extend(neg_levels)
-    
-    return drawn
+    return Visualizer._vis_draw_contours(
+        ax,
+        map_data,
+        x_coords,
+        y_coords,
+        peak,
+        lw=lw,
+        mode=mode,
+        absmin=absmin,
+        absmax=absmax,
+        factor=factor,
+        custom=custom,
+    )
 
 
 def _add_map_annotations(ax, fig, map_data, map_type, beam_info=None,
@@ -183,12 +143,8 @@ def _add_map_annotations(ax, fig, map_data, map_type, beam_info=None,
     dmax = float(np.nanmax(map_data))
     peak_val = float(np.nanmax(np.abs(map_data)))
     
-    # RMS (zone centrale)
-    ny, nx = map_data.shape
-    cy, cx = ny // 2, nx // 2
-    margin = max(ny // 8, 4)
-    rms_zone = map_data[cy - margin:cy + margin, cx - margin:cx + margin]
-    rms = float(np.sqrt(np.nanmean(rms_zone ** 2))) if rms_zone.size > 0 else 0.0
+    # RMS sur toute la zone imageable (map_data est déjà croppée).
+    rms = float(np.sqrt(np.nanmean(map_data ** 2))) if map_data.size > 0 else 0.0
     
     formatted_lines: list[str] = []
 
@@ -283,7 +239,7 @@ def _add_map_annotations(ax, fig, map_data, map_type, beam_info=None,
     elif date_str:
         formatted_lines.append(f"{source}  {date_str}")
     else:
-        formatted_lines.append(f"{source}  {datetime.now().strftime('%Y %b %d')}")
+        formatted_lines.append(f"{source}")
 
     formatted_lines.append(f"Map center:  RA: {ra},  Dec: {dec} (2000.0)")
     formatted_lines.append(f"Displayed range: {dmin:.4g} to {dmax:.4g} Jy/beam")
@@ -291,7 +247,7 @@ def _add_map_annotations(ax, fig, map_data, map_type, beam_info=None,
     if map_type == "clean":
         formatted_lines.append(f"Map peak: {dmax:.4g} Jy/beam")
         if contour_levels:
-            cpeak = _imageable_zone_peak(map_data)
+            cpeak = _central_peak(map_data)
             if cpeak != 0:
                 pct_levels = [float(lvl) / cpeak * 100.0 for lvl in contour_levels if np.isfinite(lvl)]
                 show = pct_levels[:8]
@@ -386,7 +342,7 @@ class MapPlotWidget(BasePlotWidget):
 
         self._btn_peak_window   = QPushButton("Peak Win  [P]")
         self._btn_delete_windows = QPushButton("Del All  [D]")
-        self._btn_reset          = QPushButton("Reset  [Home]")
+        self._btn_reset          = QPushButton("Reset  [R]")
         self._btn_dezoom         = QPushButton("Dezoom  [O]")
 
         self._btn_peak_window.setToolTip("Ajouter une fenêtre autour du pic de flux")
@@ -591,7 +547,7 @@ class MapPlotWidget(BasePlotWidget):
             self._toggle_window_selection_mode()
 
     def _on_key_press(self, event):
-        if event.key == 'r':
+        if event.key in ('r', 'home'):
             self._sync_combo_to("NAVIGATE")
             self._exit_window_selection_mode()
             self._deactivate_mpl_tools()
@@ -842,9 +798,9 @@ class CleanMapPlotWidget(MapPlotWidget):
         # Ici on est dans le widget CleanMap, donc on trace les contours si demandés.
         drawn = []
         if contour_mode != 'none':
-            # Peak calculé sur la zone "imageable" de la carte AFFICHÉE (croppée),
-            # pour correspondre à ce que l'utilisateur voit et à Difmap.
-            peak = _imageable_zone_peak(cropped_data)
+            # Peak sur la totalité de cropped_data (= zone imageable, déjà croppée).
+            # Correspond au comportement de maplot.c:setcont() sur la zone imageable.
+            peak = _central_peak(cropped_data)
             # Coordonnées des CENTRES des pixels (comme PGPLOT tr[] matrix)
             # extent = [xmax, xmin, ymin, ymax] selon convention Difmap
             # Les centres des pixels sont au milieu de chaque cellule
@@ -858,7 +814,7 @@ class CleanMapPlotWidget(MapPlotWidget):
             
             # Créer la grille 2D pour les contours
             x_grid, y_grid = np.meshgrid(x_coords, y_coords)
-            drawn = _draw_contours(self.ax, cropped_data, x_grid, y_grid, peak, lw=0.7,
+            drawn = _draw_contours(self.ax, cropped_data, x_grid, y_grid, peak, lw=0.3,
                                    mode=contour_mode, absmin=contour_absmin,
                                    absmax=contour_absmax, factor=contour_factor,
                                    custom=contour_custom)

@@ -1,4 +1,5 @@
 # difmap_wrapper/session.py
+import threading
 import difmap_native
 
 from .imaging import DifmapImager
@@ -9,18 +10,20 @@ from ..utils.exceptions import DifmapStateError, DifmapError
 class _SingletonMeta(type):
     """Empêche la création de deux sessions simultanées (le moteur C est global)."""
     _instance = None
+    _lock = threading.Lock()
 
     def __call__(cls, *args, **kwargs):
-        if cls._instance is not None:
-            raise DifmapStateError(
-                "Une instance DifmapSession est déjà active dans ce processus. "
-                "Le moteur C utilise des variables globales : deux sessions "
-                "simultanées causeraient une corruption mémoire (segfault).\n"
-                "→ Réutilisez l'instance existante, ou appelez session.cleanup() "
-                "avant d'en créer une nouvelle."
-            )
-        instance = super().__call__(*args, **kwargs)
-        cls._instance = instance
+        with cls._lock:
+            if cls._instance is not None:
+                raise DifmapStateError(
+                    "Une instance DifmapSession est déjà active dans ce processus. "
+                    "Le moteur C utilise des variables globales : deux sessions "
+                    "simultanées causeraient une corruption mémoire (segfault).\n"
+                    "→ Réutilisez l'instance existante, ou appelez session.cleanup() "
+                    "avant d'en créer une nouvelle."
+                )
+            instance = super().__call__(*args, **kwargs)
+            cls._instance = instance
         return instance
 
     def force_reset(cls) -> None:
@@ -169,4 +172,5 @@ class DifmapSession(metaclass=_SingletonMeta):
         """
         if self.uv_loaded:
             self._native_cleanup()
-        type(self)._instance = None
+        with type(self)._lock:
+            type(self)._instance = None

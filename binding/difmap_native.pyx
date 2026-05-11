@@ -413,3 +413,12 @@ def selfcal(int doamp=0, int dofloat=0, float solint=0.0) -> int:
     if ret != 0:
         raise RuntimeError("Échec de l'auto-calibration dans le moteur C.")
     return ret
+
+
+def staper(float gauval=0.0, float gaurad_wav=0.0) -> int:
+    """Configure le taper gaussien pour l'auto-calibration (équivalent 'staper' difmap).
+
+    gauval      : amplitude du filtre (0..1). 0 = désactivé.
+    gaurad_wav  : rayon en unités UV courantes (Mλ par défaut), identique à uvtaper().
+    """
+    return cdifmap.native_staper(gauval, gaurad_wav)

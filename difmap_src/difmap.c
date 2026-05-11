@@ -8002,6 +8002,17 @@ int native_uvtaper(float gauval, float gaurad_wav) {
     return 0;
 }
 
+int native_staper(float gauval, float gaurad_wav) {
+    if (vlbob == NULL) return -1;
+    slfpar.gauval = gauval;
+    slfpar.gaurad = uvtowav(gaurad_wav);
+    if(slfpar.gauval<=0.0f || slfpar.gauval>=0.99f || slfpar.gaurad<=0.0f) {
+        slfpar.gauval = 0.0f;
+        slfpar.gaurad = 0.0f;
+    }
+    return 0;
+}
+
 int native_mapsize(int nx, float cellsize, int ny, float cellsize_y) {
     if (vlbob == NULL) return -1;
     int actual_ny = (ny > 0) ? ny : nx;
@@ -8453,10 +8464,20 @@ int native_delwin(void) {
 }
 
 int native_peakwin(float size, int doabs) {
+    int saved_domap, ret;
     if (!vlbmap) return -1;
     if (vlbwins == NULL && (vlbwins = new_Mapwin()) == NULL) return -1;
-    if (peakwin(vlbmap, vlbwins, size, doabs)) return -1;
-    return 0;
+    /* mapwin.c:peakwin() refuses to run if domap||dobeam != 0.
+       After native_restore(), domap=MAP_IS_CLEAN=2: the buffer holds valid
+       clean-map data and peakwin should be allowed to scan it.
+       Temporarily promote it to MAP_IS_MAP so the check passes. */
+    saved_domap = vlbmap->domap;
+    if (saved_domap == MAP_IS_CLEAN)
+        vlbmap->domap = MAP_IS_MAP;
+    ret = peakwin(vlbmap, vlbwins, size, doabs);
+    if (ret != 0)
+        vlbmap->domap = saved_domap;   /* restore on failure */
+    return ret ? -1 : 0;
 }
 
 static Subwin *native_get_window_at(int index) {

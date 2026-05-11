@@ -430,41 +430,6 @@ class ControlPanel(QDockWidget):
         if_beg, if_end = (1, 0) if (beg == 1 and end == self._n_ifs_total) else (beg, end)
         self.ifs_range_changed.emit(if_beg, if_end)
         
-    def on_polarization_changed(self, requested_pol: str):
-        """
-        Gère le changement de polarisation demandé via le combo.
-
-        Si le moteur C ne dispose pas de la polarisation demandée, effectue
-        un fallback sur la polarisation disponible et informe l'utilisateur.
-
-        Parameters
-        ----------
-        requested_pol : str
-            Code de polarisation demandé (ex. ``'I'``, ``'RR'``, ``'LL'``).
-        """
-        try:
-            # 1. On passe l'ordre et on récupère la VRAIE polarisation
-            actual_pol = self.session.obs.select(pol=requested_pol)
-            
-            # 2. Si le moteur C a fait un "Fallback"
-            if actual_pol != requested_pol:
-                self.combo_pol.blockSignals(True)
-                self.combo_pol.setCurrentText(actual_pol)
-                self.combo_pol.blockSignals(False)
-                
-                QMessageBox.information(
-                    self, 
-                    "Polarisation indisponible", 
-                    f"La polarisation '{requested_pol}' n'existe pas.\n\n"
-                    f"Difmap a basculé sur '{actual_pol}'."
-                )
-            
-            # 3. On rafraîchit les graphiques
-            self.session.obs.notify_data_changed()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Erreur de sélection", str(e))
-            
     def _build_telescope_focus(self):
         """
         Construit la section « 2. TELESCOPE FOCUS ».
@@ -654,8 +619,13 @@ class ControlPanel(QDockWidget):
         h_wt.setSpacing(6)
         h_wt.addWidget(QLabel("Weighting:"))
         self.combo_weight = QComboBox()
-        self.combo_weight.addItems(["None", "Natural", "Uniform", "Briggs"])
-        self.combo_weight.setToolTip("Pondération des baselines UV")
+        self.combo_weight.addItems(["None", "Natural", "Uniform"])
+        self.combo_weight.setToolTip(
+            "Pondération des baselines UV\n"
+            "  None     : paramètres par défaut Difmap (bin=2, errpow=0)\n"
+            "  Natural  : uvweight 0,-2  (1/σ² — meilleure sensibilité)\n"
+            "  Uniform  : uvweight 2,0   (résolution maximale)"
+        )
         h_wt.addWidget(self.combo_weight)
         layout.addLayout(h_wt)
 

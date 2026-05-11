@@ -13,7 +13,6 @@ Implémente les annotations complètes affichées par Difmap/PGPLOT :
 
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
-from datetime import datetime
 
 
 class DifmapMapAnnotations:
@@ -54,12 +53,14 @@ class DifmapMapAnnotations:
         # Source + fréquence + date
         source = self.obs_data.get('source', 'Unknown')
         freq = self.obs_data.get('frequency', 0.0)  # GHz
-        date = self.obs_data.get('date', datetime.now().strftime('%Y-%m-%d'))
+        date = self.obs_data.get('date', '')
         
+        parts = [source]
         if freq > 0:
-            lines.append(f"{source}  {freq:.3f} GHz  {date}")
-        else:
-            lines.append(f"{source}  {date}")
+            parts.append(f"{freq:.3f} GHz")
+        if date:
+            parts.append(date)
+        lines.append("  ".join(parts))
         
         # Type de carte + polarisation + array
         map_type = map_info.get('map_type', 'dirty')
@@ -276,6 +277,8 @@ class DifmapMapAnnotations:
         tuple[float, float]
             Position (x, y) en coordonnées monde
         """
+        # extent = [xmax_ra, xmin_ra, ymin_dec, ymax_dec] (convention Difmap : RA inversé).
+        # On normalise pour obtenir les bornes géométriques min/max.
         xmin, xmax = min(map_extent[0], map_extent[1]), max(map_extent[0], map_extent[1])
         ymin, ymax = min(map_extent[2], map_extent[3]), max(map_extent[2], map_extent[3])
         

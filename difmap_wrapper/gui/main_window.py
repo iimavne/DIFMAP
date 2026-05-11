@@ -86,6 +86,7 @@ class MainWindow(QMainWindow):
 
         self._last_clean_package = None
         self._last_added_window = None
+        self._did_first_clean_cycle = False
 
         # 4. Signaux
         self._connect_signals()
@@ -110,6 +111,7 @@ class MainWindow(QMainWindow):
             self.session.observe(filepath)
             # Remettre à zéro l'état UI qui appartient à la session précédente
             self._last_clean_package = None
+            self._did_first_clean_cycle = False
             available_pols = self.session.obs.available_polarizations()
             preferred_pol = "I" if "I" in available_pols else (available_pols[0] if available_pols else "I")
             self.control_panel.set_available_polarizations(available_pols, current=preferred_pol)
@@ -456,11 +458,8 @@ class MainWindow(QMainWindow):
             ctrl.chk_errors.setVisible(has_data and is_radplot)
             ctrl.chk_conjugate.setVisible(has_data and is_uv)
 
-        # Gestion du checkbox Show Model pour les Maps
-        ctrl.chk_show_model_map.setVisible(is_map)
-        if is_map:
-            # Rétablir l'état précédent du checkbox pour les Maps
-            pass  # L'état est géré par le toggled signal
+        # Checkbox Show Model uniquement pertinent sur la Clean Map (composantes CLEAN)
+        ctrl.chk_show_model_map.setVisible(index == TabIndex.CLEAN)
 
         if is_radplot:
             ctrl.chk_conjugate.blockSignals(True)
@@ -634,28 +633,42 @@ class MainWindow(QMainWindow):
         tuple
             ``(mapsize, cellsize, taper_val)`` pour usage par les appelants.
         """
-        mapsize   = int(self.control_panel.input_mapsize.text())
-        cellsize  = float(self.control_panel.input_cellsize.text())
+        try:
+            mapsize = int(self.control_panel.input_mapsize.text())
+            if mapsize <= 0:
+                raise ValueError(f"mapsize doit être > 0, obtenu: {mapsize}")
+        except ValueError as exc:
+            raise ValueError(f"Mapsize invalide: {exc}") from exc
+        try:
+            cellsize = float(self.control_panel.input_cellsize.text())
+            if cellsize <= 0:
+                raise ValueError(f"cellsize doit être > 0, obtenu: {cellsize}")
+        except ValueError as exc:
+            raise ValueError(f"Cellsize invalide: {exc}") from exc
         weight    = self.control_panel.combo_weight.currentText().lower()
         taper_str = self.control_panel.input_taper.text().strip()
-        taper_val = float(taper_str) if taper_str else 0.0
+        try:
+            taper_val = float(taper_str) if taper_str else 0.0
+            if taper_val < 0:
+                raise ValueError(f"taper doit être ≥ 0, obtenu: {taper_val}")
+        except ValueError as exc:
+            raise ValueError(f"Taper invalide: {exc}") from exc
 
         self.session.imager.mapsize(mapsize, cellsize)
 
         if weight == "none":
-            # Ne rien appliquer - utiliser les paramètres par défaut de Difmap
-            pass
+            pass  # Paramètres par défaut Difmap (bin=2, errpow=0)
         elif weight == "natural":
-            self.session.imager.uvweight(bin_size=0.0, err_power=-2.0)  # difmap: uvweight 0,-2
+            self.session.imager.uvweight(bin_size=0.0, err_power=-2.0)   # uvweight 0,-2
         elif weight == "uniform":
-            self.session.imager.uvweight(bin_size=2.0, err_power=0.0)
-        elif weight == "briggs":
-            self.session.imager.uvweight(bin_size=2.0, err_power=-1.0)
+            self.session.imager.uvweight(bin_size=2.0, err_power=0.0)    # uvweight 2,0
 
         if taper_val > 0.0:
             # gaussian_value=0.3 : amplitude standard difmap (30% au rayon de coupure)
-            # gaussian_radius_wav : rayon en λ (GUI est en Mλ → ×1e6)
-            self.session.imager.uvtaper(gaussian_value=0.3, gaussian_radius_wav=taper_val * 1e6)
+            # gaussian_radius_wav : rayon en unités UV courantes (Mλ par défaut).
+            # uvtaper() passe la valeur directement au C, qui appelle uvtowav() en interne.
+            # Ne PAS multiplier par 1e6 ici : ce serait une double-conversion Mλ→λ.
+            self.session.imager.uvtaper(gaussian_value=0.3, gaussian_radius_wav=taper_val)
         else:
             self.session.imager.uvtaper(gaussian_value=0.0, gaussian_radius_wav=0.0)
 
@@ -702,9 +715,22 @@ class MainWindow(QMainWindow):
         dans l'onglet Clean Map dédié. Suit fidèlement le cycle de difmap_src.
         """
         try:
-            niter = int(self.control_panel.input_niter.text())
-            gain  = float(self.control_panel.input_gain.text())
-            cutoff = float(self.control_panel.input_cutoff.text())
+            try:
+                niter = int(self.control_panel.input_niter.text())
+            except ValueError:
+                raise ValueError("Niter invalide — entrez un entier.")
+            try:
+                gain = float(self.control_panel.input_gain.text())
+                if not (0.0 < gain <= 1.0):
+                    raise ValueError(f"Gain doit être dans ]0, 1], obtenu: {gain}")
+            except ValueError as exc:
+                raise ValueError(f"Gain invalide: {exc}") from exc
+            try:
+                cutoff = float(self.control_panel.input_cutoff.text())
+                if cutoff < 0:
+                    raise ValueError(f"Cutoff doit être ≥ 0, obtenu: {cutoff}")
+            except ValueError as exc:
+                raise ValueError(f"Cutoff invalide: {exc}") from exc
             mapsize, cellsize, taper_val = self._apply_imaging_params()
             
             cutoff_str = f", cutoff: {cutoff}" if cutoff > 0 else ""
@@ -712,14 +738,22 @@ class MainWindow(QMainWindow):
                 f"CLEAN cycle — niter: {niter}, gain: {gain}{cutoff_str}, taper: {taper_val} Mλ"
             )
 
+            # 0. Vider le modèle uniquement au premier cycle CLEAN après chargement,
+            # pour reproduire le comportement DIFMAP (le modèle s'accumule tant que
+            # l'utilisateur ne fait pas explicitement clrmod()).
+            if not self._did_first_clean_cycle:
+                self.session.imager.clrmod()
+
             # 1. Inversion (Dirty Map)
             self.session.imager.invert()
-            
+
             # 2. CLEAN (cherche les composants dans les fenêtres)
             self.session.imager.clean(niter, gain, cutoff)
-            
+
             # 3. Restore (convolue le modèle et ajoute au résiduel)
             self.session.imager.restore()
+
+            self._did_first_clean_cycle = True
 
             # Mise à jour des affichages
             self._refresh_clean_map()
@@ -728,10 +762,10 @@ class MainWindow(QMainWindow):
             # Basculer sur l'onglet Clean Map
             self.tabs.setCurrentIndex(TabIndex.CLEAN)
             
-            # Log des stats finales
-            img_dict = self.session.imager.get_map_package(cellsize)
-            peak_flux = float(img_dict['data'].max())
-            self.log_console.log(f"Clean Map restored — Peak: {peak_flux:.4f} Jy/beam")
+            # Log des stats finales — réutilise le package déjà calculé par _refresh_clean_map()
+            if self._last_clean_package is not None:
+                peak_flux = float(self._last_clean_package['data'].max())
+                self.log_console.log(f"Clean Map restored — Peak: {peak_flux:.4f} Jy/beam")
 
         except Exception as e:
             err_msg = f"Failed to compute Clean Map: {e}"
@@ -746,6 +780,7 @@ class MainWindow(QMainWindow):
             self.log_console.log(f"Added CLEAN window from mouse: ({xa:.2f}, {xb:.2f}, {ya:.2f}, {yb:.2f}) mas")
             self._refresh_clean_windows_overlay()
             self._refresh_residual_map()
+            self._refresh_dirty_map()
             
         except Exception as e:
             err_msg = f"Failed to add CLEAN window from mouse: {e}"
@@ -759,6 +794,7 @@ class MainWindow(QMainWindow):
             self.log_console.log("Deleted all CLEAN windows")
             self._refresh_clean_windows_overlay()
             self._refresh_residual_map()
+            self._refresh_dirty_map()
             
         except Exception as e:
             err_msg = f"Failed to delete CLEAN windows: {e}"
@@ -767,7 +803,10 @@ class MainWindow(QMainWindow):
 
     def _delete_last_clean_window(self):
         try:
-            windows = list(self.session.imager._get_clean_windows())
+            # Utiliser active_windows (coordonnées Python d'origine) et non
+            # _get_clean_windows() (readback C) pour éviter la dérive float32
+            # sur des re-addwin successifs.
+            windows = list(self.session.imager.active_windows)
             if not windows:
                 return
             windows = windows[:-1]
@@ -777,6 +816,7 @@ class MainWindow(QMainWindow):
             self.log_console.log("Deleted last CLEAN window")
             self._refresh_clean_windows_overlay()
             self._refresh_residual_map()
+            self._refresh_dirty_map()
         except Exception as e:
             err_msg = f"Failed to delete last CLEAN window: {e}"
             self.log_console.log_error(err_msg)
@@ -785,7 +825,7 @@ class MainWindow(QMainWindow):
     def _delete_this_clean_window(self):
         try:
             target = self._last_added_window
-            windows = list(self.session.imager._get_clean_windows())
+            windows = list(self.session.imager.active_windows)
             if not windows:
                 return
             if target and target in windows:
@@ -798,6 +838,7 @@ class MainWindow(QMainWindow):
             self.log_console.log("Deleted selected CLEAN window")
             self._refresh_clean_windows_overlay()
             self._refresh_residual_map()
+            self._refresh_dirty_map()
         except Exception as e:
             err_msg = f"Failed to delete CLEAN window: {e}"
             self.log_console.log_error(err_msg)
@@ -807,6 +848,16 @@ class MainWindow(QMainWindow):
         """Ajoute une fenêtre autour du pic de flux (taille par défaut DIFMAP = 1.0 FWHM)."""
         try:
             current_idx = self.tabs.currentIndex()
+            # Garde-fou scientifique (soft): peakwin() doit se baser sur une dirty map
+            # fraîche correspondant aux paramètres d'imagerie courants (mapsize/weight/taper).
+            # On applique les paramètres et on force invert() avant peakwin().
+            mapsize, cellsize, taper_val = self._apply_imaging_params()
+            weight = self.control_panel.combo_weight.currentText().lower()
+            self.log_console.log(
+                f"PeakWin — refreshing dirty map first (size: {mapsize}, cell: {cellsize} mas, "
+                f"weight: {weight}, taper: {taper_val} Mλ)"
+            )
+            self.session.imager.invert()
             self.session.imager.peakwin(size=1.0)
             self.log_console.log("Added peak window (1.0 FWHM)")
             windows = self.session.imager._get_clean_windows()
@@ -814,6 +865,7 @@ class MainWindow(QMainWindow):
                 self._last_added_window = windows[-1]
             self._refresh_clean_windows_overlay()
             self._refresh_residual_map()
+            self._refresh_dirty_map()
 
             # Ne pas basculer d'onglet: le refresh du résiduel est un update secondaire.
             try:
@@ -915,6 +967,35 @@ class MainWindow(QMainWindow):
             info = clean_package.get('info', {})
             map_type = clean_package.get('map_type') or info.get('map_type')
             if map_type != 'clean':
+                # Si le buffer C n'est plus une carte clean (ex: peakwin() a forcé un invert()),
+                # on ré-affiche la dernière clean map cachée pour éviter un onglet vide.
+                if self._last_clean_package:
+                    pkg = self._last_clean_package
+                    info = pkg.get('info', {})
+                    scale, vmin, vmax = self.control_panel.get_scale_params()
+                    contour_mode, contour_absmin, contour_absmax, contour_factor, contour_custom = (
+                        self.control_panel.get_contour_params()
+                    )
+                    show_model = self.control_panel.chk_show_model_map.isChecked()
+                    model_components = pkg.get('model_components', [])
+                    windows = self.session.imager._get_clean_windows()
+                    self.clean_map_widget.plot_map(
+                        map_data=pkg['data'],
+                        cellsize=info.get('cellsize', cellsize),
+                        cellsize_y=info.get('cellsize_y'),
+                        scale=scale,
+                        vmin=vmin, vmax=vmax,
+                        extent=pkg['extent'],
+                        beam_info=info,
+                        windows=windows,
+                        contour_mode=contour_mode,
+                        contour_absmin=contour_absmin,
+                        contour_absmax=contour_absmax,
+                        contour_factor=contour_factor,
+                        contour_custom=contour_custom,
+                        show_model=show_model,
+                        model_components=model_components,
+                    )
                 return
             scale, vmin, vmax = self.control_panel.get_scale_params()
             contour_mode, contour_absmin, contour_absmax, contour_factor, contour_custom = (

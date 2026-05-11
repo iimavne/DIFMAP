@@ -202,7 +202,21 @@ class CommandParser:
             )
 
         func = self.commands[cmd_lower]
-        return func(*args, session=session) if session else func(*args)
+        coerced = [self._coerce_arg(a) for a in args]
+        return func(*coerced, session=session) if session else func(*coerced)
+
+    @staticmethod
+    def _coerce_arg(value: str):
+        """Convertit un argument string en int ou float si possible, sinon le garde tel quel."""
+        try:
+            i = int(value)
+            return i
+        except (ValueError, TypeError):
+            pass
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return value
 
     def get_available_commands(self) -> List[str]:
         """Retourne la liste des commandes disponibles."""

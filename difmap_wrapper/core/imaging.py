@@ -35,6 +35,7 @@ class DifmapImager:
         self._last_cellsize_y = None
         self._current_uvtaper = None
         self._current_uvweight = None
+        self._current_selfcal_taper = None
         self._current_map_type = None  # "dirty" après invert(), "clean" après restore()
         self.active_windows = []     # registre Python des fenêtres CLEAN actives [(xa,xb,ya,yb) en mas]
         self._last_residual_map = None  # copie du buffer résiduel capturée entre clean() et restore()
@@ -70,7 +71,7 @@ class DifmapImager:
         try:
             map_data = self._native.get_map()
             return map_data is not None and map_data.size > 0
-        except:
+        except Exception:
             return False
 
     def get_cropped_map(self, target_shape: tuple) -> np.ndarray:
@@ -155,7 +156,22 @@ class DifmapImager:
         b = 2.0 if bin_size is None else float(bin_size)
         e = 0.0 if err_power is None else float(err_power)
         r = False if radial is None else bool(radial)
-        
+
+        # Contraintes imposées par native_uvweight (difmap.c:7986-7987) :
+        #   bin_size < 0  → silencieusement ignoré par le C (uvbin inchangé)
+        #   err_power > 0 → silencieusement ignoré par le C (errpow inchangé)
+        # On valide ici pour échouer tôt avec un message clair.
+        if b < 0.0:
+            raise DifmapError(
+                f"uvweight : bin_size={b} invalide. Le moteur C ignore les valeurs négatives. "
+                "Utilisez 0.0 (naturelle) ou une valeur positive (uniforme)."
+            )
+        if e > 0.0:
+            raise DifmapError(
+                f"uvweight : err_power={e} invalide. Le moteur C ignore les valeurs positives. "
+                "Utilisez 0.0 (uniforme) ou une valeur négative (ex: -2.0 pour naturelle)."
+            )
+
         dorad = 1 if r else 0
         if self._native.uvweight(b, e, dorad) != 0:
             raise DifmapError("Erreur lors de l'application de uvweight.")
@@ -173,58 +189,56 @@ class DifmapImager:
 
         Le taper atténue les baselines les plus longues, ce qui améliore la
         sensibilité aux structures étendues au détriment de la résolution.
-        Appelé sans argument, affiche ou désactive le taper actif.
+        Appelé sans argument, affiche le taper actif sans modifier l'état.
 
         Parameters
         ----------
         gaussian_value : float, optional
             Amplitude du filtre gaussien (entre 0 et 1). ``0.0`` = aucun taper.
         gaussian_radius_wav : float, optional
-            Rayon du filtre en longueurs d'onde. Définit à quelle distance
-            dans le plan UV l'atténuation commence.
+            Rayon du filtre en unités UV courantes (Mλ par défaut, identique
+            à la commande native ``uvtaper`` de Difmap). Le moteur C applique
+            la conversion interne via ``uvtowav()``.
 
         Examples
         --------
         Appliquer un taper à partir de 50 Mλ :
 
-        >>> session.imager.uvtaper(gaussian_value=0.3, gaussian_radius_wav=50e6)
+        >>> session.imager.uvtaper(gaussian_value=0.3, gaussian_radius_wav=50)
 
         Désactiver le taper :
 
         >>> session.imager.uvtaper(0, 0)
 
-        Afficher le taper actif :
+        Afficher le taper actif (sans modifier l'état) :
 
         >>> session.imager.uvtaper()
-        Taper actuel : Valeur = 0.3, Rayon = 50000000.0 longueurs d'onde
+        Taper actuel : Valeur = 0.3, Rayon = 50 unités UV courantes
         """
-        # 1. Mode "Interrogation / Désactivation"
+        # 1. Mode "Interrogation" — lecture seule, aucun appel au moteur C
         if gaussian_value is None and gaussian_radius_wav is None:
             if self._current_uvtaper in [None, (0.0, 0.0)]:
                 print("Taper actuel : Aucun (Désactivé)")
-                self._native.uvtaper(0.0, 0.0) 
-                self._current_uvtaper = (0.0, 0.0)
-                self._reissue_mapsize_if_needed()
             else:
                 val, rad = self._current_uvtaper
-                print(f"Taper actuel : Valeur = {val}, Rayon = {rad} longueurs d'onde")
+                print(f"Taper actuel : Valeur = {val}, Rayon = {rad} unités UV courantes")
             return
 
         # 2. Mode "Application"
         val = float(gaussian_value) if gaussian_value is not None else 0.0
         rad = float(gaussian_radius_wav) if gaussian_radius_wav is not None else 0.0
 
-        if self._native.uvtaper(val, rad / 1e6) != 0:
+        # Le C appelle uvtowav() en interne — passer la valeur en unités UV
+        # courantes (Mλ par défaut), sans diviser par 1e6 côté Python.
+        if self._native.uvtaper(val, rad) != 0:
             raise DifmapError("Erreur lors de l'application de uvtaper.")
-        
-        # 3. Mise à jour de la mémoire et restauration de la grille C
+
         self._current_uvtaper = (val, rad)
-        # self._reissue_mapsize_if_needed()  # Peut-être pas nécessaire pour uvtaper
-        
+
         if val == 0.0 and rad == 0.0:
             print("Taper désactivé avec succès.")
         else:
-            print(f"Taper appliqué : Valeur = {val}, Rayon = {rad} longueurs d'onde")
+            print(f"Taper appliqué : Valeur = {val}, Rayon = {rad} unités UV courantes")
         
     def mapsize(self, size: int, cellsize: float, ny: int = None, cellsize_y: float = None) -> None:
         """
@@ -240,11 +254,14 @@ class DifmapImager:
         size : int
             Nombre de pixels sur l'axe X. Doit être une puissance de 2 (ex : 256, 512, 1024).
         cellsize : float
-            Taille d'un pixel en milli-arcseconde (mas) sur l'axe X.
+            Taille d'un pixel en unités angulaires courantes (mas par défaut).
+            Le moteur C applique ``xytorad()`` en interne, qui dépend des unités
+            actives via ``skyunits()``. Ne pas diviser manuellement par un facteur.
         ny : int, optional
             Nombre de pixels sur l'axe Y. Défaut : identique à ``size``.
         cellsize_y : float, optional
-            Taille d'un pixel en mas sur l'axe Y. Défaut : identique à ``cellsize``.
+            Taille d'un pixel en unités angulaires courantes sur l'axe Y.
+            Défaut : identique à ``cellsize``.
 
         Raises
         ------
@@ -300,16 +317,19 @@ class DifmapImager:
         return DifmapMapGeometry.crop_map_data(map_data, cellsize, cellsize_y)
 
     def _get_clean_windows(self) -> list:
-        """Retourne la liste native des fenêtres CLEAN, avec fallback cache Python."""
+        """Retourne la liste native des fenêtres CLEAN depuis le moteur C.
+
+        Lecture seule — ne modifie pas ``active_windows`` (qui conserve les
+        coordonnées Python d'origine pour éviter la dérive float32 lors des
+        re-addwin successifs).
+        """
         get_windows = getattr(self._native, 'get_windows', None)
         if get_windows is None:
             return list(self.active_windows)
-        windows = [
+        return [
             (min(xa, xb), max(xa, xb), min(ya, yb), max(ya, yb))
             for xa, xb, ya, yb in get_windows()
         ]
-        self.active_windows = windows
-        return windows
         
     def get_map_package(self, cellsize: float, cellsize_y: float = None) -> dict:
         """
@@ -351,12 +371,13 @@ class DifmapImager:
         display_data, extent, nx_display, ny_display = self._display_map_data(
             map_data, cellsize, cy
         )
-        
+        beam_display, _, _, _ = self._display_map_data(self._native.get_beam(), cellsize, cy)
+
         map_type = self._current_map_type or "dirty"
-        components = self._native.get_model_components() if map_type == "clean" else []
+        components = self._native.get_model_components() if map_type in ("clean", "residual") else []
         return {
             "data": display_data,
-            "beam_data": self._native.get_beam(),
+            "beam_data": beam_display,
             "map_type": map_type,
             "info": {
                 "nx": nx_display,
@@ -366,7 +387,7 @@ class DifmapImager:
                 "bmaj": beam.get('BMAJ', 0.0),
                 "bmin": beam.get('BMIN', 0.0),
                 "bpa": beam.get('BPA', 0.0),
-                "rms": beam.get('RMS', 0.0),
+                "rms": float(np.sqrt(np.nanmean(display_data**2))) if display_data is not None and display_data.size > 0 else 0.0,
                 "map_type": map_type,
             },
             "extent": extent,
@@ -403,15 +424,12 @@ class DifmapImager:
         display_data, extent, nx_display, ny_display = self._display_map_data(
             self._last_residual_map, cellsize, cy
         )
-        # RMS calculé depuis la zone centrale des données résiduelles (pas depuis le beam)
-        ny_d, nx_d = display_data.shape
-        cy_d, cx_d = ny_d // 2, nx_d // 2
-        margin = max(ny_d // 8, 4)
-        rms_zone = display_data[cy_d - margin:cy_d + margin, cx_d - margin:cx_d + margin]
-        actual_rms = float(np.sqrt(np.nanmean(rms_zone ** 2))) if rms_zone.size > 0 else 0.0
+        beam_display, _, _, _ = self._display_map_data(self._native.get_beam(), cellsize, cy)
+        # RMS sur toute la zone imageable (= display_data, déjà croppée).
+        actual_rms = float(np.sqrt(np.nanmean(display_data ** 2))) if display_data.size > 0 else 0.0
         return {
             "data": display_data,
-            "beam_data": self._native.get_beam(),
+            "beam_data": beam_display,
             "map_type": "residual",
             "info": {
                 "nx": nx_display,
@@ -425,6 +443,7 @@ class DifmapImager:
             },
             "extent": extent,
             "windows": self._get_clean_windows(),
+            "model_components": self._native.get_model_components(),
         }
 
     def clrmod(self) -> None:
@@ -441,8 +460,10 @@ class DifmapImager:
         """
         if self._native.clrmod() != 0:
             raise DifmapError("Échec du vidage du modèle CLEAN.")
-        # Réinitialiser les flags pour permettre un nouveau invert
-        self._native.reset_map_flags()
+        # Ne pas appeler reset_map_flags() ici : native_invert() positionne
+        # lui-même domap/dobeam au début. Forcer ces flags avant invert()
+        # rendrait le faisceau stale prématurément et pourrait déclencher
+        # un recalcul non-voulu si peakwin() est appelé avant le prochain invert().
 
     def clean(self, niter: int = 100, gain: float = 0.05, cutoff: float = 0.0) -> None:
         """
@@ -496,6 +517,7 @@ class DifmapImager:
         """
         if self._native.clean(niter, gain, cutoff) != 0:
             raise DifmapError("Échec de la déconvolution CLEAN.")
+        self._current_map_type = "residual"
 
     def restore(self) -> None:
         """
@@ -510,8 +532,9 @@ class DifmapImager:
             Si le moteur C retourne une erreur (modèle absent ou faisceau
             non estimé).
         """
-        # Capture le résiduel AVANT l'écrasement par la convolution
-        self._capture_residual()
+   
+        if self._current_map_type == "residual":
+            self._capture_residual()
         if self._native.restore() != 0:
             raise DifmapError("Échec de la restauration (restore).")
         self._current_map_type = "clean"
@@ -546,10 +569,9 @@ class DifmapImager:
         >>> p = session.imager.peak()
         >>> print(f"Pic : {p['flux']:.3f} Jy/beam, SNR = {p['snr']:.1f}")
         """
-        info = self._native.get_peak_info()
-        if info["rms"] == 0.0 and info["flux"] == 0.0:
+        if not self.has_map_data():
             raise DifmapStateError("Aucune carte disponible. Appelez invert() d'abord.")
-        return info
+        return self._native.get_peak_info()
 
     def addwin(self, xa: float, xb: float, ya: float, yb: float) -> None:
         """
@@ -575,7 +597,9 @@ class DifmapImager:
         """
         if self._native.addwin(xa, xb, ya, yb) != 0:
             raise DifmapError("Erreur lors de l'ajout d'une fenêtre CLEAN.")
-        self.active_windows = self._get_clean_windows()
+        # Conserver les coordonnées Python d'origine (pas le round-trip C radtoxy).
+        # Indispensable pour que delete-last + re-addwin ne dérive pas par arrondi float32.
+        self.active_windows.append((xa, xb, ya, yb))
 
     def delwin(self) -> None:
         """
@@ -613,27 +637,35 @@ class DifmapImager:
         >>> session.imager.peakwin(size=2.0)   # fenêtre 2× le beam autour du pic
         >>> session.imager.clean(500, 0.05)
         """
-        # Rafraîchir la carte si elle est marquée comme périmée
+        # DIFMAP (pwin_fn) s'assure d'opérer sur une carte "dirty" fraîche.
+        # Après un restore(), le buffer C contient une carte clean; peakwin()
+        # doit alors déclencher un invert() pour rafraîchir vlbmap->maxpix.
+        if self._current_map_type in ("clean", "residual"):
+            self.invert()
+
+        # Vérifier qu'une carte existe avant de déléguer au moteur C.
         self._refresh_map_if_needed()
         
+        old_count = len(self.active_windows)
         if self._native.peakwin(float(size), int(doabs)) != 0:
             raise DifmapError("Erreur peakwin : aucune carte disponible ou carte périmée.")
-        self.active_windows = self._get_clean_windows()
+        # Appender uniquement la nouvelle fenêtre calculée par C (position inconnue
+        # avant l'appel C — readback inévitable). Les fenêtres existantes conservent
+        # leurs coordonnées Python d'origine 
+        for w in self._get_clean_windows()[old_count:]:
+            self.active_windows.append(w)
 
     def _refresh_map_if_needed(self) -> None:
+        """Vérifie qu'une carte est en mémoire avant peakwin().
+
+        native_peakwin() lit vlbmap->map directement — il n'a pas besoin
+        d'un recalcul du faisceau. Appeler native_refresh_beam() ici serait
+        dangereux : si vlbmap->dobeam ou domap est stale (ex. juste après
+        clean()), il déclencherait uvinvert() et écraserait le buffer résiduel.
+        On se limite donc à vérifier que la carte existe.
         """
-        Rafraîchit la carte et le faisceau si nécessaire pour peakwin.
-        
-        Cette fonction met à jour les flags domap/dobeam pour que peakwin
-        fonctionne correctement après des opérations comme CLEAN.
-        """
-        try:
-            if hasattr(self._native, 'refresh_beam'):
-                self._native.refresh_beam()
-                if self._current_map_type != "clean":
-                    self._current_map_type = "dirty"
-        except:
-            pass
+        if not self.has_map_data():
+            raise DifmapError("Aucune carte disponible pour peakwin(). Appelez invert() d'abord.")
 
     def get_elliptical_window(self, center_x: float, center_y: float, 
                              size: float = 1.0) -> Tuple[float, float, float, float]:
@@ -667,14 +699,15 @@ class DifmapImager:
         a = size * bmaj / 2.0  # demi-grand axe
         b = size * bmin / 2.0  # demi-petit axe
         
-        # Rectangle englobant de l'ellipse (approximation pour l'affichage)
-        # Rotation de l'ellipse par rapport aux axes
+        # Rectangle englobant de l'ellipse.
+        # BPA est l'angle depuis le Nord (axe Y), pas depuis l'axe X.
+        # Pour dx (étendue E-W) : composante = a*sin(bpa) + b*cos(bpa)
+        # Pour dy (étendue N-S) : composante = a*cos(bpa) + b*sin(bpa)
         cos_pa = np.cos(bpa_rad)
         sin_pa = np.sin(bpa_rad)
-        
-        # Extrema en x et y après rotation
-        dx = np.sqrt((a * cos_pa)**2 + (b * sin_pa)**2)
-        dy = np.sqrt((a * sin_pa)**2 + (b * cos_pa)**2)
+
+        dx = np.sqrt((a * sin_pa)**2 + (b * cos_pa)**2)
+        dy = np.sqrt((a * cos_pa)**2 + (b * sin_pa)**2)
         
         x_min = center_x - dx
         x_max = center_x + dx
@@ -704,6 +737,54 @@ class DifmapImager:
         >>> print(f"{len(comps)} composantes, flux total = {sum(c['flux'] for c in comps):.3f} Jy")
         """
         return self._native.get_model_components()
+
+    def selfcal_taper(self, gaussian_value: float = None, gaussian_radius_wav: float = None) -> None:
+        """
+        Configure le taper gaussien spécifique à l'auto-calibration.
+
+        Équivalent à la commande ``staper`` de Difmap. Ce taper est indépendant
+        du taper d'inversion (``uvtaper``) : il pondère les visibilités utilisées
+        pour résoudre les gains, sans affecter la carte.
+
+        Appelé sans argument, affiche le taper selfcal actif sans modifier l'état.
+
+        Parameters
+        ----------
+        gaussian_value : float, optional
+            Amplitude du filtre gaussien (entre 0 et 1). ``0.0`` = aucun taper.
+        gaussian_radius_wav : float, optional
+            Rayon en unités UV courantes (Mλ par défaut), identique à ``uvtaper()``.
+            Le moteur C applique ``uvtowav()`` en interne.
+
+        Examples
+        --------
+        Taper selfcal à 50 Mλ :
+
+        >>> session.imager.selfcal_taper(0.3, 50)
+
+        Désactiver :
+
+        >>> session.imager.selfcal_taper(0, 0)
+        """
+        if gaussian_value is None and gaussian_radius_wav is None:
+            if self._current_selfcal_taper in [None, (0.0, 0.0)]:
+                print("Taper selfcal : Aucun (Désactivé)")
+            else:
+                val, rad = self._current_selfcal_taper
+                print(f"Taper selfcal : Valeur = {val}, Rayon = {rad} unités UV courantes")
+            return
+
+        val = float(gaussian_value) if gaussian_value is not None else 0.0
+        rad = float(gaussian_radius_wav) if gaussian_radius_wav is not None else 0.0
+
+        if self._native.staper(val, rad) != 0:
+            raise DifmapError("Erreur lors de l'application du taper selfcal.")
+
+        self._current_selfcal_taper = (val, rad)
+        if val == 0.0 and rad == 0.0:
+            print("Taper selfcal désactivé.")
+        else:
+            print(f"Taper selfcal appliqué : Valeur = {val}, Rayon = {rad} unités UV courantes")
 
     def selfcal(self, doamp: bool = False, dofloat: bool = False, solint: float = 0.0) -> None:
         """
@@ -743,16 +824,22 @@ class DifmapImager:
         """
         if self._native.selfcal(int(doamp), int(dofloat), float(solint)) != 0:
             raise DifmapError("Échec de l'auto-calibration (selfcal).")
+        # Selfcal modifie les poids (et phases) des visibilités côté C.
+        # Le cache Python doit être invalidé pour que get_data() renvoie
+        # les données corrigées, et les éditeurs graphiques notifiés.
+        self._session.obs.invalidate_cache()
+        self._session.obs.notify_data_changed()
 
     def make_clean_map(self, size: int, cellsize: float, niter: int = 100, gain: float = 0.05,
-                       cutoff: float = 0.0, pol: Polarization = "I", ny: int = None, 
-                       cellsize_y: float = None) -> dict:
+                       cutoff: float = 0.0, pol: Polarization = "I", ny: int = None,
+                       cellsize_y: float = None,
+                       windows: list = None) -> dict:
         """
         Orchestre la création d'une Clean Map de A à Z.
 
         Capture automatiquement la Residual Map entre ``clean()`` et ``restore()``.
         Le résiduel est accessible via ``get_residual_package()`` après l'appel.
-        
+
         Parameters
         ----------
         size, cellsize : int, float
@@ -767,11 +854,19 @@ class DifmapImager:
             Polarisation à imager ("I", "RR", "LL", etc.).
         ny, cellsize_y : int, float, optional
             Pour grille rectangulaire.
+        windows : list of (xa, xb, ya, yb), optional
+            Fenêtres CLEAN en mas. Si omis, CLEAN opère sur toute la zone
+            imageable (comportement natif de Difmap sans fenêtre).
+            Exemple : ``windows=[(-5, 5, -5, 5)]``.
         """
         self._session.obs.select(pol=pol)
         self.mapsize(size, cellsize, ny=ny, cellsize_y=cellsize_y)
         self.clrmod()
         self.invert()
+        if windows:
+            self.delwin()
+            for xa, xb, ya, yb in windows:
+                self.addwin(xa, xb, ya, yb)
         self.clean(niter, gain, cutoff)
         # _capture_residual() est appelé dans restore() automatiquement
         self.restore()

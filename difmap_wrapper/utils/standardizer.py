@@ -57,8 +57,14 @@ def extract_uvfits_standardized(filepath: str) -> dict:
         
         u, v, amp = u_2d[masque], v_2d[masque], amp_2d[masque]
         
-    # 4. Alignement absolu par tri lexicographique (arrondi pour la stabilité float32)
-    idx = np.lexsort((np.round(v).astype(np.int64), np.round(u).astype(np.int64)))
+    # 4. Alignement absolu par tri lexicographique (arrondi pour la stabilité float32).
+    # L'amplitude sert de clé tertiaire pour lever l'ambiguïté quand (u, v) arrondis
+    # sont identiques sur plusieurs visibilités (ordre non-déterministe sinon).
+    idx = np.lexsort((
+        np.round(amp * 1e6).astype(np.int64),   # tertiaire : amplitude
+        np.round(v).astype(np.int64),             # secondaire : V
+        np.round(u).astype(np.int64),             # primaire   : U
+    ))
     
     u_tri, v_tri, amp_tri = u[idx], v[idx], amp[idx]
     
@@ -104,8 +110,12 @@ def extract_ram_standardized() -> dict:
         
     u, v, amp = data['u'], data['v'], data['amp']
     
-    # Alignement absolu
-    idx = np.lexsort((np.round(v).astype(np.int64), np.round(u).astype(np.int64)))
+    # Alignement absolu — même tri que extract_uvfits_standardized.
+    idx = np.lexsort((
+        np.round(amp * 1e6).astype(np.int64),
+        np.round(v).astype(np.int64),
+        np.round(u).astype(np.int64),
+    ))
     
     u_tri, v_tri, amp_tri = u[idx], v[idx], amp[idx]
     

@@ -204,37 +204,38 @@ class DifmapMapGeometry:
         tuple
             (data_crop, extent, nx_crop, ny_crop)
         """
+        # cellsize est en mas (unités de carte par défaut de Difmap).
+        # Facteur de conversion mas → radians : rad = mas * MAS_TO_RAD
+        _MAS_TO_RAD = np.pi / (180.0 * 3600.0 * 1000.0)
+        _RAD_TO_MAS = 1.0 / _MAS_TO_RAD
+
         ny, nx = map_data.shape
         cy = cellsize_y if cellsize_y is not None else cellsize
-        
-        # Conversion en radians
-        xinc = cellsize * 1e-3 * np.pi / (180.0 * 3600.0)
-        yinc = cy * 1e-3 * np.pi / (180.0 * 3600.0)
-        
+
+        xinc = cellsize * _MAS_TO_RAD
+        yinc = cy * _MAS_TO_RAD
+
         if xmin is None or xmax is None or ymin is None or ymax is None:
             # Crop par défaut de Difmap: quart central (nx/4 à 3*nx/4)
-            # Voir maplot.c:setarea() lignes 404-407
+            # Voir maplot.c:setarea()
             xa, xb, ya, yb = DifmapMapGeometry.get_default_area(nx, ny)
         else:
-            # Zone personnalisée
             xa, xb, ya, yb = DifmapMapGeometry.world_to_pixel_coords(
-                xmin * 1e-3 * np.pi / (180.0 * 3600.0),
-                xmax * 1e-3 * np.pi / (180.0 * 3600.0),
-                ymin * 1e-3 * np.pi / (180.0 * 3600.0),
-                ymax * 1e-3 * np.pi / (180.0 * 3600.0),
+                xmin * _MAS_TO_RAD,
+                xmax * _MAS_TO_RAD,
+                ymin * _MAS_TO_RAD,
+                ymax * _MAS_TO_RAD,
                 xinc, yinc, nx, ny
             )
-        
+
         # Application du crop
         cropped_data = map_data[ya:yb, xa:xb]
-        
-        # Calcul de l'extent pour Matplotlib
+
+        # Calcul de l'extent pour Matplotlib (en mas)
         extent = DifmapMapGeometry.pixel_to_world_extent(
             xa, xb, ya, yb, xinc, yinc, nx, ny
         )
-        
-        # Conversion en mas
-        extent = [val * 180.0 * 3600.0 * 1000.0 / np.pi for val in extent]
+        extent = [val * _RAD_TO_MAS for val in extent]
         
         return cropped_data, extent, cropped_data.shape[1], cropped_data.shape[0]
 

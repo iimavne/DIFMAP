@@ -150,6 +150,12 @@ class Observation:
         data = self._cached_raw_data
         n = len(data.get('u', []))
         if self.masque_flagges is None or len(self.masque_flagges) != n:
+            if self.masque_flagges is not None and len(self.masque_flagges) != n:
+                logger.warning(
+                    "Taille du masque de flagging (%d) incohérente avec les données UV (%d) — "
+                    "réinitialisation du masque. Les flags précédents sont perdus.",
+                    len(self.masque_flagges), n
+                )
             self.reset_flags(n)
         return data
 
@@ -363,10 +369,8 @@ class Observation:
         """
         Marque les visibilités aux indices donnés comme exclues (flaguées).
 
-        Le masque ``masque_flagges`` n'est **pas** mis à jour ici — c'est la
-        responsabilité de l'éditeur graphique qui appelle cette méthode.
-        Utilisez l'interface graphique ou ``BasePlotEditor._flag_indices()``
-        pour une mise à jour cohérente.
+        Met à jour simultanément l'état C (poids négatifs) et le masque
+        Python ``masque_flagges`` pour garantir leur cohérence.
 
         Parameters
         ----------
@@ -387,6 +391,9 @@ class Observation:
         if len(indices_c) > 0:
             result = self._native.flag_data(indices_c)
             self.invalidate_cache()
+            if self.masque_flagges is not None:
+                valid = indices_c[(indices_c >= 0) & (indices_c < len(self.masque_flagges))]
+                self.masque_flagges[valid] = True
             return result
         return 0
 
@@ -408,6 +415,9 @@ class Observation:
         if len(indices_c) > 0:
             result = self._native.unflag_data(indices_c)
             self.invalidate_cache()
+            if self.masque_flagges is not None:
+                valid = indices_c[(indices_c >= 0) & (indices_c < len(self.masque_flagges))]
+                self.masque_flagges[valid] = False
             return result
         return 0
 
@@ -432,7 +442,7 @@ class Observation:
         >>> session.obs.save_wobs("data/source_flagged.fits")
         True
         """
-        if not filepath.endswith('.fits'):
+        if not filepath.lower().endswith('.fits'):
             filepath += '.fits'
         logger.info("Sauvegarde en cours via Difmap vers : %s", filepath)
         self._native.save_wobs(filepath)

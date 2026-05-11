@@ -1,11 +1,13 @@
 # difmap_wrapper/visualizer.py
 import difmap_native
 import numpy as np
+import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib.colors import Normalize, LogNorm, PowerNorm
 from matplotlib.offsetbox import AnchoredOffsetbox, AuxTransformBox
 import re
 from datetime import datetime
+import logging
 
 class Visualizer:
     """
@@ -73,8 +75,11 @@ class Visualizer:
             print("Aucune donnée UV. Appelez select() avant uvplot().")
             return None
 
-        u = data['u'] / 1e6
-        v = data['v'] / 1e6
+        # Données UV en λ → Mλ (convention d'affichage VLBI standard).
+        # L'axe est toujours affiché en Mλ indépendamment de skyunits().
+        _WAV_TO_MLAMBDA = 1e-6
+        u = data['u'] * _WAV_TO_MLAMBDA
+        v = data['v'] * _WAV_TO_MLAMBDA
 
         # Suivi de la création de la figure
         created_fig = False
@@ -213,24 +218,6 @@ class Visualizer:
         return dmax if abs(dmax) > abs(dmin) else dmin
 
     @staticmethod
-    def _imageable_zone_peak(full_data: np.ndarray) -> float:
-        """Pic signé sur la zone imageable (centre 1/4..3/4 de la carte).
-
-        DIFMAP/PGPLOT calcule typiquement les contours sur une zone "imageable"
-        centrale plutôt que sur l'intégralité des bords.
-        """
-        ny, nx = full_data.shape
-        y0, y1 = ny // 4, 3 * ny // 4
-        x0, x1 = nx // 4, 3 * nx // 4
-        y0 = max(0, y0)
-        x0 = max(0, x0)
-        y1 = min(ny, y1)
-        x1 = min(nx, x1)
-        if y1 <= y0 or x1 <= x0:
-            return Visualizer._vis_central_peak(full_data)
-        return Visualizer._vis_central_peak(full_data[y0:y1, x0:x1])
-
-    @staticmethod
     def _make_norm(scale: str, vmin, vmax, data: np.ndarray):
         """Normalisation matplotlib équivalente à mapfunc de difmap (linear/log/sqrt)."""
         dmin = float(np.nanmin(data))
@@ -306,7 +293,7 @@ class Visualizer:
         return [pct * peak / 100.0 for pct in pct_levels]
 
     @staticmethod
-    def _vis_draw_contours(ax, data, x_lin, y_lin, peak, lw=0.8,
+    def _vis_draw_contours(ax, data, x_lin, y_lin, peak, lw=0.3,
                            mode='pct', absmin=1.0, absmax=100.0,
                            factor=2.0, custom=None):
         """
@@ -326,21 +313,58 @@ class Visualizer:
         pos_levels = sorted([l for l in visible if l >= 0])
         neg_levels = sorted([l for l in visible if l < 0])
 
+        # Conformité DIFMAP/PGPLOT (mapplot standard): en mode "levs" (%),
+        # on ne trace typiquement qu'un seul niveau négatif (-1% du pic).
+        m = (mode or 'pct').lower()
+        if m in {'pct', 'levs', 'default', 'standard'} and neg_levels:
+            neg_levels = [max(neg_levels)]
+
         drawn = []
-        if pos_levels:
-            ax.contour(
-                x_lin, y_lin, data, levels=pos_levels,
-                colors='white', linewidths=lw, linestyles='solid',
-                alpha=1.0
+        # Matplotlib peut simplifier les chemins, ce qui modifie le rendu des petites structures.
+        # On désactive la simplification uniquement pendant le tracé des contours.
+        with mpl.rc_context({"path.simplify": False, "path.simplify_threshold": 0.0}):
+            logging.info(
+                "[CONTOUR] mode=%s lw=%s pos=%d neg=%d",
+                (mode or 'pct'),
+                float(lw),
+                len(pos_levels),
+                len(neg_levels),
             )
-            drawn.extend(pos_levels)
-        if neg_levels:
-            ax.contour(
-                x_lin, y_lin, data, levels=neg_levels,
-                colors='red', linewidths=lw, linestyles='solid',
-                alpha=1.0
-            )
-            drawn.extend(neg_levels)
+            if pos_levels:
+                cs_pos = ax.contour(
+                    x_lin, y_lin, data, levels=pos_levels,
+                    colors='white', linewidths=lw, linestyles='solid',
+                    alpha=1.0,
+                    antialiased=False,
+                    corner_mask=False,
+                )
+                drawn.extend(pos_levels)
+                cols = getattr(cs_pos, "collections", None)
+                if cols is not None:
+                    for col in cols:
+                        col.set_antialiased(False)
+                        col.set_linewidth(float(lw))
+                        col.set_joinstyle("miter")
+                        col.set_capstyle("butt")
+
+            if neg_levels:
+                neg_styles = [(0, (12.0, 8.0)) for _ in neg_levels]
+                cs_neg = ax.contour(
+                    x_lin, y_lin, data, levels=neg_levels,
+                    colors='red', linewidths=lw, linestyles=neg_styles,
+                    alpha=1.0,
+                    antialiased=False,
+                    corner_mask=False,
+                )
+                drawn.extend(neg_levels)
+                cols = getattr(cs_neg, "collections", None)
+                if cols is not None:
+                    for col in cols:
+                        col.set_antialiased(False)
+                        col.set_linewidth(float(lw))
+                        col.set_joinstyle("miter")
+                        col.set_capstyle("butt")
+                        col.set_linestyle((0, (12.0, 8.0)))
         return drawn
 
     @staticmethod
@@ -357,12 +381,9 @@ class Visualizer:
         dmin     = float(np.nanmin(data))
         dmax     = float(np.nanmax(data))
 
-        # Calcul RMS (zone centrale pour éviter les bords)
-        ny, nx = data.shape
-        cy, cx = ny // 2, nx // 2
-        margin = max(ny // 8, 4)
-        rms_zone = data[cy - margin:cy + margin, cx - margin:cx + margin]
-        rms = float(np.sqrt(np.nanmean(rms_zone ** 2))) if rms_zone.size > 0 else 0.0
+        # RMS sur la totalité de la zone imageable (= data, déjà croppée).
+        # Difmap calcule ses stats sur la zone imageable complète (maplot.c:setcont).
+        rms = float(np.sqrt(np.nanmean(data ** 2))) if data.size > 0 else 0.0
 
         lines = []
 
@@ -378,7 +399,7 @@ class Visualizer:
                 if bmaj > 0 and bmin > 0:
                     lines.append(("Beam", f"{bmaj:.3g}″ × {bmin:.3g}″  PA {bpa:.1f}°"))
             if drawn_levels:
-                cpeak = Visualizer._imageable_zone_peak(data)
+                cpeak = Visualizer._vis_central_peak(data)
                 if (contour_mode or '').lower() in {'custom', 'clevs'}:
                     lvl_str = ", ".join(f"{l:.3g}" for l in drawn_levels[:6])
                     lines.append(("Levels Jy/b", lvl_str))
@@ -490,12 +511,15 @@ class Visualizer:
         elif date_str:
             formatted_lines.append(f"{src}  {date_str}")
         else:
-            formatted_lines.append(f"{src}  {datetime.now().strftime('%Y %b %d')}")
+            formatted_lines.append(f"{src}")
 
         # Infos par type de map
         dmin = float(np.nanmin(data))
         dmax = float(np.nanmax(data))
-        rms = float(info.get('rms', 0.0)) if isinstance(info, dict) else 0.0
+        # RMS calculé sur la carte affichée (données déjà croppées), identique
+        # pour dirty, residual et clean. info['rms'] vient du beam PSF — ne pas
+        # l'utiliser comme bruit de la carte (ce serait le RMS de la PSF, pas du bruit).
+        rms = float(np.sqrt(np.nanmean(data ** 2))) if data.size > 0 else 0.0
 
         formatted_lines.append(f"Map center:  RA: {ra},  Dec: {dec} (2000.0)")
         formatted_lines.append(f"Displayed range: {dmin:.4g} to {dmax:.4g} Jy/beam")
@@ -503,7 +527,7 @@ class Visualizer:
         if map_type == 'clean':
             formatted_lines.append(f"Map peak: {dmax:.4g} Jy/beam")
             if drawn_levels:
-                cpeak = Visualizer._imageable_zone_peak(data)
+                cpeak = Visualizer._vis_central_peak(data)
                 if cpeak != 0:
                     pct_levels = [float(lvl) / cpeak * 100.0 for lvl in drawn_levels if np.isfinite(lvl)]
                     show = pct_levels[:8]
@@ -543,6 +567,7 @@ class Visualizer:
                        contour_mode: str = 'pct',
                        contour_absmin: float = 1.0, contour_absmax: float = 100.0,
                        contour_factor: float = 2.0, contour_custom=None,
+                       contour_linewidth: float = 0.3,
                        show_model: bool = False,
                        save_path: str = None, show: bool = True) -> 'plt.Axes':
         """
@@ -582,7 +607,9 @@ class Visualizer:
         contour_factor : float
             Pour ``'log'`` : facteur multiplicatif (défaut 2.0).
         contour_custom : list of float, optional
-            Pour ``'custom'`` : niveaux absolus en Jy/beam.
+            Pour ``'custom'`` : niveaux en % du pic (comportement difmap).
+        contour_linewidth : float, optional
+            Épaisseur des traits de contours en points. Par défaut 0.3.
         save_path : str, optional
             Chemin de sauvegarde.
         show : bool
@@ -629,10 +656,11 @@ class Visualizer:
         ax.get_figure().colorbar(im, ax=ax, label='Flux (Jy/beam)', fraction=0.046, pad=0.04)
 
         # 3. Contours isophotes
-        # Difmap calcule les niveaux sur la zone "imageable" (centre), pas sur les bords
-        peak = Visualizer._imageable_zone_peak(data)
+        # data est déjà la zone imageable (croppée par get_map_package).
+        # Utiliser le pic de l'intégralité de data, comme maplot.c:setcont() sur la zone imageable.
+        peak = Visualizer._vis_central_peak(data)
         drawn = Visualizer._vis_draw_contours(
-            ax, data, x_grid, y_grid, peak,
+            ax, data, x_grid, y_grid, peak, lw=contour_linewidth,
             mode=contour_mode, absmin=contour_absmin, absmax=contour_absmax,
             factor=contour_factor, custom=contour_custom
         )
@@ -746,6 +774,7 @@ class Visualizer:
                    contour_mode: str = 'pct',
                    contour_absmin: float = 1.0, contour_absmax: float = 100.0,
                    contour_factor: float = 2.0, contour_custom=None,
+                   contour_linewidth: float = 0.3,
                    show_model: bool = False,
                    save_path: str = None, show: bool = True, **kwargs) -> 'plt.Axes':
         """
@@ -803,6 +832,7 @@ class Visualizer:
                 contour_mode=contour_mode, contour_absmin=contour_absmin,
                 contour_absmax=contour_absmax, contour_factor=contour_factor,
                 contour_custom=contour_custom,
+                contour_linewidth=contour_linewidth,
                 show_model=show_model,
                 save_path=save_path,
                 show=show,
