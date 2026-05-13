@@ -91,6 +91,21 @@ class UVPlotEditor(BasePlotEditor):
         self.ax.set_ylim(cy - half, cy + half)
         self.fig.canvas.draw_idle()
 
+    def action_home(self, event=None):
+        """Override : reset vue complète recalculée depuis les données (ne supprime pas les flags)."""
+        u = self.data["u"] / 1e6
+        v = self.data["v"] / 1e6
+        max_range = float(max(np.abs(u).max(), np.abs(v).max())) * 1.1
+        self.ax.set_xlim(max_range, -max_range)   # axe RA conventionnellement inversé
+        self.ax.set_ylim(-max_range, max_range)
+        self.index_antenne_actuelle = -1
+        self._nom_antenne_courante = ""
+        self._update_colors()
+        self.fig.canvas.draw_idle()
+        logger.info("Vue réinitialisée.", extra={'difmap_level': 'success'})
+        if self.sync_callback:
+            self.sync_callback({'reset_all': True})
+
     # =========================================================
     # FLAGGING
     # =========================================================

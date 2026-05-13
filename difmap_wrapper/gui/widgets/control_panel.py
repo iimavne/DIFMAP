@@ -2,7 +2,7 @@
 from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QComboBox, QLineEdit, QCheckBox,
                              QScrollArea, QSlider, QPushButton, QMessageBox,
-                             QColorDialog, QSpinBox)
+                             QColorDialog, QSpinBox, QFrame)
 from PyQt6.QtGui import QColor
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtCore import Qt
@@ -205,6 +205,7 @@ class ControlPanel(QDockWidget):
 
     data_color_changed = pyqtSignal(str)
     ifs_range_changed  = pyqtSignal(int, int)   # (if_beg, if_end) — 1-indexed, 0=last
+    uv_limits_changed  = pyqtSignal(object, object, object, object)  # umin, umax, vmin, vmax
 
     def __init__(self, session, title="Controls", parent=None):
         """
@@ -466,39 +467,165 @@ class ControlPanel(QDockWidget):
         self.main_layout.addWidget(self.group_telescope)
 
     def _build_display_options(self):
-        """
-        Construit la section « 4. DISPLAY OPTIONS ».
-
-        Crée le sélecteur de mode Radplot, les checkboxes d'affichage
-        (modèle, résidus, crosshair, erreurs, conjuguées) et le slider de taille.
-        """
-        self.group_display = CollapsibleSection("3. DISPLAY OPTIONS")
+        """Construit la section « 3. AFFICHAGE OPTIONS »."""
+        self.group_display = CollapsibleSection("3. AFFICHAGE OPTIONS")
         layout = self.group_display.content_layout
 
-        # On sauve le Label pour pouvoir le cacher
+        # ── Radplot mode (masqué hors Radplot) ────────────────────
         self.lbl_rad_mode = QLabel("Radplot mode  [1 / 2 / 3]:")
         layout.addWidget(self.lbl_rad_mode)
         self.combo_rad_mode = QComboBox()
         self.combo_rad_mode.addItems(["1 – Amplitude only", "2 – Phase only", "3 – Amplitude & Phase"])
         layout.addWidget(self.combo_rad_mode)
 
-        # On sauve le séparateur pour pouvoir le cacher
         self.sep_display = QWidget()
         self.sep_display.setFixedHeight(1)
         self.sep_display.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 4px 0;")
         layout.addWidget(self.sep_display)
 
-        self.chk_conjugate  = QCheckBox("Conjugate points  [%]")
+        # ── Checkboxes UV / Radplot ────────────────────────────────
+        self.chk_conjugate = QCheckBox("Conjugate points  [%]")
         self.chk_conjugate.setChecked(True)
-        self.chk_model      = QCheckBox("Model overlay  [M]")
-        self.chk_residuals  = QCheckBox("Residuals (Data − Model)  [−]")
-        self.chk_crosshair  = QCheckBox("Full-screen crosshair  [+]")
-        self.chk_errors     = QCheckBox("Error plot (1/√w)  [E]")
+        self.chk_model     = QCheckBox("Model overlay  [M]")
+        self.chk_residuals = QCheckBox("Residuals (Data − Model)  [−]")
+        self.chk_crosshair = QCheckBox("Full-screen crosshair  [+]")
+        self.chk_errors    = QCheckBox("Error plot (1/√w)  [E]")
 
-        for chk in (self.chk_conjugate, self.chk_model, self.chk_residuals, self.chk_crosshair, self.chk_errors):
+        # chk_crosshair existe (pour les liaisons internes) mais n'est plus dans le panel —
+        # il est remplacé par le bouton Crosshair [+] de la toolbar UV.
+        for chk in (self.chk_conjugate, self.chk_model, self.chk_residuals, self.chk_errors):
             layout.addWidget(chk)
 
-        # Taille des marqueurs
+        # ── Limite plan UV ─────────────────────────────────────────
+        sep_uv = QWidget()
+        sep_uv.setFixedHeight(1)
+        sep_uv.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 4px 0;")
+        layout.addWidget(sep_uv)
+
+        toggle_style = f"""
+            QPushButton {{
+                background-color: {D.ASTRAL_MUTED};
+                color: {D.ASTRAL_TEXT};
+                border: none;
+                border-radius: 9px;
+                padding: 2px 8px;
+                font-size: 9px;
+                font-weight: bold;
+                min-width: 38px;
+                max-width: 38px;
+                min-height: 18px;
+            }}
+            QPushButton:checked {{
+                background-color: {D.ASTRAL_ACCENT};
+                color: #FFFFFF;
+            }}
+        """
+        field_style = f"""
+            QLineEdit {{
+                background-color: {D.ASTRAL_SURFACE};
+                border: 1px solid {D.ASTRAL_BORDER};
+                border-radius: 3px;
+                padding: 3px 5px;
+                color: {D.ASTRAL_TEXT};
+                font-size: 10px;
+                min-height: 20px;
+            }}
+            QLineEdit:focus {{ border: 1px solid {D.ASTRAL_ACCENT}; }}
+            QLineEdit:disabled {{
+                background-color: {D.ASTRAL_DEEP};
+                color: {D.ASTRAL_MUTED};
+            }}
+        """
+
+        h_uv_hdr = QHBoxLayout()
+        lbl_uv = QLabel("Limite plan UV")
+        lbl_uv.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: 10px; font-weight: 500;")
+        self.chk_uv_limit = QPushButton("OFF")
+        self.chk_uv_limit.setCheckable(True)
+        self.chk_uv_limit.setChecked(False)
+        self.chk_uv_limit.setStyleSheet(toggle_style)
+        self.chk_uv_limit.setToolTip("Activer les limites manuelles du plan UV")
+        h_uv_hdr.addWidget(lbl_uv)
+        h_uv_hdr.addStretch()
+        h_uv_hdr.addWidget(self.chk_uv_limit)
+        layout.addLayout(h_uv_hdr)
+
+        # Grille U min / U max / V min / V max
+        self._uv_limit_box = QWidget()
+        grid = QVBoxLayout(self._uv_limit_box)
+        grid.setContentsMargins(0, 4, 0, 0)
+        grid.setSpacing(4)
+
+        row_u = QHBoxLayout()
+        row_u.setSpacing(6)
+        lbl_umin = QLabel("U min")
+        lbl_umin.setFixedWidth(34)
+        self.input_umin = QLineEdit()
+        self.input_umin.setPlaceholderText("auto")
+        self.input_umin.setStyleSheet(field_style)
+        lbl_umax = QLabel("U max")
+        lbl_umax.setFixedWidth(34)
+        self.input_umax = QLineEdit()
+        self.input_umax.setPlaceholderText("auto")
+        self.input_umax.setStyleSheet(field_style)
+        row_u.addWidget(lbl_umin); row_u.addWidget(self.input_umin)
+        row_u.addWidget(lbl_umax); row_u.addWidget(self.input_umax)
+        grid.addLayout(row_u)
+
+        row_v = QHBoxLayout()
+        row_v.setSpacing(6)
+        lbl_vmin = QLabel("V min")
+        lbl_vmin.setFixedWidth(34)
+        self.input_vmin_uv = QLineEdit()
+        self.input_vmin_uv.setPlaceholderText("auto")
+        self.input_vmin_uv.setStyleSheet(field_style)
+        lbl_vmax = QLabel("V max")
+        lbl_vmax.setFixedWidth(34)
+        self.input_vmax_uv = QLineEdit()
+        self.input_vmax_uv.setPlaceholderText("auto")
+        self.input_vmax_uv.setStyleSheet(field_style)
+        row_v.addWidget(lbl_vmin); row_v.addWidget(self.input_vmin_uv)
+        row_v.addWidget(lbl_vmax); row_v.addWidget(self.input_vmax_uv)
+        grid.addLayout(row_v)
+
+        layout.addWidget(self._uv_limit_box)
+
+        # Désactiver les champs par défaut (toggle OFF)
+        for w in (self.input_umin, self.input_umax, self.input_vmin_uv, self.input_vmax_uv):
+            w.setEnabled(False)
+
+        def _on_uv_toggle(checked):
+            self.chk_uv_limit.setText("ON" if checked else "OFF")
+            for w in (self.input_umin, self.input_umax, self.input_vmin_uv, self.input_vmax_uv):
+                w.setEnabled(checked)
+            self._emit_uv_limits()
+
+        def _parse_uv(field):
+            t = field.text().strip()
+            try:
+                return float(t) if t and t.lower() != "auto" else None
+            except ValueError:
+                return None
+
+        def _emit_uv_limits_checked():
+            if self.chk_uv_limit.isChecked():
+                self._emit_uv_limits()
+
+        self._emit_uv_limits = lambda: self.uv_limits_changed.emit(
+            _parse_uv(self.input_umin), _parse_uv(self.input_umax),
+            _parse_uv(self.input_vmin_uv), _parse_uv(self.input_vmax_uv),
+        )
+
+        self.chk_uv_limit.toggled.connect(_on_uv_toggle)
+        for w in (self.input_umin, self.input_umax, self.input_vmin_uv, self.input_vmax_uv):
+            w.editingFinished.connect(_emit_uv_limits_checked)
+
+        # ── Taille des marqueurs ───────────────────────────────────
+        sep2 = QWidget()
+        sep2.setFixedHeight(1)
+        sep2.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 4px 0;")
+        layout.addWidget(sep2)
+
         h_size = QHBoxLayout()
         self.lbl_slider_size = QLabel("Marker size  [.]:")
         self.lbl_slider_size_val = QLabel("10 %")
@@ -516,7 +643,7 @@ class ControlPanel(QDockWidget):
         )
         layout.addWidget(self.slider_size)
 
-        # Transparence des points
+        # ── Opacité ────────────────────────────────────────────────
         layout.addWidget(QLabel("Opacity:"))
         self.slider_alpha = QSlider(Qt.Orientation.Horizontal)
         self.slider_alpha.setMinimum(10)
@@ -525,7 +652,7 @@ class ControlPanel(QDockWidget):
         self.slider_alpha.setToolTip("Point opacity (10–100 %)")
         layout.addWidget(self.slider_alpha)
 
-        # Couleur des points
+        # ── Couleur des points ─────────────────────────────────────
         h_color = QHBoxLayout()
         h_color.addWidget(QLabel("Data color:"))
         self.btn_data_color = QPushButton()

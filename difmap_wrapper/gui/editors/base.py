@@ -671,6 +671,10 @@ class BasePlotEditor:
             Événement clavier (ignoré).
         """
         self.cursor_active = not self.cursor_active
+        # Sauvegarder les limites : le draw() forcé peut déclencher le moteur de
+        # layout contraint qui, avec set_aspect('equal'), recalcule les limites.
+        _xlim = self.ax.get_xlim()
+        _ylim = self.ax.get_ylim()
         if self.cursor_active:
             self.cursor = MultiCursor(
                 self.fig.canvas, self.axes_list,
@@ -679,27 +683,24 @@ class BasePlotEditor:
             )
         else:
             if self.cursor:
-                # 1. Rendre les lignes physiques invisibles
                 if hasattr(self.cursor, 'vlines'):
                     for line in self.cursor.vlines:
                         line.set_visible(False)
                 if hasattr(self.cursor, 'hlines'):
                     for line in self.cursor.hlines:
                         line.set_visible(False)
-                
-                # 2. Désactiver l'état actif du widget
                 if hasattr(self.cursor, 'set_active'):
                     self.cursor.set_active(False)
-                
-                # 3. Déconnecter les signaux de la souris
                 if hasattr(self.cursor, 'disconnect_events'):
                     self.cursor.disconnect_events()
                 elif hasattr(self.cursor, 'disconnect'):
                     self.cursor.disconnect()
-                    
                 self.cursor = None
-                
+
         self.fig.canvas.draw()
+        # Restaurer les limites après le draw pour annuler tout recalcul parasite
+        self.ax.set_xlim(_xlim)
+        self.ax.set_ylim(_ylim)
         status = "Activé" if self.cursor_active else "Désactivé"
         logger.info("Cross-hair : %s", status)
         if self.sync_callback:

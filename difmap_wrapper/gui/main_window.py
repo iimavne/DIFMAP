@@ -383,6 +383,7 @@ class MainWindow(QMainWindow):
                     editor.update_data_color(color)
         self.control_panel.data_color_changed.connect(_on_color_selected)
 
+        self.control_panel.uv_limits_changed.connect(self._on_uv_limits_changed)
         self.control_panel.btn_compute.clicked.connect(self._compute_dirty_map)
         self.control_panel.btn_compute_clean.clicked.connect(self._compute_clean_map)
         self.control_panel.btn_refresh_view.clicked.connect(self._refresh_current_map_tab)
@@ -1189,6 +1190,11 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.log_console.log_error(f"Failed to refresh residual map: {e}")
 
+    def _on_uv_limits_changed(self, umin, umax, vmin, vmax) -> None:
+        """Applique les limites d'axe UV (umax / vmax difmap) au plot UV."""
+        if self.plot_widget and hasattr(self.plot_widget, 'set_uv_limits'):
+            self.plot_widget.set_uv_limits(umin, umax, vmin, vmax)
+
     def _change_polarization(self, pol_text: str) -> None:
         """
         Change la polarisation active et recharge toutes les visualisations.
@@ -1345,6 +1351,8 @@ class MainWindow(QMainWindow):
                     ctrl.combo_rad_mode.setCurrentIndex(mode_idx)
                 if 'crosshair' in state_dict:
                     ctrl.chk_crosshair.setChecked(state_dict['crosshair'])
+                    if self.plot_widget and hasattr(self.plot_widget, 'sync_crosshair_btn'):
+                        self.plot_widget.sync_crosshair_btn(state_dict['crosshair'])
                 if 'show_conjugate' in state_dict:
                     ctrl.chk_conjugate.setChecked(state_dict['show_conjugate'])
                 if 'marker_size' in state_dict:
