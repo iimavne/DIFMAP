@@ -71,32 +71,52 @@ class RadPlotEditor(BasePlotEditor):
         ))
         self._last_pressed_axis = self.ax
 
-        # RectangleSelectors pour le flagging interactif sur chaque axe
-        self.rs_flag_phase = None
-        self.rs_flag_err = None
+        # RectangleSelectors pour le flagging interactif et les stats sur chaque axe
+        self.rs_flag_phase  = None
+        self.rs_flag_err    = None
+        self.rs_stats_phase = None
+        self.rs_stats_err   = None
         if self.ax_phase:
-            # Wrapper qui capture l'axe pour _on_interactive_select
-            def on_select_phase(eclick, erelease, ax=self.ax_phase):
+            def on_select_phase_flag(eclick, erelease, ax=self.ax_phase):
                 self._last_pressed_axis = ax
                 self._on_interactive_select(eclick, erelease)
-            
+
+            def on_select_phase_stats(eclick, erelease, ax=self.ax_phase):
+                self._last_pressed_axis = ax
+                self.on_select(eclick, erelease)
+
             self.rs_flag_phase = RectangleSelector(
-                self.ax_phase, on_select_phase, useblit=True, button=[1, 3],
+                self.ax_phase, on_select_phase_flag, useblit=True, button=[1, 3],
                 minspanx=5, minspany=5, spancoords="pixels", interactive=False,
             )
             self.rs_flag_phase.set_active(False)
-        
+
+            self.rs_stats_phase = RectangleSelector(
+                self.ax_phase, on_select_phase_stats, useblit=True, button=[1],
+                minspanx=5, minspany=5, spancoords="pixels", interactive=False,
+            )
+            self.rs_stats_phase.set_active(False)
+
         if self.ax_err:
-            # Wrapper qui capture l'axe pour _on_interactive_select
-            def on_select_err(eclick, erelease, ax=self.ax_err):
+            def on_select_err_flag(eclick, erelease, ax=self.ax_err):
                 self._last_pressed_axis = ax
                 self._on_interactive_select(eclick, erelease)
-            
+
+            def on_select_err_stats(eclick, erelease, ax=self.ax_err):
+                self._last_pressed_axis = ax
+                self.on_select(eclick, erelease)
+
             self.rs_flag_err = RectangleSelector(
-                self.ax_err, on_select_err, useblit=True, button=[1, 3],
+                self.ax_err, on_select_err_flag, useblit=True, button=[1, 3],
                 minspanx=5, minspany=5, spancoords="pixels", interactive=False,
             )
             self.rs_flag_err.set_active(False)
+
+            self.rs_stats_err = RectangleSelector(
+                self.ax_err, on_select_err_stats, useblit=True, button=[1],
+                minspanx=5, minspany=5, spancoords="pixels", interactive=False,
+            )
+            self.rs_stats_err.set_active(False)
 
         self.uv_radius = np.sqrt(self.data["u"]**2 + self.data["v"]**2) / 1e6
         self.amp    = self.data.get("amp",    np.zeros_like(self.uv_radius))
@@ -150,12 +170,19 @@ class RadPlotEditor(BasePlotEditor):
         """
         super()._set_mode(new_mode)
 
-        # RectangleSelectors interactifs (ax_phase, ax_err)
+        # RectangleSelectors interactifs de flagging (ax_phase, ax_err)
         flag_active = (self.mode == EditorMode.INTERACTIVE_FLAG)
         if self.rs_flag_phase:
             self.rs_flag_phase.set_active(flag_active)
         if self.rs_flag_err:
             self.rs_flag_err.set_active(flag_active)
+
+        # RectangleSelectors statistiques (ax_phase, ax_err) — STATS et STATS_V
+        stats_active = self.mode in (EditorMode.STATS, EditorMode.STATS_V)
+        if self.rs_stats_phase:
+            self.rs_stats_phase.set_active(stats_active)
+        if self.rs_stats_err:
+            self.rs_stats_err.set_active(stats_active)
 
         # SpanSelectors zoom Y
         zoom_y_active = (self.mode == EditorMode.ZOOM_Y)
@@ -166,6 +193,7 @@ class RadPlotEditor(BasePlotEditor):
     def cleanup(self) -> None:
         """Surcharge pour nettoyer tous les Selectors supplémentaires."""
         for sel in (self.rs_flag_phase, self.rs_flag_err,
+                    self.rs_stats_phase, self.rs_stats_err,
                     self.span_y_amp, self.span_y_phase):
             if sel is None:
                 continue
@@ -550,18 +578,6 @@ class RadPlotEditor(BasePlotEditor):
     # =========================================================
     # FLAGGING ET STATISTIQUES
     # =========================================================
-
-    def action_toggle_stats_vec(self, event=None):
-        """
-        Touche V : basculer affichage statistiques vectorielles.
-        
-        Dans difmap_src (radplot.c), le mode statistiques vectorielles (Re/Im)
-        permet de basculer entre l'affichage des statistiques scalaires (amplitude/phase)
-        et les statistiques vectorielles (parties réelle/imaginaire).
-        
-        Le paramètre event est ignoré (raccourci clavier uniquement).
-        """
-        pass
 
     def apply_cut(self, x1, y1, x2, y2):
         """

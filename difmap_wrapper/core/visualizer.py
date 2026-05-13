@@ -70,7 +70,10 @@ class Visualizer:
         >>> fig, ax = plt.subplots()
         >>> session.vis.uvplot(ax=ax, color='red')
         """
-        data = self._native.get_uv_data()
+        try:
+            data = self._session.obs.get_data()
+        except Exception:
+            data = {}
         if not data or len(data.get('u', [])) == 0:
             print("Aucune donnée UV. Appelez select() avant uvplot().")
             return None
@@ -162,7 +165,10 @@ class Visualizer:
         >>> session.vis.radplot(show_model=False)        # données seules
         >>> session.vis.radplot(color='navy', alpha=0.3, s=0.5)
         """
-        data = self._native.get_uv_data()
+        try:
+            data = self._session.obs.get_data()
+        except Exception:
+            data = {}
         if not data or len(data.get('u', [])) == 0:
             print("Aucune donnée UV. Appelez select() avant radplot().")
             return None
@@ -368,83 +374,46 @@ class Visualizer:
         return drawn
 
     @staticmethod
-    def _vis_add_annotations(ax, data, map_type, info=None,
+    def _vis_add_annotations(ax, data, map_type, info=None, session=None,
                               drawn_levels=None, contour_mode='pct'):
         """
-        Bloc d'annotations style PGPLOT — coin supérieur droit, contenu par type de carte.
-
-        Clean map  : Peak, RMS, SNR, Beam FWHM, niveaux de contours
-        Dirty map  : Range affiché, RMS
-        Residual   : Peak résiduel, RMS
+        Bloc d'annotations style PGPLOT — sous l'axe, contenu par type de carte.
         """
-        peak_val = float(np.nanmax(np.abs(data)))
-        dmin     = float(np.nanmin(data))
-        dmax     = float(np.nanmax(data))
-
-        # RMS sur la totalité de la zone imageable (= data, déjà croppée).
-        # Difmap calcule ses stats sur la zone imageable complète (maplot.c:setcont).
-        rms = float(np.sqrt(np.nanmean(data ** 2))) if data.size > 0 else 0.0
-
-        lines = []
-
-        if map_type == "clean":
-            snr = dmax / rms if rms > 0 else 0.0
-            lines.append(("Peak",    f"{dmax:.4g} Jy/beam"))
-            lines.append(("RMS",     f"{rms:.3g} Jy/beam"))
-            lines.append(("SNR",     f"{snr:.1f}"))
-            if info:
-                bmaj = info.get('bmaj', 0.0)
-                bmin = info.get('bmin', 0.0)
-                bpa  = info.get('bpa',  0.0)
-                if bmaj > 0 and bmin > 0:
-                    lines.append(("Beam", f"{bmaj:.3g}″ × {bmin:.3g}″  PA {bpa:.1f}°"))
-            if drawn_levels:
-                cpeak = Visualizer._vis_central_peak(data)
-                if (contour_mode or '').lower() in {'custom', 'clevs'}:
-                    lvl_str = ", ".join(f"{l:.3g}" for l in drawn_levels[:6])
-                    lines.append(("Levels Jy/b", lvl_str))
-                elif cpeak != 0:
-                    pct_str = ", ".join(f"{l / cpeak * 100:.2g}" for l in drawn_levels[:6])
-                    lines.append(("Contours %", pct_str))
-
-        elif map_type == "residual":
-            lines.append(("Peak res.", f"{dmax:.4g} Jy/beam"))
-            lines.append(("Min  res.", f"{dmin:.4g} Jy/beam"))
-            lines.append(("RMS",       f"{rms:.3g} Jy/beam"))
-
-        else:  # dirty
-            lines.append(("Range", f"{dmin:.3g}  –  {dmax:.3g} Jy/beam"))
-            lines.append(("RMS",   f"{rms:.3g} Jy/beam"))
-
-        if not lines:
+        if data is None or data.size == 0:
             return
 
-        # Rendu : texte en bas de l'axe, en dehors de la grille
-        # Ne pas utiliser xlabel (ça modifie le layout et crée une marge)
+        dmin = float(np.nanmin(data))
+        dmax = float(np.nanmax(data))
+        peak_signed = float(Visualizer._vis_central_peak(data))
 
-        # Construire un bloc proche de ce que DIFMAP/PGPLOT affiche (maplot.c)
+        # RMS natif DIFMAP : vlbmap->maprms = sqrt(mean((pixel-mean)²)) sur la zone CLEAN.
+        # Fourni par get_map_package() / get_residual_package() via info['rms'].
+        # Ne pas recalculer sur les données croppées : la zone d'affichage ≠ la zone CLEAN.
+        rms = float(info.get('rms') or 0.0) if isinstance(info, dict) else 0.0
+
         formatted_lines: list[str] = []
 
-        session = getattr(ax, '_difmap_session', None)
-        source = None
-        pol = None
-        if session is not None:
+        # Source et polarisation — via la session passée en paramètre ou stockée sur l'axe
+        _session = session or getattr(ax, '_difmap_session', None)
+        source, pol = None, None
+        if _session is not None:
             try:
-                source = session.obs.source
+                source = _session.obs.source
             except Exception:
-                source = None
+                pass
             try:
-                pol = session.obs.get_polarization()
+                pol = _session.obs.get_polarization()
             except Exception:
-                pol = None
+                pass
 
+        # Header DIFMAP (cheap — pas d'appel à l_extract_uv / moddif)
         header_text = ""
         try:
             header_text = difmap_native.get_header_text() or ""
         except Exception:
-            header_text = ""
+            pass
 
-        # Fréquence moyenne en GHz depuis le tableau du header
+        # Fréquence moyenne en GHz depuis le tableau IF du header
         freq_ghz = 0.0
         if header_text:
             freqs = []
@@ -456,52 +425,52 @@ class Visualizer:
             if freqs:
                 freq_ghz = float(np.mean(freqs)) / 1e9
 
-        # Date si présente
+        # Date
         date_str = ""
         if header_text:
             m = re.search(r"\b(19|20)\d{2}\s+[A-Za-z]{3}\s+\d{1,2}\b", header_text)
             if m:
                 date_str = m.group(0)
 
-        # Stations: utiliser indices tel_a/tel_b pour déduire Ntel puis noms
+        # Stations: depuis les données déjà extraites (cache obs), jamais via get_uv_data() direct
         stations_str = ""
-        try:
-            uv = difmap_native.get_uv_data() or {}
-            tel_a = uv.get('tel_a')
-            tel_b = uv.get('tel_b')
-            sub = uv.get('subarray')
-            if tel_a is not None and tel_b is not None and len(tel_a) and len(tel_b):
-                n_tel = int(max(int(np.max(tel_a)), int(np.max(tel_b)))) + 1
-                isub = int(sub[0]) if sub is not None and len(sub) else 0
-                codes = []
-                for itel in range(n_tel):
-                    name = difmap_native.get_telescope_name(isub, itel)
-                    if not name:
-                        continue
-                    code = name.strip().upper()[:2]
-                    codes.append(code)
-                if codes:
-                    # difmap affiche souvent une concaténation compacte
-                    stations_str = "".join(sorted(set(codes)))
-        except Exception:
-            stations_str = ""
+        if _session is not None:
+            try:
+                uv = _session.obs._cached_raw_data or {}
+                tel_a = uv.get('tel_a')
+                tel_b = uv.get('tel_b')
+                sub = uv.get('subarray')
+                if tel_a is not None and tel_b is not None and len(tel_a) and len(tel_b):
+                    n_tel = int(max(int(np.max(tel_a)), int(np.max(tel_b)))) + 1
+                    isub = int(sub[0]) if sub is not None and len(sub) else 0
+                    codes = []
+                    for itel in range(n_tel):
+                        name = difmap_native.get_telescope_name(isub, itel)
+                        if not name:
+                            continue
+                        code = name.strip().upper()[:2]
+                        codes.append(code)
+                    if codes:
+                        stations_str = "".join(sorted(set(codes)))
+            except Exception:
+                pass
 
-        # Map center: tenter d'extraire RA/Dec du header (sinon placeholder)
-        ra = "00 00 00.000"
-        dec = "+00 00 00.000"
+        # Centre de carte depuis le header
+        ra, dec = "00 00 00.000", "+00 00 00.000"
         if header_text:
-            m = re.search(r"RA\s*[=:]\s*([0-9:.\s]+)\s*,?\s*Dec\s*[=:]\s*([+\-0-9:.\s]+)", header_text, flags=re.IGNORECASE)
+            m = re.search(r"RA\s*[=:]\s*([0-9:.\s]+)\s*,?\s*Dec\s*[=:]\s*([+\-0-9:.\s]+)",
+                          header_text, flags=re.IGNORECASE)
             if m:
-                ra = " ".join(m.group(1).strip().replace(':', ' ').split())
+                ra  = " ".join(m.group(1).strip().replace(':', ' ').split())
                 dec = " ".join(m.group(2).strip().replace(':', ' ').split())
 
-        # Lignes de tête
+        # Ligne de tête
         map_label = (map_type or 'dirty').capitalize()
         pol_txt = pol or "XX"
-        if stations_str:
-            formatted_lines.append(f"{map_label} {pol_txt} map.  Array: {stations_str}")
-        else:
-            formatted_lines.append(f"{map_label} {pol_txt} map.")
+        formatted_lines.append(
+            f"{map_label} {pol_txt} map.  Array: {stations_str}" if stations_str
+            else f"{map_label} {pol_txt} map."
+        )
 
         src = source or "Unknown"
         if freq_ghz > 0 and date_str:
@@ -511,15 +480,7 @@ class Visualizer:
         elif date_str:
             formatted_lines.append(f"{src}  {date_str}")
         else:
-            formatted_lines.append(f"{src}")
-
-        # Infos par type de map
-        dmin = float(np.nanmin(data))
-        dmax = float(np.nanmax(data))
-        # RMS calculé sur la carte affichée (données déjà croppées), identique
-        # pour dirty, residual et clean. info['rms'] vient du beam PSF — ne pas
-        # l'utiliser comme bruit de la carte (ce serait le RMS de la PSF, pas du bruit).
-        rms = float(np.sqrt(np.nanmean(data ** 2))) if data.size > 0 else 0.0
+            formatted_lines.append(src)
 
         formatted_lines.append(f"Map center:  RA: {ra},  Dec: {dec} (2000.0)")
         formatted_lines.append(f"Displayed range: {dmin:.4g} to {dmax:.4g} Jy/beam")
@@ -529,27 +490,28 @@ class Visualizer:
             if drawn_levels:
                 cpeak = Visualizer._vis_central_peak(data)
                 if cpeak != 0:
-                    pct_levels = [float(lvl) / cpeak * 100.0 for lvl in drawn_levels if np.isfinite(lvl)]
-                    show = pct_levels[:8]
+                    pct_levels = [float(lvl) / cpeak * 100.0
+                                  for lvl in drawn_levels if np.isfinite(lvl)]
+                    shown = pct_levels[:8]
                     suffix = " ..." if len(pct_levels) > 8 else ""
                     formatted_lines.append(
-                        "Contours %: " + " ".join(f"{p:.0g}" for p in show) + suffix
+                        "Contours %: " + " ".join(f"{p:.0g}" for p in shown) + suffix
                     )
             if isinstance(info, dict):
                 bmaj = float(info.get('bmaj', 0.0) or 0.0)
                 bmin = float(info.get('bmin', 0.0) or 0.0)
-                bpa = float(info.get('bpa', 0.0) or 0.0)
+                bpa  = float(info.get('bpa',  0.0) or 0.0)
                 if bmaj > 0 and bmin > 0:
-                    formatted_lines.append(f"Beam FWHM: {bmaj:.3g} × {bmin:.3g} (mas) at {bpa:.2f}°")
+                    formatted_lines.append(
+                        f"Beam FWHM: {bmaj:.3g} × {bmin:.3g} (mas) at {bpa:.2f}°"
+                    )
 
         if map_type in {'residual', 'clean'} and rms > 0:
             formatted_lines.append(f"RMS: {rms:.4g} Jy/beam")
-            peak_abs = float(np.nanmax(np.abs(data)))
-            formatted_lines.append(f"{peak_abs / rms:.1f}σ")
+            formatted_lines.append(f"{abs(peak_signed) / rms:.1f}σ")
 
-        text_content = "\n".join(formatted_lines)
         ax.text(
-            0.5, -0.12, text_content,
+            0.5, -0.12, "\n".join(formatted_lines),
             transform=ax.transAxes,
             ha='center', va='top',
             fontsize=7.5,
@@ -569,7 +531,8 @@ class Visualizer:
                        contour_factor: float = 2.0, contour_custom=None,
                        contour_linewidth: float = 0.3,
                        show_model: bool = False,
-                       save_path: str = None, show: bool = True) -> 'plt.Axes':
+                       save_path: str = None, show: bool = True,
+                       session=None) -> 'plt.Axes':
         """
         Affichage scientifique d'une Clean Map, Residual Map ou Dirty Map,
         identique au mode pgplot de Difmap (maplot.c).
@@ -749,7 +712,7 @@ class Visualizer:
                 ))
 
         # 6. Annotations texte (en bas, en dehors de la grille)
-        Visualizer._vis_add_annotations(ax, data, map_type, info=info,
+        Visualizer._vis_add_annotations(ax, data, map_type, info=info, session=session,
                                          drawn_levels=drawn, contour_mode=contour_mode)
 
         ax.set_xlabel("Décalage RA (mas)")
@@ -776,7 +739,8 @@ class Visualizer:
                    contour_factor: float = 2.0, contour_custom=None,
                    contour_linewidth: float = 0.3,
                    show_model: bool = False,
-                   save_path: str = None, show: bool = True, **kwargs) -> 'plt.Axes':
+                   save_path: str = None, show: bool = True,
+                   session=None, **kwargs) -> 'plt.Axes':
         """
         Affiche une image astrophysique avec sa barre de couleur et ses axes astrométriques.
 
@@ -836,6 +800,7 @@ class Visualizer:
                 show_model=show_model,
                 save_path=save_path,
                 show=show,
+                session=session,
             )
 
         if title is None:
@@ -865,8 +830,8 @@ class Visualizer:
         # IMPORTANT: Difmap n'affiche les contours QUE sur les clean maps restaurées (ncmp > 0)
         # Voir difmap.c:3855: docont = mappar.docont && ((vlbmap->ncmp && domap) || ...)
         # Dirty et Residual maps n'ont JAMAIS de contours
-        # Pas de contours, pas d'annotations de niveaux pour dirty/residual
-        Visualizer._vis_add_annotations(ax, data, map_type,
+        Visualizer._vis_add_annotations(ax, data, map_type, info=img_dict.get('info'),
+                                         session=session,
                                          drawn_levels=None, contour_mode='none')
 
         ax.set_title(title)
@@ -928,8 +893,6 @@ class Visualizer:
                 cellsize=self._session.imager._last_cellsize
             )
         # Titre automatique si l'appelant n'en fournit pas
-        kwargs.setdefault(
-            "title",
-            "Clean Map" if img_dict.get("map_type") == "clean" else "Dirty Map"
-        )
-        return self.plot_image(img_dict, **kwargs)
+        _titles = {"clean": "Clean Map", "residual": "Residual Map", "dirty": "Dirty Map"}
+        kwargs.setdefault("title", _titles.get(img_dict.get("map_type"), "Dirty Map"))
+        return self.plot_image(img_dict, session=self._session, **kwargs)

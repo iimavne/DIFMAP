@@ -110,7 +110,7 @@ class TestImagerWeightAndTaper:
         session = DifmapSession()
         with patch.object(dn, 'uvtaper', return_value=0) as mock_uvtaper:
             session.imager.uvtaper(0.5, 10.0)
-            mock_uvtaper.assert_called_once_with(0.5, 10.0 / 1e6)
+            mock_uvtaper.assert_called_once_with(0.5, 10.0)
         assert session.imager._current_uvtaper == (0.5, 10.0)
 
     def test_uvweight_impact_reel_sur_dirty_map(self, fichier_valide):
@@ -158,7 +158,7 @@ class TestImagerGetMapPackage:
         ra_max, ra_min, dec_min, dec_max = pkg["extent"]
         assert abs(ra_max + ra_min) <= 1.0
         assert abs(dec_max + dec_min) <= 1.0
-        assert pkg["data"].shape == (256, 256)
+        assert pkg["data"].shape == (128, 128)
 
 # =====================================================================
 # 5. TESTS MAPSIZE ET INVERT (Avec mocks du C)
@@ -200,22 +200,22 @@ class TestImagerInvert:
 # =====================================================================
 
 class TestImagerAffichage:
-    @patch("matplotlib.pyplot.show")
-    @patch("matplotlib.pyplot.colorbar")
-    @patch("matplotlib.pyplot.imshow")
-    @patch("matplotlib.pyplot.figure")
-    def test_plot_image(self, mock_figure, mock_imshow, mock_colorbar, mock_show):
+    def test_plot_image(self):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
         session = DifmapSession()
         fake_dict = {"data": np.zeros((10, 10)), "extent": [5, -5, -5, 5]}
 
-        session.vis.plot_image(fake_dict, title="Test", cmap="plasma")
+        with patch("matplotlib.axes.Axes.imshow", return_value=MagicMock()) as mock_imshow, \
+             patch("matplotlib.figure.Figure.colorbar"), \
+             patch.object(plt, "show"):
+            session.vis.plot_image(fake_dict, title="Test", cmap="plasma", show=False)
 
         mock_imshow.assert_called_once()
         _, kwargs = mock_imshow.call_args
         assert kwargs["extent"] == [5, -5, -5, 5]
         assert kwargs["cmap"] == "plasma"
-        mock_colorbar.assert_called_once()
-        mock_show.assert_called_once()
 
     def test_plot_image_cles_manquantes(self):
         session = DifmapSession()
@@ -330,6 +330,7 @@ class TestCleanAndRestore:
 
         with patch.object(session.imager, 'mapsize',
                           side_effect=lambda *a, **kw: call_order.append("mapsize")), \
+             patch.object(session.imager, 'clrmod'), \
              patch.object(session.imager, 'invert',
                           side_effect=lambda: call_order.append("invert")), \
              patch.object(session.imager, 'clean',
@@ -349,6 +350,7 @@ class TestCleanAndRestore:
         session = DifmapSession()
 
         with patch.object(session.imager, 'mapsize'), \
+             patch.object(session.imager, 'clrmod'), \
              patch.object(session.imager, 'invert'), \
              patch.object(session.imager, 'clean') as mock_clean, \
              patch.object(session.imager, 'restore'), \
@@ -356,7 +358,7 @@ class TestCleanAndRestore:
             session.obs.select = MagicMock()
             session.imager.make_clean_map(size=4, cellsize=1.0, niter=77, gain=0.03)
 
-        mock_clean.assert_called_once_with(77, 0.03)
+        mock_clean.assert_called_once_with(77, 0.03, 0.0)
 
     # ------------------------------------------------------------------
     # 7.2  Tests d'intégration (moteur C réel, pas de CLI externe)

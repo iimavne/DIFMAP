@@ -7796,6 +7796,7 @@ double get_native_estimated_bmaj(void) { return (vlbmap) ? vlbmap->e_bmaj * RTOM
 double get_native_estimated_bmin(void) { return (vlbmap) ? vlbmap->e_bmin * RTOMAS : 0.0; }
 double get_native_estimated_bpa(void) { return (vlbmap) ? vlbmap->e_bpa * rtod : 0.0; }
 double get_native_pixsize(void) { return (vlbmap) ? vlbmap->xinc * RTOMAS : 0.0; }
+int get_native_map_state(void) { return (vlbmap) ? (int)vlbmap->domap : -1; }
 
 const char* get_native_telescope_name(int isub, int itel) {
     if (vlbob == NULL) return "INCONNU";
@@ -8013,6 +8014,37 @@ int native_staper(float gauval, float gaurad_wav) {
     return 0;
 }
 
+/* ------------------------------------------------------------------ */
+/* Paramétrage de l'inversion (invert)                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Configure la plage UV (en longueurs d'onde) utilisée par invert().
+ * Équivalent à la commande difmap "uvrange" (uvmin, uvmax).
+ *
+ * Paramètres :
+ *   uvmin_wav - rayon UV min (wavelengths), 0 = pas de coupure.
+ *   uvmax_wav - rayon UV max (wavelengths), 0 = pas de coupure.
+ */
+int native_uvrange(float uvmin_wav, float uvmax_wav) {
+    if (vlbob == NULL) return -1;
+    invpar.uvmin = uvmin_wav;
+    invpar.uvmax = uvmax_wav;
+    return 0;
+}
+
+/*
+ * Configure la demi-largeur à mi-hauteur (HWHM) de la fonction
+ * d'interpolation UV, en pixels (paramètre hwhm difmap).
+ *
+ * Note : difmap attend typiquement 0.0 pour la valeur par défaut.
+ */
+int native_uvhwhm(float uvhwhm_pix) {
+    if (vlbob == NULL) return -1;
+    invpar.uvhwhm = uvhwhm_pix;
+    return 0;
+}
+
 int native_mapsize(int nx, float cellsize, int ny, float cellsize_y) {
     if (vlbob == NULL) return -1;
     int actual_ny = (ny > 0) ? ny : nx;
@@ -8090,9 +8122,8 @@ int native_refresh_beam(void) {
     return 0;
 }
 
-int native_restore(void) {
-    int dosm = 1;
-    int noresid = 0;
+int native_restore(int noresid, int dosm) {
+    int apply_dosm = dosm;
     if (vlbob == NULL || vlbmap == NULL) return -1;
     if (respar.e_bmin <= 0.0f || respar.e_bmaj <= 0.0f) return -1;
     respar.bmin = respar.e_bmin;
@@ -8108,23 +8139,116 @@ int native_restore(void) {
     if (vlbob->model->ncmp > 0) {
         if (mapres(vlbob, vlbmap, vlbob->model, vlbmap->map,
                    respar.bmaj, respar.bmin, respar.bpa * dtor,
-                   0, noresid, dosm, getfreq(vlbob, -1)) == NULL)
+                   0, noresid, apply_dosm, getfreq(vlbob, -1)) == NULL)
             return -1;
-        dosm = 0;
+        apply_dosm = 0;
     }
     if (vlbob->newmod->ncmp > 0) {
         if (mapres(vlbob, vlbmap, vlbob->newmod, vlbmap->map,
                    respar.bmaj, respar.bmin, respar.bpa * dtor,
-                   0, noresid, dosm, getfreq(vlbob, -1)) == NULL)
+                   0, noresid, apply_dosm, getfreq(vlbob, -1)) == NULL)
             return -1;
     }
     vlbmap->domap = MAP_IS_CLEAN;
     return 0;
 }
 
+int native_restore_beam(float bmaj_mas, float bmin_mas, float bpa_deg, int noresid, int dosm) {
+    int apply_dosm = dosm;
+    if (vlbob == NULL || vlbmap == NULL) return -1;
+    if (bmaj_mas <= 0.0f || bmin_mas <= 0.0f) return -1;
+    if (vlbob->model->ncmp + vlbob->newmod->ncmp < 1) return -1;
+
+    respar.bmaj = xytorad(bmaj_mas);
+    respar.bmin = xytorad(bmin_mas);
+    respar.bpa  = bpa_deg;
+
+    if (respar.bmin > respar.bmaj) {
+        float ftmp = respar.bmin;
+        respar.bmin = respar.bmaj;
+        respar.bmaj = ftmp;
+    }
+
+    vlbmap->domap = MAP_IS_STALE;
+    if (vlbob->model->ncmp > 0) {
+        if (mapres(vlbob, vlbmap, vlbob->model, vlbmap->map,
+                   respar.bmaj, respar.bmin, respar.bpa * dtor,
+                   0, noresid, apply_dosm, getfreq(vlbob, -1)) == NULL)
+            return -1;
+        apply_dosm = 0;
+    }
+    if (vlbob->newmod->ncmp > 0) {
+        if (mapres(vlbob, vlbmap, vlbob->newmod, vlbmap->map,
+                   respar.bmaj, respar.bmin, respar.bpa * dtor,
+                   0, noresid, apply_dosm, getfreq(vlbob, -1)) == NULL)
+            return -1;
+    }
+    vlbmap->domap = MAP_IS_CLEAN;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Paramétrage de l'auto-calibration (selfcal)                         */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Configure les limites de gain selfcal.
+ *
+ * Paramètres :
+ *   maxamp - correction amplitude max autorisée (<=1.0 => ignorée)
+ *   maxphs - correction phase max (degrés) (<=0.0 => ignorée)
+ */
+int native_set_selfcal_limits(float maxamp, float maxphs) {
+    if (vlbob == NULL) return -1;
+    slfpar.maxamp = maxamp;
+    slfpar.maxphs = maxphs;
+    return 0;
+}
+
+/*
+ * Configure le nombre minimum de télescopes pour les solutions.
+ */
+int native_set_selfcal_mintel(int p_mintel, int a_mintel) {
+    if (vlbob == NULL) return -1;
+    slfpar.p_mintel = p_mintel;
+    slfpar.a_mintel = a_mintel;
+    return 0;
+}
+
+/*
+ * Configure les options de flag/clip lors de selfcal.
+ */
+int native_set_selfcal_flags(int doflag, int clip) {
+    if (vlbob == NULL) return -1;
+    slfpar.doflag = doflag;
+    slfpar.clip = clip;
+    return 0;
+}
+
 int native_wfits(const char *filename) {
     if(!vlbob) return -1;
     return uvf_write(vlbob, filename, 0);
+}
+
+/* Écrit la clean map (requiert MAP_IS_CLEAN dans le buffer). */
+int native_wmap(const char *filename) {
+    if (!vlbob || !vlbmap) return -1;
+    if (vlbmap->domap != MAP_IS_CLEAN) return -2;
+    return w_MapBeam(vlbob, vlbmap, 1, filename) ? -1 : 0;
+}
+
+/* Écrit le dirty beam (requiert un beam valide, dobeam == 0). */
+int native_wbeam(const char *filename) {
+    if (!vlbob || !vlbmap) return -1;
+    if (vlbmap->dobeam != 0) return -2;
+    return w_MapBeam(vlbob, vlbmap, 0, filename) ? -1 : 0;
+}
+
+/* Écrit la carte courante dirty/résiduelle (requiert MAP_IS_MAP, domap == 0). */
+int native_wdmap(const char *filename) {
+    if (!vlbob || !vlbmap) return -1;
+    if (vlbmap->domap != MAP_IS_MAP) return -2;
+    return w_MapBeam(vlbob, vlbmap, 1, filename) ? -1 : 0;
 }
 
 /* =====================================================================
@@ -8253,10 +8377,11 @@ int l_extract_uv(void) {
 
     eff_if_end = (g_if_end >= 0) ? g_if_end : vlbob->nif - 1;
 
-    if(vlbob->model->ncmp + vlbob->newmod->ncmp + vlbob->cmodel->ncmp + vlbob->cnewmod->ncmp > 0) {
-        Moddif md;
-        /* La fonction moddif calcule et injecte modamp et modphs dans la RAM */
-        moddif(vlbob, &md, 0.0f, 0.0f, 1); /* 1 correspond à MD_VIS_FIT */
+    /* Establish tentative model components into the UV plane (like native 'keep').
+     * mergemod() calls fixmod() which writes vis->modamp/vis->modphs for every
+     * baseline. Without this, modamp/modphs remain zero after CLEAN. */
+    if(vlbob->newmod->ncmp + vlbob->cnewmod->ncmp > 0) {
+        mergemod(vlbob, 1);
     }
 
     /* 1. COMPTAGE */

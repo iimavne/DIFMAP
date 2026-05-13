@@ -95,7 +95,7 @@ class BasePlotEditor:
                     c_itel = int(itel)
                     try:
                         name = observation._native.get_telescope_name(c_isub, c_itel)
-                        if name and name != "INCONNU":
+                        if isinstance(name, str) and name and name != "INCONNU":
                             self.noms_antennes[c_itel] = name.strip()
                     except Exception:
                         pass
@@ -107,7 +107,7 @@ class BasePlotEditor:
             tel_ids = np.unique(np.concatenate([data["tel_a"][masque], data["tel_b"][masque]]))
             self.antennes_par_subarray[sub] = sorted(
                 tel_ids.tolist(),
-                key=lambda aid: self.noms_antennes.get(aid, str(aid))
+                key=lambda aid: str(self.noms_antennes.get(aid, aid))
             )
 
         # Liste globale du focus : noms de stations du fichier complet, y compris

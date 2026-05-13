@@ -206,7 +206,7 @@ def appliquer_physique_wrapper(session, cmd_difmap):
     
     if "uvtaper" in cmd_difmap:
         val, rad = cmd_difmap.replace("uvtaper ", "").split(",")
-        session.imager.uvtaper(float(val), float(rad) * 1e6)  # Convert Mλ to wavelengths
+        session.imager.uvtaper(float(val), float(rad))
     elif "uvweight" in cmd_difmap:
         val, err = cmd_difmap.replace("uvweight ", "").split(",")
         session.imager.uvweight(float(val), float(err))

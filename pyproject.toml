@@ -17,3 +17,6 @@ dependencies = [
     "PyQt6",
     "qtawesome"
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -121,24 +121,22 @@ class DifmapMapGeometry:
         """
         xcent = nx // 2
         ycent = ny // 2
-        
-        # Ajustement pour indices Python (xb, yb sont exclusifs)
-        xb_adj = xb - 1
-        yb_adj = yb - 1
-        
-        # Calcul des coordonnées mondiales (lignes 476-491)
+
+        # Calcul des coordonnées mondiales : on travaille sur les BORDS de pixels.
+        # Avec slicing Python, xb/yb sont EXCLUSIFS : ils correspondent naturellement
+        # au bord supérieur de la dernière colonne/ligne incluse.
         if xinc > 0:
             wxa = (xa - xcent) * xinc
-            wxb = (xb_adj - xcent) * xinc
+            wxb = (xb - xcent) * xinc
         else:
-            wxa = (xb_adj - xcent) * xinc
+            wxa = (xb - xcent) * xinc
             wxb = (xa - xcent) * xinc
             
         if yinc > 0:
             wya = (ya - ycent) * yinc
-            wyb = (yb_adj - ycent) * yinc
+            wyb = (yb - ycent) * yinc
         else:
-            wya = (yb_adj - ycent) * yinc
+            wya = (yb - ycent) * yinc
             wyb = (ya - ycent) * yinc
         
         # Conversion pour Matplotlib : [xmax, xmin, ymin, ymax]
@@ -239,4 +237,43 @@ class DifmapMapGeometry:
         
         return cropped_data, extent, cropped_data.shape[1], cropped_data.shape[0]
 
+
+def get_difmap_contour_levels(
+    peak: float,
+    mode: str = 'pct',
+    min_pct: float = 1.0,
+    max_pct: float = 64.0,
+    factor: float = 2.0,
+) -> List[float]:
+    """
+    Calcule les niveaux de contours selon les conventions Difmap.
+
+    Parameters
+    ----------
+    peak : float
+        Valeur de pic de la carte (Jy/beam).
+    mode : str
+        ``'pct'`` – niveaux par défaut Difmap ([-1,1,2,4,8,16,32,64] % du pic).
+        ``'log'`` – niveaux logarithmiques de min_pct à max_pct avec facteur multiplicatif.
+    min_pct, max_pct : float
+        Bornes en pourcentage du pic (mode ``'log'`` uniquement).
+    factor : float
+        Facteur multiplicatif entre niveaux consécutifs (mode ``'log'`` uniquement).
+
+    Returns
+    -------
+    list of float
+        Niveaux de contours en unités absolues (même unité que peak).
+    """
+    if mode == 'pct':
+        pcts = [-1.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0]
+        return [p / 100.0 * peak for p in pcts]
+
+    # mode == 'log'
+    positive: List[float] = []
+    level = min_pct
+    while level <= max_pct + 1e-9:
+        positive.append(level / 100.0 * peak)
+        level *= factor
+    return ([-positive[0]] + positive) if positive else []
 

@@ -212,25 +212,25 @@ class TestMapPlot:
 class TestPlotImage:
     """Tests pour la méthode plot_image()."""
     
-    @patch("matplotlib.pyplot.show")
-    @patch("matplotlib.pyplot.colorbar")
-    @patch("matplotlib.pyplot.imshow")
-    @patch("matplotlib.pyplot.figure")
-    def test_plot_image_appelle_matplotlib(self, mock_figure, mock_imshow, mock_colorbar, mock_show):
+    def test_plot_image_appelle_matplotlib(self):
         """Vérifie que plot_image appelle les bonnes fonctions matplotlib."""
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
         session = DifmapSession()
-        
+
         fake_dict = {
             'data': np.ones((10, 10)),
             'extent': [5, -5, -5, 5]
         }
-        
-        session.vis.plot_image(fake_dict, cmap='viridis', title='Test')
-        
-        mock_figure.assert_called()
+
+        with patch("matplotlib.axes.Axes.imshow", return_value=MagicMock()) as mock_imshow, \
+             patch("matplotlib.figure.Figure.colorbar") as mock_colorbar, \
+             patch.object(plt, "show"):
+            session.vis.plot_image(fake_dict, cmap='viridis', title='Test', show=False)
+
         mock_imshow.assert_called_once()
         mock_colorbar.assert_called_once()
-        mock_show.assert_called_once()
     
     def test_plot_image_valide_cles(self):
         """Vérifie que plot_image valide les clés du dictionnaire."""

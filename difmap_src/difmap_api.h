@@ -15,6 +15,7 @@ double get_native_estimated_bmaj(void);
 double get_native_estimated_bmin(void);
 double get_native_estimated_bpa(void);
 double get_native_pixsize(void);
+int get_native_map_state(void);
 
 /* Extraction du plan UV */
 int l_extract_uv(void);
@@ -23,8 +24,14 @@ float* get_native_u(void);
 float* get_native_v(void);
 float* get_native_vis_amp(void);
 float* get_native_vis_wgt(void);
+float* get_native_vis_phs(void);
 float* get_native_mod_amp(void);
 float* get_native_mod_phs(void);
+int*   get_native_tel_a(void);
+int*   get_native_tel_b(void);
+double* get_native_time(void);
+int*   get_native_subarray(void);
+int*   get_native_if(void);
 
 
 /* Commandes (Actions) */
@@ -35,17 +42,23 @@ int native_set_if_range(int if_beg, int if_end);
 int native_get_nif(void);
 const char *native_get_header_text(void);
 
-/* Paramètres d'imagerie complets*/
-int native_uvweight(float uvbin, float errpow, int dorad);
-int native_uvtaper(float gauval, float gaurad_wav);
-int native_mapsize(int nx, float cellsize, int ny, float cellsize_y);
-int native_invert(void);
-int native_clean(int niter, float gain, float cutoff);
-int native_clrmod(void);
-int native_reset_map_flags(void);
-int native_refresh_beam(void);
-int native_restore(void);
-int native_wfits(const char* filename);
+ /* Paramètres d'imagerie complets*/
+ int native_uvweight(float uvbin, float errpow, int dorad);
+ int native_uvtaper(float gauval, float gaurad_wav);
+ int native_uvrange(float uvmin_wav, float uvmax_wav);
+ int native_uvhwhm(float uvhwhm_pix);
+ int native_mapsize(int nx, float cellsize, int ny, float cellsize_y);
+ int native_invert(void);
+ int native_clean(int niter, float gain, float cutoff);
+ int native_clrmod(void);
+ int native_reset_map_flags(void);
+ int native_refresh_beam(void);
+ int native_restore(int noresid, int dosm);
+ int native_restore_beam(float bmaj_mas, float bmin_mas, float bpa_deg, int noresid, int dosm);
+ int native_wfits(const char* filename);
+ int native_wmap(const char* filename);
+ int native_wbeam(const char* filename);
+ int native_wdmap(const char* filename);
 
 const char* get_observation_polarization(void);
 
@@ -68,9 +81,12 @@ float native_get_window_xmax(int index);
 float native_get_window_ymin(int index);
 float native_get_window_ymax(int index);
 
-/* Auto-calibration */
-int native_selfcal(int doamp, int dofloat, float solint);
-int native_staper(float gauval, float gaurad_wav);
+ /* Auto-calibration */
+ int native_selfcal(int doamp, int dofloat, float solint);
+ int native_staper(float gauval, float gaurad_wav);
+ int native_set_selfcal_limits(float maxamp, float maxphs);
+ int native_set_selfcal_mintel(int p_mintel, int a_mintel);
+ int native_set_selfcal_flags(int doflag, int clip);
 
 /* Modèle CLEAN — export des composantes */
 int    native_extract_model(void);

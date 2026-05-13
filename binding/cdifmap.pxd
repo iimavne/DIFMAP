@@ -13,6 +13,7 @@ cdef extern from "difmap_api.h":
     double get_native_estimated_bmin()
     double get_native_estimated_bpa()
     double get_native_pixsize()
+    int get_native_map_state()
     float* get_native_vis_phs()
 
     ############# POLARISATION ######################
@@ -45,15 +46,21 @@ cdef extern from "difmap_api.h":
     const char *native_get_header_text()
     int native_uvweight(float uvbin, float errpow, int dorad)
     int native_uvtaper(float gauval, float gaurad_wav)
+    int native_uvrange(float uvmin_wav, float uvmax_wav)
+    int native_uvhwhm(float uvhwhm_pix)
     int native_mapsize(int nx, float cellsize, int ny, float cellsize_y)
     int native_invert()
     int native_clean(int niter, float gain, float cutoff)
     int native_clrmod()
     int native_reset_map_flags()
     int native_refresh_beam()
-    int native_restore()
+    int native_restore(int noresid, int dosm)
+    int native_restore_beam(float bmaj_mas, float bmin_mas, float bpa_deg, int noresid, int dosm)
 
     int native_wfits(const char* filename)
+    int native_wmap(const char* filename)
+    int native_wbeam(const char* filename)
+    int native_wdmap(const char* filename)
     int flag_native_data(int *indices, int num_indices)
     int save_native_wobs(const char* filepath)
     int unflag_native_data(int *indices, int num_indices)
@@ -80,6 +87,9 @@ cdef extern from "difmap_api.h":
     # Auto-calibration
     int native_selfcal(int doamp, int dofloat, float solint)
     int native_staper(float gauval, float gaurad_wav)
+    int native_set_selfcal_limits(float maxamp, float maxphs)
+    int native_set_selfcal_mintel(int p_mintel, int a_mintel)
+    int native_set_selfcal_flags(int doflag, int clip)
 
     # Modèle CLEAN — export des composantes
     int    native_extract_model()

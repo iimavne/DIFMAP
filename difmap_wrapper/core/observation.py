@@ -73,9 +73,6 @@ class Observation:
             except Exception:
                 logger.exception("Erreur lors du rafraîchissement de %s", editor)
 
-    # =========================================================
-    # C3 / M6 : API données
-    # =========================================================
 
     def invalidate_cache(self) -> None:
         """Force un réextraction UV au prochain appel à get_data()."""
@@ -388,14 +385,23 @@ class Observation:
         3
         """
         indices_c = np.asarray(indices, dtype=np.int32)
-        if len(indices_c) > 0:
-            result = self._native.flag_data(indices_c)
-            self.invalidate_cache()
-            if self.masque_flagges is not None:
-                valid = indices_c[(indices_c >= 0) & (indices_c < len(self.masque_flagges))]
-                self.masque_flagges[valid] = True
-            return result
-        return 0
+        if len(indices_c) == 0:
+            return 0
+        result = self._native.flag_data(indices_c)
+        # Mise à jour du cache en place : l_extract_uv filtre wt<=0, donc une
+        # ré-extraction réduirait la taille du tableau et réinitialiserait
+        # masque_flagges. On applique wt = -|wt| dans la copie Python pour que
+        # la taille reste stable et masque_flagges reste cohérent.
+        if self._cached_raw_data is not None:
+            wgt = self._cached_raw_data.get('weight')
+            if wgt is not None:
+                valid = indices_c[(indices_c >= 0) & (indices_c < len(wgt))]
+                wgt[valid] = -np.abs(wgt[valid])
+        if self.masque_flagges is not None:
+            valid = indices_c[(indices_c >= 0) & (indices_c < len(self.masque_flagges))]
+            self.masque_flagges[valid] = True
+        self.notify_data_changed()
+        return result
 
     def unflag_data(self, indices) -> int:
         """
@@ -412,14 +418,19 @@ class Observation:
             Nombre de visibilités restaurées.
         """
         indices_c = np.asarray(indices, dtype=np.int32)
-        if len(indices_c) > 0:
-            result = self._native.unflag_data(indices_c)
-            self.invalidate_cache()
-            if self.masque_flagges is not None:
-                valid = indices_c[(indices_c >= 0) & (indices_c < len(self.masque_flagges))]
-                self.masque_flagges[valid] = False
-            return result
-        return 0
+        if len(indices_c) == 0:
+            return 0
+        result = self._native.unflag_data(indices_c)
+        if self._cached_raw_data is not None:
+            wgt = self._cached_raw_data.get('weight')
+            if wgt is not None:
+                valid = indices_c[(indices_c >= 0) & (indices_c < len(wgt))]
+                wgt[valid] = np.abs(wgt[valid])
+        if self.masque_flagges is not None:
+            valid = indices_c[(indices_c >= 0) & (indices_c < len(self.masque_flagges))]
+            self.masque_flagges[valid] = False
+        self.notify_data_changed()
+        return result
 
     def save_wobs(self, filepath: str) -> bool:
         """

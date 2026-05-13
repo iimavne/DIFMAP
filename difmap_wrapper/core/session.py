@@ -4,6 +4,8 @@ import difmap_native
 
 from .imaging import DifmapImager
 from .observation import Observation
+from .executor import DifmapExecutor
+from .history import CommandHistory
 from ..utils.exceptions import DifmapStateError, DifmapError
 
 
@@ -87,8 +89,19 @@ class DifmapSession(metaclass=_SingletonMeta):
         self.obs = Observation(self)
         self.imager = DifmapImager(self)
 
+        self.history = CommandHistory()
+        self._executor = DifmapExecutor()
+
         from .visualizer import Visualizer
         self.vis = Visualizer(self)
+
+    def execute(self, cmd) -> None:
+        self._executor.execute(self, cmd)
+        self.history.add(cmd)
+
+    def replay(self, commands) -> None:
+        for cmd in commands:
+            self._executor.execute(self, cmd)
 
     def __enter__(self):
         return self
@@ -127,10 +140,22 @@ class DifmapSession(metaclass=_SingletonMeta):
             raise DifmapError(f"Fichier introuvable : {filepath}")
         if self.uv_loaded:
             self._native_cleanup()
-        ret = self._native.observe(filepath)
-        if ret != 0:
-            raise DifmapError(f"Échec du chargement : {filepath} (format non reconnu ou fichier corrompu)")
-        self.uv_loaded = True
+        # Certains échecs d'observe() peuvent être intermittents (état natif/IO).
+        # On tente plusieurs fois en forçant un cleanup entre les essais.
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            ret = self._native.observe(filepath)
+            if ret == 0:
+                self.uv_loaded = True
+                return
+
+            try:
+                self._native.cleanup()
+            finally:
+                self.uv_loaded = False
+
+            if attempt == max_attempts:
+                raise DifmapError(f"Échec du chargement : {filepath} (format non reconnu ou fichier corrompu)")
 
     def _native_cleanup(self) -> None:
         """Libère les buffers C et remet à zéro l'état Python avant un rechargement."""
@@ -146,6 +171,7 @@ class DifmapSession(metaclass=_SingletonMeta):
         self._native.cleanup()
         # Réinitialiser l'état Python pour ne pas garder en RAM les données de l'ancien fichier
         self.imager._last_residual_map = None
+        self.imager._last_residual_rms = None
         self.imager._last_mapsize = None
         self.imager._last_cellsize = None
         self.imager._last_ny = None
@@ -153,6 +179,7 @@ class DifmapSession(metaclass=_SingletonMeta):
         self.imager._current_map_type = None
         self.imager._current_uvtaper = None
         self.imager._current_uvweight = None
+        self.imager._current_selfcal_taper = None
         self.imager.active_windows = []
         self.obs.masque_flagges = None
         self.obs.historique_coupes.clear()

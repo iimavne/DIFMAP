@@ -1,4 +1,4 @@
-# difmap_wrapper/gui/components/main_toolbar.py
+# difmap_wrapper/gui/widgets/main_toolbar.py
 from PyQt6.QtWidgets import QToolBar, QSizePolicy, QWidget
 from PyQt6.QtGui import QAction
 from PyQt6.QtCore import QSize, Qt
@@ -9,80 +9,60 @@ try:
 except ImportError:
     _HAS_QTA = False
 
+
 def _icon(name, color="#4A6A8A"):
-    """
-    Crée une icône QtAwesome si la bibliothèque est disponible.
-
-    Parameters
-    ----------
-    name : str
-        Nom de l'icône FontAwesome (ex. ``'fa5s.save'``).
-    color : str, optional
-        Couleur hexadécimale de l'icône.
-
-    Returns
-    -------
-    QIcon or None
-        Icône créée, ou ``None`` si ``qtawesome`` n'est pas installé.
-    """
     if _HAS_QTA:
         try: return qta.icon(name, color=color)
         except Exception: pass
     return None
 
-class MainToolbar(QToolBar):
-    """
-    Barre d'outils principale de DIFMAP Modern.
 
-    Contient les actions fichier (Load/Save), vue (Undo/Refresh/Reset),
-    le sélecteur d'outil actif, l'inspecteur et le bouton terminal.
-    """
+class MainToolbar(QToolBar):
+    """Barre unique fusionnant menu et actions principales."""
 
     def __init__(self, title="Main Toolbar", parent=None):
-        """
-        Parameters
-        ----------
-        title : str, optional
-            Titre interne de la toolbar (utilisé par Qt).
-        parent : QWidget, optional
-            Widget parent Qt.
-        """
         super().__init__(title, parent)
         self.setMovable(False)
-        self.setIconSize(QSize(18, 18))
+        self.setIconSize(QSize(15, 15))
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
 
     def add_standard_actions(self, window):
         """
-        Crée et ajoute les actions de la toolbar principale.
-
-        Attributs créés : ``action_load``, ``action_save``, ``action_terminal``.
-        Les contrôles d'outils (undo, reset, combo) sont dans la toolbar locale
-        de chaque widget de plot.
-
-        Parameters
-        ----------
-        window : QMainWindow
-            Fenêtre parent utilisée comme owner des ``QAction``.
+        Construit la barre unique : Load · Save · | · Help · Exit · spacer → Terminal.
+        Attributs publics : action_load, action_save, action_help, action_exit, action_terminal.
         """
-        def act(label, icon_name=None, tooltip=None):
+        def act(label, icon_name=None, tooltip=None, color="#4A6A8A"):
             a = QAction(label, window)
-            if icon_name and _icon(icon_name):
-                a.setIcon(_icon(icon_name))
+            ico = _icon(icon_name, color) if icon_name else None
+            if ico:
+                a.setIcon(ico)
             if tooltip:
                 a.setToolTip(tooltip)
             return a
 
-        # ── FICHIER ──────────────────────────────────────────────
-        self.action_load = act("Load", "fa5s.folder-open", "Load a FITS observation file")
+        # ── Fichier ───────────────────────────────────────────────
+        self.action_load = act("Load", "fa5s.folder-open", "Ouvrir un fichier FITS")
         self.addAction(self.action_load)
-        self.action_save = act("Save", "fa5s.save", "Save visibilities as FITS [Ctrl+S]")
+
+        self.action_save = act("Save", "fa5s.save", "Sauvegarder les visibilités [Ctrl+S]")
         self.addAction(self.action_save)
 
-        # ── SÉPARATEUR EXTENSIBLE ────────────────────────────────
+        self.addSeparator()
+
+        # ── Aide & Quitter ────────────────────────────────────────
+        self.action_help = act("Help", "fa5s.keyboard", "Raccourcis clavier [H]")
+        self.addAction(self.action_help)
+
+        self.action_exit = act("Exit", "fa5s.times-circle",
+                               "Quitter l'application", color="#C62828")
+        self.addAction(self.action_exit)
+
+        # ── Espaceur extensible ───────────────────────────────────
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.addWidget(spacer)
 
-        self.action_terminal = act("Terminal", "fa5s.terminal", "Show / hide the log terminal")
+        # ── Terminal ──────────────────────────────────────────────
+        self.action_terminal = act("Terminal", "fa5s.terminal",
+                                   "Afficher / masquer le terminal")
         self.addAction(self.action_terminal)

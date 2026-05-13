@@ -56,15 +56,14 @@ class MainWindow(QMainWindow):
         self.control_panel = ControlPanel(self.session, parent=self)
         self.toolbar       = MainToolbar(parent=self)
         self.toolbar.add_standard_actions(self)
+        self.toolbar.setStyleSheet(DesignSystem.get_unified_toolbar_style())
         self.addToolBar(self.toolbar)
+        self.menuBar().setVisible(False)  # remplacé par la toolbar unifiée
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea,  self.control_panel)
         self.control_panel.setMinimumWidth(250)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.log_console)
-        self._create_menu_bar()
 
-        self.tabs = QTabWidget()
-        self.setCentralWidget(self.tabs)
-
+        # ── Widgets de contenu ────────────────────────────────────────
         self.plot_widget          = None
         self.map_widget           = DirtyMapPlotWidget(self)
         self.clean_map_widget     = CleanMapPlotWidget(self)
@@ -75,12 +74,27 @@ class MainWindow(QMainWindow):
         )
         self.header_widget  = HeaderWidget(self.session, parent=self)
 
-        self.tabs.addTab(QWidget(),                   "UVplot")       # TabIndex.UV       = 0
-        self.tabs.addTab(self.radplot_widget,          "Radplot")      # TabIndex.RADPLOT  = 1
-        self.tabs.addTab(self.map_widget,              "Dirty Map")    # TabIndex.MAP      = 2
-        self.tabs.addTab(self.clean_map_widget,        "Clean Map")    # TabIndex.CLEAN    = 3
-        self.tabs.addTab(self.residual_map_widget,     "Residual Map") # TabIndex.RESIDUAL = 4
-        self.tabs.addTab(self.header_widget,           "Header")       # TabIndex.HEADER   = 5
+        # ── Sous-onglets "Graphiques" ──────────────────────────────
+        self.inner_graphiques = QTabWidget()
+        self.inner_graphiques.setStyleSheet(DesignSystem.get_inner_tab_style())
+        self.inner_graphiques.addTab(QWidget(),             "UV Coverage")  # inner 0 → UV=0
+        self.inner_graphiques.addTab(self.radplot_widget,   "Radplot")      # inner 1 → RADPLOT=1
+
+        # ── Sous-onglets "Imagerie" ────────────────────────────────
+        self.inner_imagerie = QTabWidget()
+        self.inner_imagerie.setStyleSheet(DesignSystem.get_inner_tab_style())
+        self.inner_imagerie.addTab(self.map_widget,          "Dirty Map")    # inner 0 → MAP=2
+        self.inner_imagerie.addTab(self.clean_map_widget,    "Clean Map")    # inner 1 → CLEAN=3
+        self.inner_imagerie.addTab(self.residual_map_widget, "Residual Map") # inner 2 → RESIDUAL=4
+        self.inner_imagerie.addTab(QWidget(),                "All Maps")     # inner 3 → ALL_MAPS=6
+
+        # ── Super-onglets (outer) ──────────────────────────────────
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet(DesignSystem.get_outer_tab_style())
+        self.tabs.addTab(self.inner_graphiques, "Graphiques")  # outer 0 = OUTER_GRAPHIQUES
+        self.tabs.addTab(self.inner_imagerie,   "Imagerie")    # outer 1 = OUTER_IMAGERIE
+        self.tabs.addTab(self.header_widget,    "Header")      # outer 2 = OUTER_HEADER
+        self.setCentralWidget(self.tabs)
 
         self._help_dialog_open = False   # garde anti-ouvertures multiples
 
@@ -99,7 +113,43 @@ class MainWindow(QMainWindow):
         self.log_console.log("DIFMAP Modern initialized. Ready to observe.")
 
     # =========================================================
-    # CHARGEMENT 
+    # NAVIGATION ONGLETS (flat index ↔ outer+inner)
+    # =========================================================
+
+    def _get_logical_tab(self) -> int:
+        """Retourne l'index logique (TabIndex.*) à partir de l'état outer+inner."""
+        outer = self.tabs.currentIndex()
+        if outer == TabIndex.OUTER_GRAPHIQUES:
+            return self.inner_graphiques.currentIndex()  # UV=0, RADPLOT=1
+        elif outer == TabIndex.OUTER_IMAGERIE:
+            return (TabIndex.MAP, TabIndex.CLEAN, TabIndex.RESIDUAL, TabIndex.ALL_MAPS)[
+                self.inner_imagerie.currentIndex()
+            ]
+        else:
+            return TabIndex.HEADER
+
+    def _set_logical_tab(self, idx: int) -> None:
+        """Positionne outer+inner à partir d'un index logique (TabIndex.*)."""
+        if idx in (TabIndex.UV, TabIndex.RADPLOT):
+            self.tabs.setCurrentIndex(TabIndex.OUTER_GRAPHIQUES)
+            self.inner_graphiques.setCurrentIndex(idx)
+        elif idx == TabIndex.MAP:
+            self.tabs.setCurrentIndex(TabIndex.OUTER_IMAGERIE)
+            self.inner_imagerie.setCurrentIndex(0)
+        elif idx == TabIndex.CLEAN:
+            self.tabs.setCurrentIndex(TabIndex.OUTER_IMAGERIE)
+            self.inner_imagerie.setCurrentIndex(1)
+        elif idx == TabIndex.RESIDUAL:
+            self.tabs.setCurrentIndex(TabIndex.OUTER_IMAGERIE)
+            self.inner_imagerie.setCurrentIndex(2)
+        elif idx == TabIndex.ALL_MAPS:
+            self.tabs.setCurrentIndex(TabIndex.OUTER_IMAGERIE)
+            self.inner_imagerie.setCurrentIndex(3)
+        elif idx == TabIndex.HEADER:
+            self.tabs.setCurrentIndex(TabIndex.OUTER_HEADER)
+
+    # =========================================================
+    # CHARGEMENT
     # =========================================================
 
     def _load_file_logic(self, filepath: str) -> None:
@@ -193,7 +243,7 @@ class MainWindow(QMainWindow):
         """
         self._bulk_reloading = True
         try:
-            current_idx = self.tabs.currentIndex()
+            current_idx = self._get_logical_tab()
             if current_idx not in (TabIndex.UV, TabIndex.RADPLOT):
                 current_idx = TabIndex.UV
 
@@ -204,8 +254,8 @@ class MainWindow(QMainWindow):
                     save_callback=self._handle_save_dialog,
                     sync_callback=self._sync_all_plots,
                 )
-                self.tabs.removeTab(TabIndex.UV)
-                self.tabs.insertTab(TabIndex.UV, self.plot_widget, "UV Coverage")
+                self.inner_graphiques.removeTab(0)  # UV placeholder
+                self.inner_graphiques.insertTab(0, self.plot_widget, "UV Coverage")
             else:
                 self.plot_widget.reload_data(self.data, self.session.obs)
 
@@ -214,9 +264,11 @@ class MainWindow(QMainWindow):
                 observation=self.session.obs,
             )
 
-            self.tabs.blockSignals(True)
-            self.tabs.setCurrentIndex(current_idx)
-            self.tabs.blockSignals(False)
+            for tw in (self.tabs, self.inner_graphiques, self.inner_imagerie):
+                tw.blockSignals(True)
+            self._set_logical_tab(current_idx)
+            for tw in (self.tabs, self.inner_graphiques, self.inner_imagerie):
+                tw.blockSignals(False)
             self._on_tab_changed(current_idx)
         finally:
             self._bulk_reloading = False
@@ -234,7 +286,7 @@ class MainWindow(QMainWindow):
         UVPlotEditor or RadPlotEditor or None
             L'éditeur de l'onglet sélectionné, ou ``None`` si aucun n'est disponible.
         """
-        idx = self.tabs.currentIndex()
+        idx = self._get_logical_tab()
         if idx == TabIndex.UV and self.plot_widget:
             return getattr(self.plot_widget, 'editor', None)
         if idx == TabIndex.RADPLOT and self.radplot_widget:
@@ -261,6 +313,8 @@ class MainWindow(QMainWindow):
                 editor.action_save()
         tb.action_save.triggered.connect(handle_save)
 
+        tb.action_help.triggered.connect(self._show_help_dialog)
+        tb.action_exit.triggered.connect(self.close)
         tb.action_terminal.triggered.connect(self._toggle_terminal)
 
         router.route_button_both('btn_next_sub',  'action_next_subarray',  [None])
@@ -351,13 +405,19 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         
-        self.tabs.currentChanged.connect(self._on_tab_changed)
+        def _on_any_tab_changed(_):
+            self._on_tab_changed(self._get_logical_tab())
+
+        self.tabs.currentChanged.connect(_on_any_tab_changed)
+        self.inner_graphiques.currentChanged.connect(_on_any_tab_changed)
+        self.inner_imagerie.currentChanged.connect(_on_any_tab_changed)
+
         self.control_panel.combo_rad_mode.currentIndexChanged.connect(
             lambda idx: self.radplot_widget.set_display_mode(idx)
             if self.radplot_widget else None
         )
 
-        def _sync_ui_on_tab_change(index):
+        def _sync_ui_on_tab_change(_):
             """Synchronise les checkboxes avec l'état du nouvel onglet actif."""
             try:
                 editor = self._get_active_editor()
@@ -371,6 +431,8 @@ class MainWindow(QMainWindow):
                 pass
 
         self.tabs.currentChanged.connect(_sync_ui_on_tab_change)
+        self.inner_graphiques.currentChanged.connect(_sync_ui_on_tab_change)
+        self.inner_imagerie.currentChanged.connect(_sync_ui_on_tab_change)
 
     # =========================================================
     # MENU ET DIALOGUES
@@ -458,8 +520,8 @@ class MainWindow(QMainWindow):
             ctrl.chk_errors.setVisible(has_data and is_radplot)
             ctrl.chk_conjugate.setVisible(has_data and is_uv)
 
-        # Checkbox Show Model uniquement pertinent sur la Clean Map (composantes CLEAN)
-        ctrl.chk_show_model_map.setVisible(index == TabIndex.CLEAN)
+        # Checkbox Show Model visible sur toutes les cartes quand un modèle existe
+        ctrl.chk_show_model_map.setVisible(is_map and has_model)
 
         if is_radplot:
             ctrl.chk_conjugate.blockSignals(True)
@@ -701,7 +763,7 @@ class MainWindow(QMainWindow):
                 contour_absmax=contour_absmax, contour_factor=contour_factor,
                 contour_custom=contour_custom
             )
-            self.tabs.setCurrentIndex(TabIndex.MAP)
+            self._set_logical_tab(TabIndex.MAP)
             self.log_console.log("Dirty Map computed successfully.")
 
         except Exception as e:
@@ -760,12 +822,14 @@ class MainWindow(QMainWindow):
             self._refresh_residual_map()
             
             # Basculer sur l'onglet Clean Map
-            self.tabs.setCurrentIndex(TabIndex.CLEAN)
+            self._set_logical_tab(TabIndex.CLEAN)
             
-            # Log des stats finales — réutilise le package déjà calculé par _refresh_clean_map()
-            if self._last_clean_package is not None:
-                peak_flux = float(self._last_clean_package['data'].max())
-                self.log_console.log(f"Clean Map restored — Peak: {peak_flux:.4f} Jy/beam")
+            # Log des stats finales — lit directement depuis le moteur C (évite np.max sur cache)
+            try:
+                peak_info = self.session.imager.peak()
+                self.log_console.log(f"Clean Map restored — Peak: {peak_info['flux']:.4f} Jy/beam")
+            except Exception:
+                pass
 
         except Exception as e:
             err_msg = f"Failed to compute Clean Map: {e}"
@@ -847,7 +911,7 @@ class MainWindow(QMainWindow):
     def _add_peak_window(self):
         """Ajoute une fenêtre autour du pic de flux (taille par défaut DIFMAP = 1.0 FWHM)."""
         try:
-            current_idx = self.tabs.currentIndex()
+            current_idx = self._get_logical_tab()
             # Garde-fou scientifique (soft): peakwin() doit se baser sur une dirty map
             # fraîche correspondant aux paramètres d'imagerie courants (mapsize/weight/taper).
             # On applique les paramètres et on force invert() avant peakwin().
@@ -869,7 +933,7 @@ class MainWindow(QMainWindow):
 
             # Ne pas basculer d'onglet: le refresh du résiduel est un update secondaire.
             try:
-                self.tabs.setCurrentIndex(current_idx)
+                self._set_logical_tab(current_idx)
             except Exception:
                 pass
             
@@ -890,15 +954,19 @@ class MainWindow(QMainWindow):
 
     def _on_show_model_map_changed(self, checked: bool) -> None:
         """Callback quand le checkbox Show Model pour Maps change."""
-        current_tab = self.tabs.currentIndex()
+        current_tab = self._get_logical_tab()
         if current_tab == TabIndex.CLEAN:
             self._refresh_clean_map()
+        elif current_tab == TabIndex.MAP:
+            self._refresh_dirty_map()
+        elif current_tab == TabIndex.RESIDUAL:
+            self._refresh_residual_map()
 
     def _refresh_current_map_tab(self):
         """Rafraîchit l'onglet de carte actif sans recalculer."""
         try:
-            current_tab = self.tabs.currentIndex()
-            if current_tab == TabIndex.MAP:  # Fixed: DIRTY -> MAP
+            current_tab = self._get_logical_tab()
+            if current_tab == TabIndex.MAP:
                 self._refresh_dirty_map()
             elif current_tab == TabIndex.CLEAN:
                 self._refresh_clean_map()
@@ -938,6 +1006,13 @@ class MainWindow(QMainWindow):
 
             scale, vmin, vmax = self.control_panel.get_scale_params()
             info = map_package.get('info', {})
+            show_model = self.control_panel.chk_show_model_map.isChecked()
+            model_components = []
+            if show_model:
+                try:
+                    model_components = self.session.imager.get_model_components()
+                except Exception:
+                    pass
             self.map_widget.plot_map(
                 map_data=map_package['data'],
                 cellsize=info.get('cellsize', cellsize),
@@ -946,6 +1021,8 @@ class MainWindow(QMainWindow):
                 vmin=vmin, vmax=vmax,
                 extent=map_package['extent'],
                 windows=map_package.get('windows', []),
+                show_model=show_model,
+                model_components=model_components,
             )
         except Exception as e:
             self.log_console.log_error(f"Failed to refresh dirty map: {e}")
@@ -1091,6 +1168,13 @@ class MainWindow(QMainWindow):
 
             info = residual_package.get('info', {})
             scale, vmin, vmax = self.control_panel.get_scale_params()
+            show_model = self.control_panel.chk_show_model_map.isChecked()
+            model_components = []
+            if show_model:
+                try:
+                    model_components = self.session.imager.get_model_components()
+                except Exception:
+                    pass
             self.residual_map_widget.plot_map(
                 map_data=residual_package['data'],
                 cellsize=info.get('cellsize', cellsize),
@@ -1099,6 +1183,8 @@ class MainWindow(QMainWindow):
                 vmin=vmin, vmax=vmax,
                 extent=residual_package['extent'],
                 windows=residual_package.get('windows', []),
+                show_model=show_model,
+                model_components=model_components,
             )
         except Exception as e:
             self.log_console.log_error(f"Failed to refresh residual map: {e}")
@@ -1281,11 +1367,22 @@ class MainWindow(QMainWindow):
                             widget.sync_tool_state(state_dict['active_tool'])
 
                 if state_dict.get('_refresh_layout'):
-                    if 'show_errors' in state_dict:
-                        self.radplot_widget.set_show_errors(state_dict['show_errors'])
+                    # Apply all layout-affecting state changes to the widget BEFORE
+                    # triggering a single refresh — avoids double redraw and prevents
+                    # display_mode=AMP_ONLY (new-editor default) from overwriting BOTH.
+                    layout_changed = False
                     if 'display_mode' in state_dict:
-                        mode_idx = max(0, min(2, state_dict['display_mode'] - 1))
-                        self.radplot_widget.set_display_mode(mode_idx)
+                        new_dm = max(1, min(3, state_dict['display_mode']))
+                        if self.radplot_widget.display_mode != new_dm:
+                            self.radplot_widget.display_mode = new_dm
+                            layout_changed = True
+                    if 'show_errors' in state_dict:
+                        new_err = bool(state_dict['show_errors'])
+                        if self.radplot_widget.show_errors != new_err:
+                            self.radplot_widget.show_errors = new_err
+                            layout_changed = True
+                    if layout_changed and self.radplot_widget.data is not None:
+                        self.radplot_widget._refresh_layout()
 
             finally:
                 for w, was in saved.items():

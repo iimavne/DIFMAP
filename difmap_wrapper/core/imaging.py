@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 from ctypes import Structure, c_char_p, c_int, c_float, c_double, POINTER, byref
 from typing import Optional, Tuple, List, Dict, Any, Union
@@ -6,6 +7,13 @@ from ..types import Polarization
 
 from ..utils.map_geometry import DifmapMapGeometry
 from ..utils.exceptions import DifmapError, DifmapStateError
+
+logger = logging.getLogger("difmap.imaging")
+
+# Mirror of MAP state enum in difmap.c:637-639
+_MAP_IS_MAP   = 0  # dirty or residual (C can't distinguish the two)
+_MAP_IS_STALE = 1  # nothing useful — needs reinvert
+_MAP_IS_CLEAN = 2  # after restore()
 
 class DifmapImager:
     """
@@ -33,21 +41,18 @@ class DifmapImager:
         self._last_mapsize = None
         self._last_ny = None
         self._last_cellsize_y = None
+        # Display-only copies of C state — used by uvtaper()/uvweight()/selfcal_taper()
+        # interrogation mode only. C is authoritative; never use these as guards.
         self._current_uvtaper = None
         self._current_uvweight = None
         self._current_selfcal_taper = None
-        self._current_map_type = None  # "dirty" après invert(), "clean" après restore()
+        # _current_map_type tracks dirty/residual distinction C cannot make (both MAP_IS_MAP=0).
+        # Validated against vlbmap->domap by _assert_map_state_coherent() on every get_map_package().
+        self._current_map_type = None
         self.active_windows = []     # registre Python des fenêtres CLEAN actives [(xa,xb,ya,yb) en mas]
         self._last_residual_map = None  # copie du buffer résiduel capturée entre clean() et restore()
+        self._last_residual_rms = None  # maprms natif au moment de la capture du résiduel
 
-    def _reissue_mapsize_if_needed(self):
-        """Restaure la grille si elle a été annulée par un changement de pondération."""
-        if self._last_mapsize is not None and self._last_cellsize is not None:
-            self._native.mapsize(
-                self._last_mapsize, self._last_cellsize,
-                self._last_ny or 0, self._last_cellsize_y or 0.0
-            )
-            
     def get_map(self) -> np.ndarray:
         """
         Retourne l'image courante depuis la mémoire C (tableau 2D, float).
@@ -157,28 +162,17 @@ class DifmapImager:
         e = 0.0 if err_power is None else float(err_power)
         r = False if radial is None else bool(radial)
 
-        # Contraintes imposées par native_uvweight (difmap.c:7986-7987) :
-        #   bin_size < 0  → silencieusement ignoré par le C (uvbin inchangé)
-        #   err_power > 0 → silencieusement ignoré par le C (errpow inchangé)
-        # On valide ici pour échouer tôt avec un message clair.
-        if b < 0.0:
-            raise DifmapError(
-                f"uvweight : bin_size={b} invalide. Le moteur C ignore les valeurs négatives. "
-                "Utilisez 0.0 (naturelle) ou une valeur positive (uniforme)."
-            )
-        if e > 0.0:
-            raise DifmapError(
-                f"uvweight : err_power={e} invalide. Le moteur C ignore les valeurs positives. "
-                "Utilisez 0.0 (uniforme) ou une valeur négative (ex: -2.0 pour naturelle)."
-            )
-
+        # difmap.c:7986-7987 : native_uvweight ignore silencieusement uvbin < 0
+        # et errpow > 0 (ils laissent les paramètres inchangés). On reproduit ce
+        # comportement sans lever d'exception, exactement comme DIFMAP.
+        # native_uvweight ne touche pas la grille (seulement invpar + domap=STALE),
+        # donc pas besoin de _reissue_mapsize_if_needed().
         dorad = 1 if r else 0
         if self._native.uvweight(b, e, dorad) != 0:
             raise DifmapError("Erreur lors de l'application de uvweight.")
-            
-        # 3. Mise à jour de la mémoire et restauration de la grille C
+
+        # 3. Mise à jour de la mémoire
         self._current_uvweight = (b, e, r)
-        self._reissue_mapsize_if_needed()
         
         rad_str = "Oui" if r else "Non"
         print(f"Nouvelle pondération appliquée : bin_size={b}, err_power={e}, radial={rad_str}")
@@ -273,9 +267,13 @@ class DifmapImager:
         >>> session.imager.mapsize(512, 0.1)              # grille carrée 512×512
         >>> session.imager.mapsize(512, 0.1, ny=256)      # grille rectangulaire 512×256
         """
-        actual_ny = ny if ny is not None else 0
-        actual_cy = cellsize_y if cellsize_y is not None else 0.0
-        if self._native.mapsize(size, cellsize, actual_ny, actual_cy) != 0:
+        if ny is not None or cellsize_y is not None:
+            actual_ny = ny if ny is not None else 0
+            actual_cy = cellsize_y if cellsize_y is not None else 0.0
+            result = self._native.mapsize(size, cellsize, actual_ny, actual_cy)
+        else:
+            result = self._native.mapsize(size, cellsize)
+        if result != 0:
             raise DifmapError("Erreur lors de l'allocation de la grille (mapsize).")
         self._last_mapsize = size
         self._last_cellsize = cellsize
@@ -283,10 +281,16 @@ class DifmapImager:
         self._last_cellsize_y = cellsize_y
 
     def _capture_residual(self) -> None:
-        """Sauvegarde une copie du buffer résiduel (état après clean(), avant restore())."""
+        """Sauvegarde le buffer résiduel et le maprms natif (état après clean(), avant restore())."""
         self._last_residual_map = self.get_map().copy()
+        self._last_residual_rms = float(self._native.get_beam_info()["RMS"])
 
-    def invert(self) -> None:
+    def invert(
+        self,
+        uvmin_wav: float = 0.0,
+        uvmax_wav: float = 0.0,
+        uvhwhm_pix: float = 0.0,
+    ) -> None:
         """
         Calcule la Dirty Map par transformée de Fourier inverse.
 
@@ -305,6 +309,13 @@ class DifmapImager:
         >>> session.imager.invert()
         >>> img_array = session.imager.get_map()
         """
+        if uvmin_wav != 0.0 or uvmax_wav != 0.0:
+            if self._native.uvrange(float(uvmin_wav), float(uvmax_wav)) != 0:
+                raise DifmapError("Échec de la configuration uvrange().")
+        if uvhwhm_pix != 0.0:
+            if self._native.uvhwhm(float(uvhwhm_pix)) != 0:
+                raise DifmapError("Échec de la configuration uvhwhm().")
+
         if self._native.invert() != 0:
             raise DifmapError("Échec de la transformée de Fourier (invert).")
         self._current_map_type = "dirty"
@@ -365,15 +376,25 @@ class DifmapImager:
         >>> print(img["info"]["bmaj"])   # grand axe du faisceau en mas
         0.85
         """
+        self._assert_map_state_coherent()
         cy = cellsize_y if cellsize_y is not None else cellsize
-        beam = self._native.get_beam_info()
+        # vlbmap->bmaj/bmin/bpa sont mis à 0 à l'init (mapmem.c:124) et
+        # seulement setés par mapres() pendant restore(). Pour dirty/residual,
+        # on utilise le beam estimé par invert() (vlbmap->e_bmaj/e_bmin/e_bpa).
+        # Pour clean, on utilise le beam réel de la restauration.
+        map_type = self._current_map_type if self._current_map_type is not None else "dirty"
+        if map_type == "clean":
+            beam = self._native.get_beam_info()
+        else:
+            beam = self._native.get_estimated_beam_info()
+        rms = float(self._native.get_beam_info().get('RMS', 0.0))
+
         map_data = self.get_map()
         display_data, extent, nx_display, ny_display = self._display_map_data(
             map_data, cellsize, cy
         )
         beam_display, _, _, _ = self._display_map_data(self._native.get_beam(), cellsize, cy)
 
-        map_type = self._current_map_type or "dirty"
         components = self._native.get_model_components() if map_type in ("clean", "residual") else []
         return {
             "data": display_data,
@@ -387,7 +408,7 @@ class DifmapImager:
                 "bmaj": beam.get('BMAJ', 0.0),
                 "bmin": beam.get('BMIN', 0.0),
                 "bpa": beam.get('BPA', 0.0),
-                "rms": float(np.sqrt(np.nanmean(display_data**2))) if display_data is not None and display_data.size > 0 else 0.0,
+                "rms": rms,
                 "map_type": map_type,
             },
             "extent": extent,
@@ -420,13 +441,18 @@ class DifmapImager:
                 "la séquence invert() → clean() → restore() d'abord."
             )
         cy = cellsize_y if cellsize_y is not None else cellsize
-        beam = self._native.get_beam_info()
+        # Beam estimé par invert() (e_bmaj/e_bmin/e_bpa) : c'est le beam de
+        # référence du résiduel, qui est créé par clean() avant restore().
+        # vlbmap->bmaj/bmin/bpa (clean beam) correspond à la restauration,
+        # pas au résiduel.
+        beam = self._native.get_estimated_beam_info()
         display_data, extent, nx_display, ny_display = self._display_map_data(
             self._last_residual_map, cellsize, cy
         )
         beam_display, _, _, _ = self._display_map_data(self._native.get_beam(), cellsize, cy)
-        # RMS sur toute la zone imageable (= display_data, déjà croppée).
-        actual_rms = float(np.sqrt(np.nanmean(display_data ** 2))) if display_data.size > 0 else 0.0
+        # RMS natif DIFMAP (maprms = sqrt(mean((pixel-mean)²)) sur zone cleanable),
+        # capturé au moment du résiduel — avant restore() qui modifie maprms.
+        residual_rms = self._last_residual_rms if self._last_residual_rms is not None else float(self._native.get_beam_info().get('RMS', 0.0))
         return {
             "data": display_data,
             "beam_data": beam_display,
@@ -439,7 +465,7 @@ class DifmapImager:
                 "bmaj": beam.get('BMAJ', 0.0),
                 "bmin": beam.get('BMIN', 0.0),
                 "bpa": beam.get('BPA', 0.0),
-                "rms": actual_rms,
+                "rms": residual_rms,
             },
             "extent": extent,
             "windows": self._get_clean_windows(),
@@ -460,10 +486,7 @@ class DifmapImager:
         """
         if self._native.clrmod() != 0:
             raise DifmapError("Échec du vidage du modèle CLEAN.")
-        # Ne pas appeler reset_map_flags() ici : native_invert() positionne
-        # lui-même domap/dobeam au début. Forcer ces flags avant invert()
-        # rendrait le faisceau stale prématurément et pourrait déclencher
-        # un recalcul non-voulu si peakwin() est appelé avant le prochain invert().
+
 
     def clean(self, niter: int = 100, gain: float = 0.05, cutoff: float = 0.0) -> None:
         """
@@ -515,16 +538,37 @@ class DifmapImager:
         
         >>> session.imager.clean(niter=1000, gain=0.05, cutoff=0.003)  # arrêt à 3 mJy
         """
-        if self._native.clean(niter, gain, cutoff) != 0:
-            raise DifmapError("Échec de la déconvolution CLEAN.")
+        self._native.clean(niter, gain, cutoff)
         self._current_map_type = "residual"
+        # clean() met à jour le modèle C : modamp (calculé par moddif dans
+        # l_extract_uv) sera périmé dans le cache. On invalide pour que
+        # radplot() obtienne des valeurs fraîches au prochain appel.
+        self._session.obs.invalidate_cache()
 
-    def restore(self) -> None:
+    def restore(
+        self,
+        beam: tuple[float, float, float] | None = None,
+        noresid: bool = False,
+        dosm: bool = True,
+    ) -> None:
         """
         Restaure la Clean Map en convoluant le modèle avec le faisceau propre.
 
         Doit être appelé après ``clean()``. Utilise automatiquement les
         paramètres du faisceau estimés lors du dernier ``invert()``.
+
+        Parameters
+        ----------
+        beam : tuple of (bmaj, bmin, bpa), optional
+            Faisceau explicite en mas/mas/degrés. Si omis, utilise le faisceau
+            estimé par ``invert()``.
+        noresid : bool, optional
+            Si ``True``, efface la carte résiduelle avant restauration
+            (produit uniquement le modèle convolu, sans résidus).
+            Défaut ``False`` (comportement DIFMAP standard).
+        dosm : bool, optional
+            Si ``True`` (défaut), lisse les résiduels avant restauration
+            (convolue avec le faisceau propre). Identique au défaut DIFMAP.
 
         Raises
         ------
@@ -532,23 +576,38 @@ class DifmapImager:
             Si le moteur C retourne une erreur (modèle absent ou faisceau
             non estimé).
         """
-   
         if self._current_map_type == "residual":
             self._capture_residual()
-        if self._native.restore() != 0:
-            raise DifmapError("Échec de la restauration (restore).")
+
+        nr = int(bool(noresid))
+        ds = int(bool(dosm))
+
+        if beam is None:
+            if self._native.restore(nr, ds) != 0:
+                raise DifmapError("Échec de la restauration (restore).")
+        else:
+            bmaj_mas, bmin_mas, bpa_deg = beam
+            if self._native.restore_beam(float(bmaj_mas), float(bmin_mas), float(bpa_deg), nr, ds) != 0:
+                raise DifmapError("Échec de la restauration (restore) avec faisceau explicite.")
         self._current_map_type = "clean"
 
-    def peak(self) -> dict:
+    def peak(self, doabs: bool = True) -> dict:
         """
         Retourne les statistiques du pic de flux dans la carte courante.
 
         Équivalent à la commande ``peak`` de Difmap.
 
+        Parameters
+        ----------
+        doabs : bool, optional
+            Si ``True`` (défaut), cherche le pic en valeur absolue (max ou min).
+            Identique au comportement natif de la commande ``peak`` de DIFMAP
+            (difmap.c:4558). Si ``False``, cherche uniquement le pic positif.
+
         Returns
         -------
         dict
-            ``'flux'`` : valeur du pic en Jy/beam (peut être négative).
+            ``'flux'`` : valeur du pic en Jy/beam (peut être négative si doabs=True).
 
             ``'x'`` : position X en mas (positif = Est).
 
@@ -571,7 +630,7 @@ class DifmapImager:
         """
         if not self.has_map_data():
             raise DifmapStateError("Aucune carte disponible. Appelez invert() d'abord.")
-        return self._native.get_peak_info()
+        return self._native.get_peak_info(int(doabs))
 
     def addwin(self, xa: float, xb: float, ya: float, yb: float) -> None:
         """
@@ -637,13 +696,9 @@ class DifmapImager:
         >>> session.imager.peakwin(size=2.0)   # fenêtre 2× le beam autour du pic
         >>> session.imager.clean(500, 0.05)
         """
-        # DIFMAP (pwin_fn) s'assure d'opérer sur une carte "dirty" fraîche.
-        # Après un restore(), le buffer C contient une carte clean; peakwin()
-        # doit alors déclencher un invert() pour rafraîchir vlbmap->maxpix.
-        if self._current_map_type in ("clean", "residual"):
-            self.invert()
-
-        # Vérifier qu'une carte existe avant de déléguer au moteur C.
+        # native_peakwin() (difmap.c:8578) gère MAP_IS_CLEAN en promouvant
+        # temporairement domap vers MAP_IS_MAP. Après clean(), le buffer contient
+        # le résiduel avec domap=MAP_IS_MAP. Pas de re-invert Python nécessaire.
         self._refresh_map_if_needed()
         
         old_count = len(self.active_windows)
@@ -655,15 +710,34 @@ class DifmapImager:
         for w in self._get_clean_windows()[old_count:]:
             self.active_windows.append(w)
 
-    def _refresh_map_if_needed(self) -> None:
-        """Vérifie qu'une carte est en mémoire avant peakwin().
+    def _assert_map_state_coherent(self) -> None:
+        """Réconcilie _current_map_type avec vlbmap->domap lu depuis le C.
 
-        native_peakwin() lit vlbmap->map directement — il n'a pas besoin
-        d'un recalcul du faisceau. Appeler native_refresh_beam() ici serait
-        dangereux : si vlbmap->dobeam ou domap est stale (ex. juste après
-        clean()), il déclencherait uvinvert() et écraserait le buffer résiduel.
-        On se limite donc à vérifier que la carte existe.
+        Corrige silencieusement les divergences dues à des invert() implicites
+        (ex : peakwin() appelle invert() en interne) ou à des select() qui
+        invalident le buffer. Sans cette garde, get_map_package() utiliserait
+        get_beam_info() (bmaj/bmin réels) sur une carte dirty, retournant 0.
         """
+        try:
+            c_state = self._native.get_map_state()
+        except AttributeError:
+            return  # module non recompilé — dégradation gracieuse
+        if c_state < 0:
+            return  # vlbmap == NULL, pas de carte
+        if c_state == _MAP_IS_STALE:
+            self._current_map_type = None
+        elif c_state == _MAP_IS_CLEAN and self._current_map_type != "clean":
+            self._current_map_type = "clean"
+        elif c_state == _MAP_IS_MAP and self._current_map_type == "clean":
+            # invert() appelé implicitement (peakwin, select…) : buffer n'est plus clean
+            logger.warning(
+                "_current_map_type='clean' mais vlbmap->domap=MAP_IS_MAP — "
+                "invert() appelé implicitement, type corrigé en 'dirty'."
+            )
+            self._current_map_type = "dirty"
+
+    def _refresh_map_if_needed(self) -> None:
+        """Vérifie qu'une carte est en mémoire avant peakwin()."""
         if not self.has_map_data():
             raise DifmapError("Aucune carte disponible pour peakwin(). Appelez invert() d'abord.")
 
@@ -687,7 +761,13 @@ class DifmapImager:
         tuple
             (x_min, x_max, y_min, y_max) en mas pour la fenêtre elliptique
         """
-        beam = self._native.get_beam_info()
+        # vlbmap->bmaj/bmin/bpa = 0 avant le premier restore() (mapmem.c:124).
+        # Pour dirty/residual, utiliser le beam estimé par invert() comme
+        # get_map_package() le fait.
+        if self._current_map_type == "clean":
+            beam = self._native.get_beam_info()
+        else:
+            beam = self._native.get_estimated_beam_info()
         bmaj = beam.get('BMAJ', 1.0)  # mas
         bmin = beam.get('BMIN', bmaj)  # mas
         bpa = beam.get('BPA', 0.0)     # degrés
@@ -715,6 +795,87 @@ class DifmapImager:
         y_max = center_y + dy
         
         return x_min, x_max, y_min, y_max
+
+    def wmap(self, filepath: str) -> None:
+        """
+        Exporte la clean map courante en FITS image.
+
+        Doit être appelé après ``restore()``. Le buffer doit être en état
+        ``MAP_IS_CLEAN`` — appeler ``restore()`` d'abord.
+
+        Parameters
+        ----------
+        filepath : str
+            Chemin de sortie (extension ``.fits`` recommandée).
+
+        Raises
+        ------
+        DifmapStateError
+            Si ``restore()`` n'a pas encore été appelé (map non clean).
+        DifmapError
+            Si l'écriture FITS échoue.
+        """
+        ret = self._native.wmap(filepath)
+        if ret == -2:
+            raise DifmapStateError(
+                "wmap() requiert une clean map : appelez restore() d'abord."
+            )
+        if ret != 0:
+            raise DifmapError(f"Échec de l'écriture wmap : {filepath}")
+
+    def wbeam(self, filepath: str) -> None:
+        """
+        Exporte le dirty beam courant en FITS image.
+
+        Doit être appelé après ``invert()``.
+
+        Parameters
+        ----------
+        filepath : str
+            Chemin de sortie.
+
+        Raises
+        ------
+        DifmapStateError
+            Si le beam n'est pas disponible.
+        DifmapError
+            Si l'écriture FITS échoue.
+        """
+        ret = self._native.wbeam(filepath)
+        if ret == -2:
+            raise DifmapStateError(
+                "wbeam() requiert un beam valide : appelez invert() d'abord."
+            )
+        if ret != 0:
+            raise DifmapError(f"Échec de l'écriture wbeam : {filepath}")
+
+    def wdmap(self, filepath: str) -> None:
+        """
+        Exporte la carte dirty ou résiduelle courante en FITS image.
+
+        Doit être appelé après ``invert()`` (pour la dirty map) ou après
+        ``clean()`` (pour la residual map). Ne fonctionne pas sur une clean map.
+
+        Parameters
+        ----------
+        filepath : str
+            Chemin de sortie.
+
+        Raises
+        ------
+        DifmapStateError
+            Si la carte n'est pas dans l'état dirty/résiduel (MAP_IS_MAP).
+        DifmapError
+            Si l'écriture FITS échoue.
+        """
+        ret = self._native.wdmap(filepath)
+        if ret == -2:
+            raise DifmapStateError(
+                "wdmap() requiert une dirty/résiduelle map (MAP_IS_MAP) : "
+                "la carte est soit périmée (appelez invert()) soit clean (appelez invert() pour recréer la dirty)."
+            )
+        if ret != 0:
+            raise DifmapError(f"Échec de l'écriture wdmap : {filepath}")
 
     def get_model_components(self) -> list:
         """
@@ -786,7 +947,18 @@ class DifmapImager:
         else:
             print(f"Taper selfcal appliqué : Valeur = {val}, Rayon = {rad} unités UV courantes")
 
-    def selfcal(self, doamp: bool = False, dofloat: bool = False, solint: float = 0.0) -> None:
+    def selfcal(
+        self,
+        doamp: bool = False,
+        dofloat: bool = False,
+        solint: float = 0.0,
+        maxamp: float = 0.0,
+        maxphs: float = 0.0,
+        p_mintel: int = 3,
+        a_mintel: int = 4,
+        doflag: bool = True,
+        clip: bool = False,
+    ) -> None:
         """
         Applique une auto-calibration sur les visibilités.
 
@@ -822,6 +994,18 @@ class DifmapImager:
         >>> session.imager.clean(500, 0.05)
         >>> session.imager.selfcal(doamp=True) # amplitude + phase
         """
+        # slfpar est remis à slfdef uniquement au chargement d'une observation
+        # (difmap.c:834). Entre deux selfcal() sur la même observation, le C
+        # conserve l'état précédent. On envoie toujours les trois groupes pour
+        # garantir que chaque appel part d'un état connu, indépendamment de
+        # l'historique.
+        if self._native.selfcal_limits(float(maxamp), float(maxphs)) != 0:
+            raise DifmapError("Échec de la configuration selfcal_limits().")
+        if self._native.selfcal_mintel(int(p_mintel), int(a_mintel)) != 0:
+            raise DifmapError("Échec de la configuration selfcal_mintel().")
+        if self._native.selfcal_flags(int(bool(doflag)), int(bool(clip))) != 0:
+            raise DifmapError("Échec de la configuration selfcal_flags().")
+
         if self._native.selfcal(int(doamp), int(dofloat), float(solint)) != 0:
             raise DifmapError("Échec de l'auto-calibration (selfcal).")
         # Selfcal modifie les poids (et phases) des visibilités côté C.

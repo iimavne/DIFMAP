@@ -159,6 +159,134 @@ class DesignSystem:
         """
 
     @staticmethod
+    def get_outer_tab_style():
+        """Super-onglets style navigation bar : fond clair, underline accent sur l'actif."""
+        D = DesignSystem
+        return f"""
+            QTabWidget {{
+                background-color: {D.SURFACE};
+            }}
+            QTabBar {{
+                background-color: {D.SURFACE};
+            }}
+            QTabBar::tab {{
+                background-color: transparent;
+                color: {D.TEXT_SECONDARY};
+                padding: 8px 22px;
+                border: none;
+                border-bottom: 2px solid transparent;
+                margin-right: 4px;
+                font-family: {D.FONT_FAMILY};
+                font-weight: {D.FONT_WEIGHT_MEDIUM};
+                font-size: {D.FONT_SIZE_LG};
+                min-width: 90px;
+            }}
+            QTabBar::tab:selected {{
+                color: {D.ASTRAL_BG};
+                font-weight: {D.FONT_WEIGHT_BOLD};
+                border-bottom: 2px solid {D.ASTRAL_ACCENT};
+            }}
+            QTabBar::tab:hover:!selected {{
+                color: {D.TEXT};
+                border-bottom: 2px solid {D.BORDER};
+            }}
+            QTabWidget::pane {{
+                border: none;
+                border-top: 1px solid {D.BORDER};
+                background-color: {D.SURFACE};
+            }}
+        """
+
+    @staticmethod
+    def get_inner_tab_style():
+        """Sous-onglets style pills/chips : petits boutons arrondis compacts."""
+        D = DesignSystem
+        return f"""
+            QTabWidget {{
+                background-color: {D.SURFACE};
+            }}
+            QTabBar {{
+                background-color: transparent;
+            }}
+            QTabBar::tab {{
+                background-color: {D.SURFACE};
+                color: {D.TEXT_SECONDARY};
+                padding: 4px 14px;
+                border: 1px solid {D.BORDER};
+                border-radius: 14px;
+                margin-right: 5px;
+                margin-top: 6px;
+                margin-bottom: 4px;
+                font-family: {D.FONT_FAMILY};
+                font-weight: {D.FONT_WEIGHT_MEDIUM};
+                font-size: {D.FONT_SIZE_SM};
+            }}
+            QTabBar::tab:selected {{
+                background-color: {D.ASTRAL_BG};
+                color: #FFFFFF;
+                border-color: {D.ASTRAL_BG};
+                font-weight: {D.FONT_WEIGHT_SEMIBOLD};
+            }}
+            QTabBar::tab:hover:!selected {{
+                background-color: {D.SURFACE_ALT};
+                border-color: {D.ASTRAL_ACCENT};
+                color: {D.TEXT};
+            }}
+            QTabWidget::pane {{
+                border: none;
+                background-color: {D.SURFACE};
+            }}
+        """
+
+    @staticmethod
+    def get_unified_toolbar_style():
+        """Barre unique fusionnée : Load · Save · | · Help · Exit · → Terminal."""
+        D = DesignSystem
+        return f"""
+            QToolBar {{
+                background-color: {D.ASTRAL_DEEPEST};
+                border: none;
+                border-bottom: 1px solid {D.ASTRAL_BORDER};
+                padding: 2px 8px;
+                spacing: 2px;
+                min-height: 34px;
+            }}
+            QToolBar::separator {{
+                background-color: {D.ASTRAL_BORDER};
+                width: 1px;
+                margin: 6px 8px;
+            }}
+            QToolBar QWidget {{
+                background-color: {D.ASTRAL_DEEPEST};
+            }}
+            QToolButton {{
+                padding: 4px 14px;
+                border-radius: {D.RADIUS_MD};
+                color: #FFFFFF;
+                font-family: {D.FONT_FAMILY};
+                font-size: 12px;
+                font-weight: {D.FONT_WEIGHT_SEMIBOLD};
+                border: 1px solid transparent;
+                min-height: 24px;
+                background-color: {D.ASTRAL_DEEPEST};
+            }}
+            QToolButton:hover {{
+                background-color: {D.ASTRAL_SURFACE};
+                color: #FFFFFF;
+                border: 1px solid {D.ASTRAL_BORDER};
+            }}
+            QToolButton:pressed {{
+                background-color: {D.ASTRAL_HOVER};
+                color: #FFFFFF;
+                border: 1px solid {D.ASTRAL_ACCENT};
+            }}
+            QToolButton:disabled {{
+                color: {D.ASTRAL_MUTED};
+                background-color: {D.ASTRAL_DEEPEST};
+            }}
+        """
+
+    @staticmethod
     def get_toolbar_style():
         D = DesignSystem
         return f"""

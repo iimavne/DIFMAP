@@ -22,6 +22,12 @@ from typing import Dict, Any
 from difmap_wrapper.manager import DifmapBatchManager
 from difmap_wrapper.session import DifmapSession
 from difmap_wrapper.exceptions import DifmapStateError
+from difmap_wrapper import (
+    ObserveCommand,
+    SelectCommand,
+    MapsizeCommand,
+    InvertCommand,
+)
 
 
 # ========================================================================
@@ -372,3 +378,76 @@ class TestMemoryCollisionPrevention:
         # Vérifier que les résultats sont corrects
         assert results1[0]["output"] == 1
         assert results2[0]["output"] == 100
+
+
+# ========================================================================
+# Batch Command Layer (run_command_batch)
+# ========================================================================
+
+
+UVFILE = "tests/test_data/0003-066_X.SPLIT.1"
+
+
+class TestCommandBatch:
+    """Valide run_command_batch : pipeline picklable + isolation multiprocessing."""
+
+    def _make_pipeline(self, uvfile: str) -> list:
+        return [
+            ObserveCommand(uvfile),
+            SelectCommand(pol="RR"),
+            MapsizeCommand(size=256, cellsize=0.5),
+            InvertCommand(),
+        ]
+
+    def test_commands_picklable(self):
+        """Vérifie que tous les Command dataclasses survivent pickle/unpickle."""
+        import pickle
+        cmds = self._make_pipeline(UVFILE)
+        assert pickle.loads(pickle.dumps(cmds)) == cmds
+
+    def test_single_job_ok(self):
+        """Un seul job : commandes exécutées, historique retourné."""
+        manager = DifmapBatchManager(max_workers=1)
+        jobs = [(self._make_pipeline(UVFILE), UVFILE)]
+        results = manager.run_command_batch(jobs)
+
+        assert len(results) == 1
+        r = results[0]
+        assert r["status"] == "OK", r["errors"]
+        assert r["payload"] == UVFILE
+        assert len(r["history"]) == 4
+        assert r["history"][0]["__type__"] == "ObserveCommand"
+        assert r["history"][1]["__type__"] == "SelectCommand"
+        assert r["history"][2]["__type__"] == "MapsizeCommand"
+        assert r["history"][3]["__type__"] == "InvertCommand"
+
+    def test_two_jobs_parallel_isolation(self):
+        """
+        Deux jobs identiques en parallèle : pas de collision mémoire,
+        les deux doivent terminer avec status='OK'.
+        """
+        manager = DifmapBatchManager(max_workers=2)
+        jobs = [
+            (self._make_pipeline(UVFILE), "job-A"),
+            (self._make_pipeline(UVFILE), "job-B"),
+        ]
+        results = manager.run_command_batch(jobs)
+
+        assert len(results) == 2
+        payloads = {r["payload"] for r in results}
+        assert payloads == {"job-A", "job-B"}
+        for r in results:
+            assert r["status"] == "OK", f"{r['payload']}: {r['errors']}"
+            assert len(r["history"]) == 4
+
+    def test_history_is_serializable(self):
+        """L'historique retourné par le batch doit être JSON-sérialisable."""
+        import json
+        manager = DifmapBatchManager(max_workers=1)
+        jobs = [(self._make_pipeline(UVFILE), 0)]
+        results = manager.run_command_batch(jobs)
+        # Ne lève pas d'exception si l'historique est bien un dict de types de base
+        blob = json.dumps(results[0]["history"])
+        loaded = json.loads(blob)
+        assert isinstance(loaded, list)
+        assert loaded[0]["__type__"] == "ObserveCommand"

@@ -316,8 +316,7 @@ class RadPlotWidget(BasePlotWidget):
         if observation is not None:
             self._create_editor(observation, scats)
 
-        self.fig.canvas.draw()
-        self.refresh()
+        self.fig.canvas.draw_idle()
 
     def _setup_axes(self) -> None:
         """
@@ -448,7 +447,8 @@ class RadPlotWidget(BasePlotWidget):
             base_color=DesignSystem.PLOT_DATA,
             sync_callback=self._sync_callback,
         )
-        self.editor.show_errors = self.show_errors
+        self.editor.show_errors  = self.show_errors
+        self.editor.display_mode = self.display_mode
         self.editor._update_colors()
         # Appliquer le mode courant du combo au nouvel éditeur
         if hasattr(self, '_tool_combo'):

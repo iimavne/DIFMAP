@@ -67,63 +67,6 @@ QComboBox::down-arrow {{ width: 10px; height: 10px; }}
 """
 
 
-def _central_peak(data: np.ndarray) -> float:
-    """Pic signé sur la région d'affichage complète.
-
-    Difmap garde le signe de l'extrême dominant dans maplot.c:setcont().
-    """
-    dmin = float(np.nanmin(data))
-    dmax = float(np.nanmax(data))
-    return dmax if abs(dmax) > abs(dmin) else dmin
-
-
-
-def _make_norm(scale: str, vmin, vmax, data: np.ndarray):
-    """Normalisation matplotlib équivalente à mapfunc de difmap (linear/log/sqrt)."""
-    dmin = float(np.nanmin(data))
-    dmax = float(np.nanmax(data))
-    v_lo = vmin if vmin is not None else dmin
-    v_hi = vmax if vmax is not None else dmax
-    if scale == 'log':
-        safe_lo = max(v_lo, v_hi * 1e-4, 1e-12) if v_hi > 0 else 1e-6
-        return LogNorm(vmin=safe_lo, vmax=v_hi)
-    if scale == 'sqrt':
-        return PowerNorm(gamma=0.5, vmin=max(v_lo, 0.0), vmax=v_hi)
-    return Normalize(vmin=v_lo, vmax=v_hi)
-
-
-def _compute_contour_levels(peak, mode='pct', absmin=1.0, absmax=100.0,
-                             factor=2.0, custom=None):
-    return Visualizer._compute_contour_levels(peak, mode, absmin, absmax, factor, custom)
-
-
-def _draw_contours(ax, map_data, x_coords, y_coords, peak, lw=0.3,
-                   mode='pct', absmin=1.0, absmax=100.0, factor=2.0, custom=None):
-    """
-    Trace les contours isophotes en suivant la convention PGPLOT de DIFMAP :
-    - Contours positifs en blanc
-    - Contours négatifs en rouge
- (color index 2), traits pleins
-    - positifs : blanc (color index 1), traits pleins
-    - Utilise les niveaux exacts de DIFMAP
-    - Coordonnées précises des pixels pour correspondre à PGPLOT
-    Retourne la liste des niveaux tracés (Jy/beam, pour annotation).
-    """
-    return Visualizer._vis_draw_contours(
-        ax,
-        map_data,
-        x_coords,
-        y_coords,
-        peak,
-        lw=lw,
-        mode=mode,
-        absmin=absmin,
-        absmax=absmax,
-        factor=factor,
-        custom=custom,
-    )
-
-
 def _add_map_annotations(ax, fig, map_data, map_type, beam_info=None,
                           contour_levels=None, contour_mode='pct',
                           observation_data=None, map_info=None):
@@ -141,10 +84,15 @@ def _add_map_annotations(ax, fig, map_data, map_type, beam_info=None,
     # Calculer les stats locales
     dmin = float(np.nanmin(map_data))
     dmax = float(np.nanmax(map_data))
-    peak_val = float(np.nanmax(np.abs(map_data)))
-    
+    peak_signed = float(Visualizer._vis_central_peak(map_data))
+    peak_abs = abs(peak_signed)
+
     # RMS sur toute la zone imageable (map_data est déjà croppée).
-    rms = float(np.sqrt(np.nanmean(map_data ** 2))) if map_data.size > 0 else 0.0
+    # On privilégie map_info['rms'] si fourni par l'imager, sinon fallback calculé.
+    if isinstance(map_info, dict) and map_info.get('rms', None) is not None:
+        rms = float(map_info.get('rms') or 0.0)
+    else:
+        rms = float(np.sqrt(np.nanmean(map_data ** 2))) if map_data.size > 0 else 0.0
     
     formatted_lines: list[str] = []
 
@@ -247,7 +195,7 @@ def _add_map_annotations(ax, fig, map_data, map_type, beam_info=None,
     if map_type == "clean":
         formatted_lines.append(f"Map peak: {dmax:.4g} Jy/beam")
         if contour_levels:
-            cpeak = _central_peak(map_data)
+            cpeak = Visualizer._vis_central_peak(map_data)
             if cpeak != 0:
                 pct_levels = [float(lvl) / cpeak * 100.0 for lvl in contour_levels if np.isfinite(lvl)]
                 show = pct_levels[:8]
@@ -264,7 +212,6 @@ def _add_map_annotations(ax, fig, map_data, map_type, beam_info=None,
 
     if map_type in {"residual", "clean"} and rms > 0:
         formatted_lines.append(f"RMS: {rms:.4g} Jy/beam")
-        peak_abs = float(np.nanmax(np.abs(map_data)))
         formatted_lines.append(f"{peak_abs / rms:.1f}σ")
 
     if formatted_lines:
@@ -451,7 +398,8 @@ class MapPlotWidget(BasePlotWidget):
     def plot_map(self, map_data, cellsize, cellsize_y=None,
                 scale='linear', vmin=None, vmax=None, extent=None,
                 contour_mode='pct', contour_absmin=1.0, contour_absmax=100.0,
-                contour_factor=2.0, contour_custom=None, windows=None):
+                contour_factor=2.0, contour_custom=None, windows=None,
+                show_model=False, model_components=None):
         """
         Affiche la carte (Dirty ou Residual) avec orientation radio-astronomique
         en utilisant la géométrie exacte de DIFMAP.
@@ -507,7 +455,7 @@ class MapPlotWidget(BasePlotWidget):
 
         scale_l = (scale or 'linear').lower()
         data_show = np.ma.masked_less_equal(cropped_data, 0.0) if scale_l == 'log' else cropped_data
-        norm = _make_norm(scale, vmin, vmax, cropped_data)
+        norm = Visualizer._make_norm(scale, vmin, vmax, cropped_data)
         self.image = self.ax.imshow(
             data_show, cmap=self._cmap, origin='lower', extent=astrometric_extent, norm=norm
         )
@@ -532,6 +480,35 @@ class MapPlotWidget(BasePlotWidget):
                     linewidth=1.3, edgecolor='cyan', facecolor='none',
                     linestyle='--', alpha=0.85, zorder=4
                 ))
+
+        if show_model and model_components:
+            import math
+            xa, xb = astrometric_extent[0], astrometric_extent[1]
+            ya, yb = astrometric_extent[2], astrometric_extent[3]
+            if xa > xb:
+                xa, xb = xb, xa
+            if ya > yb:
+                ya, yb = yb, ya
+            for cmp in model_components:
+                cx, cy = cmp['x'], cmp['y']
+                if not (xa <= cx <= xb and ya <= cy <= yb):
+                    continue
+                flux = cmp.get('flux', 0.0)
+                major = cmp.get('major', 0.0)
+                color = 'lime' if flux >= 0 else 'red'
+                if cmp.get('type', 'delta') == 'delta' or major <= 0:
+                    self.ax.plot(cx, cy, '+', color=color, markersize=6,
+                                 markeredgewidth=1.0, alpha=0.9, zorder=6)
+                else:
+                    phi_deg = 90.0 - math.degrees(cmp.get('phi', 0.0))
+                    ratio = max(cmp.get('ratio', 1.0), 1e-6)
+                    minor = major * ratio
+                    ell = Ellipse(
+                        (cx, cy), width=minor, height=major,
+                        angle=phi_deg, linewidth=1.0,
+                        edgecolor=color, facecolor='none', alpha=0.85, zorder=6
+                    )
+                    self.ax.add_patch(ell)
 
         _add_map_annotations(self.ax, self.fig, cropped_data, self._map_type, contour_levels=contour_levels)
         self.draw()
@@ -658,15 +635,17 @@ class DirtyMapPlotWidget(MapPlotWidget):
     def plot_map(self, map_data, cellsize, cellsize_y=None,
                 scale='linear', vmin=None, vmax=None, extent=None,
                 contour_mode='pct', contour_absmin=1.0, contour_absmax=100.0,
-                contour_factor=2.0, contour_custom=None, windows=None):
+                contour_factor=2.0, contour_custom=None, windows=None,
+                show_model=False, model_components=None):
         """Override to force contour_mode='none' for dirty maps."""
         return super().plot_map(
             map_data=map_data, cellsize=cellsize, cellsize_y=cellsize_y,
             scale=scale, vmin=vmin, vmax=vmax, extent=extent,
-            contour_mode='none',  # Force no contours for dirty maps
+            contour_mode='none',
             contour_absmin=contour_absmin, contour_absmax=contour_absmax,
             contour_factor=contour_factor, contour_custom=contour_custom,
             windows=windows,
+            show_model=show_model, model_components=model_components,
         )
 
 
@@ -687,15 +666,17 @@ class ResidualMapPlotWidget(MapPlotWidget):
     def plot_map(self, map_data, cellsize, cellsize_y=None,
                 scale='linear', vmin=None, vmax=None, extent=None,
                 contour_mode='pct', contour_absmin=1.0, contour_absmax=100.0,
-                contour_factor=2.0, contour_custom=None, windows=None):
+                contour_factor=2.0, contour_custom=None, windows=None,
+                show_model=False, model_components=None):
         """Override to force contour_mode='none' for residual maps."""
         return super().plot_map(
             map_data=map_data, cellsize=cellsize, cellsize_y=cellsize_y,
             scale=scale, vmin=vmin, vmax=vmax, extent=extent,
-            contour_mode='none',  # Force no contours for residual maps
+            contour_mode='none',
             contour_absmin=contour_absmin, contour_absmax=contour_absmax,
             contour_factor=contour_factor, contour_custom=contour_custom,
             windows=windows,
+            show_model=show_model, model_components=model_components,
         )
 
 
@@ -782,7 +763,7 @@ class CleanMapPlotWidget(MapPlotWidget):
         # 1. Image de fond
         scale_l = (scale or 'linear').lower()
         data_show = np.ma.masked_less_equal(cropped_data, 0.0) if scale_l == 'log' else cropped_data
-        norm = _make_norm(scale, vmin, vmax, cropped_data)
+        norm = Visualizer._make_norm(scale, vmin, vmax, cropped_data)
         self.image = self.ax.imshow(
             data_show, cmap=self._cmap, origin='lower', extent=astrometric_extent, norm=norm
         )
@@ -800,7 +781,7 @@ class CleanMapPlotWidget(MapPlotWidget):
         if contour_mode != 'none':
             # Peak sur la totalité de cropped_data (= zone imageable, déjà croppée).
             # Correspond au comportement de maplot.c:setcont() sur la zone imageable.
-            peak = _central_peak(cropped_data)
+            peak = Visualizer._vis_central_peak(cropped_data)
             # Coordonnées des CENTRES des pixels (comme PGPLOT tr[] matrix)
             # extent = [xmax, xmin, ymin, ymax] selon convention Difmap
             # Les centres des pixels sont au milieu de chaque cellule
@@ -814,10 +795,12 @@ class CleanMapPlotWidget(MapPlotWidget):
             
             # Créer la grille 2D pour les contours
             x_grid, y_grid = np.meshgrid(x_coords, y_coords)
-            drawn = _draw_contours(self.ax, cropped_data, x_grid, y_grid, peak, lw=0.3,
-                                   mode=contour_mode, absmin=contour_absmin,
-                                   absmax=contour_absmax, factor=contour_factor,
-                                   custom=contour_custom)
+            drawn = Visualizer._vis_draw_contours(
+                self.ax, cropped_data, x_grid, y_grid, peak, lw=0.3,
+                mode=contour_mode, absmin=contour_absmin,
+                absmax=contour_absmax, factor=contour_factor,
+                custom=contour_custom
+            )
 
         # 3. Fenêtres CLEAN (rectangles cyan pointillés)
         if windows:

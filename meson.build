@@ -41,7 +41,11 @@ pgplot_dep = cc.find_library('pgplot', required : true)
 cpgplot_dep = cc.find_library('cpgplot', required : true)
 py3 = import('python').find_installation()
 py3_dep = py3.dependency()
-cython = find_program('cython')
+# Utiliser le module Cython via l'interpréteur Python sélectionné par Meson.
+# Ceci évite les problèmes de PATH (notamment en build editable meson-python)
+# où `find_program('cython')` peut pointer vers un binaire temporaire disparu.
+# IMPORTANT: `generator()` attend un exécutable unique en 1er argument.
+cython = py3
 numpy_inc_dir = run_command(py3, '-c', 'import numpy; print(numpy.get_include())', check : true).stdout().strip()
 
 ################################################################################
@@ -167,6 +171,9 @@ py3.install_sources(
 py3.install_sources(
     'difmap_wrapper/core/__init__.py',
     'difmap_wrapper/core/session.py',
+    'difmap_wrapper/core/commands.py',
+    'difmap_wrapper/core/executor.py',
+    'difmap_wrapper/core/history.py',
     'difmap_wrapper/core/observation.py',
     'difmap_wrapper/core/imaging.py',
     'difmap_wrapper/core/visualizer.py',
@@ -225,7 +232,7 @@ py3.install_sources(
 cython_gen = generator(cython,
   output : '@BASENAME@.c',
   # Ajout du flag '-3' pour forcer le mode Python 3 et supprimer le warning
-  arguments : ['-3', '@INPUT@', '--output-file', '@OUTPUT@', '--fast-fail'])
+  arguments : ['-m', 'cython', '-3', '@INPUT@', '--output-file', '@OUTPUT@', '--fast-fail'])
   
 # Application du générateur sur notre fichier de binding principal.
 # Produit le fichier intermédiaire C qui contiendra l'API CPython.

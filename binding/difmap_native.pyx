@@ -43,6 +43,14 @@ def uvweight(uvbin: float, errpow: float, dorad: int) -> int:
 def uvtaper(gauval: float, gaurad_wav: float) -> int:
     return cdifmap.native_uvtaper(gauval, gaurad_wav)
 
+def uvrange(uvmin_wav: float = 0.0, uvmax_wav: float = 0.0) -> int:
+    """Configure la plage UV (en longueurs d'onde) utilisée par invert()."""
+    return cdifmap.native_uvrange(uvmin_wav, uvmax_wav)
+
+def uvhwhm(uvhwhm_pix: float = 0.0) -> int:
+    """Configure le paramètre hwhm (HWHM de l'interpolation UV, en pixels)."""
+    return cdifmap.native_uvhwhm(uvhwhm_pix)
+
 def mapsize(size: int, cellsize: float, ny: int = 0, cellsize_y: float = 0.0) -> int:
     return cdifmap.native_mapsize(size, cellsize, ny, cellsize_y)
 
@@ -79,15 +87,41 @@ def refresh_beam() -> int:
     """Rafraîchit le faisceau synthétique pour peakwin."""
     return cdifmap.native_refresh_beam()
 
-def restore() -> int:
-    cdef int ret = cdifmap.native_restore()
+def restore(int noresid=0, int dosm=1) -> int:
+    cdef int ret = cdifmap.native_restore(noresid, dosm)
     if ret != 0:
         raise RuntimeError("Échec de la restauration (restore) dans le moteur C.")
+    return ret
+
+def restore_beam(bmaj_mas: float, bmin_mas: float, bpa_deg: float,
+                 int noresid=0, int dosm=1) -> int:
+    cdef int ret = cdifmap.native_restore_beam(bmaj_mas, bmin_mas, bpa_deg, noresid, dosm)
+    if ret != 0:
+        raise RuntimeError("Échec de la restauration (restore) avec faisceau explicite dans le moteur C.")
     return ret
 
 def wfits(filepath: str) -> int:
     cdef bytes filepath_bytes = filepath.encode('utf-8')
     return cdifmap.native_wfits(filepath_bytes)
+
+def wmap(filepath: str) -> int:
+    """Écrit la clean map FITS (requiert restore() avant). Retourne -2 si l'état n'est pas MAP_IS_CLEAN."""
+    cdef bytes b = filepath.encode('utf-8')
+    return cdifmap.native_wmap(b)
+
+def wbeam(filepath: str) -> int:
+    """Écrit le dirty beam FITS (requiert invert() avant)."""
+    cdef bytes b = filepath.encode('utf-8')
+    return cdifmap.native_wbeam(b)
+
+def wdmap(filepath: str) -> int:
+    """Écrit la carte dirty/résiduelle FITS (requiert invert() ou clean() avant). Retourne -2 si stale ou clean."""
+    cdef bytes b = filepath.encode('utf-8')
+    return cdifmap.native_wdmap(b)
+
+def get_map_state() -> int:
+    """Retourne vlbmap->domap : 0=dirty/résiduel, 1=périmé, 2=clean, -1=pas de carte."""
+    return cdifmap.get_native_map_state()
 
 # =====================================================================
 # EXTRACTION DE DONNÉES (Principe Zero-Copy et Memoryviews)
@@ -104,19 +138,25 @@ def get_map():
     
     # Création du Memoryview direct sur la RAM C
     cdef float[:, :] view = <float[:ny, :nx]> map_ptr
-    return np.fliplr(np.asarray(view))
+    # Copie pour sécurité mémoire (buffer C libéré par cleanup()).
+    # np.fliplr : DIFMAP stocke les pixels avec l'Ouest à l'index ix=0 (convention
+    # PGPLOT — maplot.c:setarea() pose tr[1]=+xinc, donc ix croissant → Ouest vers Est
+    # de gauche à droite). La convention astronomique standard place l'Est à gauche
+    # (RA décroissante). fliplr retourne l'axe X pour respecter cette convention.
+    return np.fliplr(np.asarray(view)).copy()
 
 def get_beam():
     """Récupère la matrice du Dirty Beam sans copie."""
     cdef float* beam_ptr = cdifmap.get_native_beam_data()
     cdef int nx = cdifmap.get_native_map_nx()
     cdef int ny = cdifmap.get_native_map_ny()
-    
+
     if beam_ptr == NULL or nx == 0 or ny == 0:
         raise RuntimeError("Aucun beam en mémoire.")
-        
+
     cdef float[:, :] view = <float[:ny, :nx]> beam_ptr
-    return np.fliplr(np.asarray(view))
+    # Même convention PGPLOT→astronomique que get_map() (voir commentaire ci-dessus).
+    return np.fliplr(np.asarray(view)).copy()
 
 # =====================================================================
 # MÉTADONNÉES (Encapsulation propre)
@@ -136,7 +176,7 @@ def get_source() -> str:
 def get_header() -> dict:
     """Extrait la taille des pixels (en mas)."""
     return {
-        "CDELT": 1.0,  # On utilise 1 car les pixels sont carrés
+        "CDELT": cdifmap.get_native_pixsize(),  # vlbmap->xinc * RTOMAS (difmap.c:7798)
         "UNIT": "mas",
         "NX": cdifmap.get_native_map_nx(),
         "NY": cdifmap.get_native_map_ny()
@@ -422,3 +462,15 @@ def staper(float gauval=0.0, float gaurad_wav=0.0) -> int:
     gaurad_wav  : rayon en unités UV courantes (Mλ par défaut), identique à uvtaper().
     """
     return cdifmap.native_staper(gauval, gaurad_wav)
+
+def selfcal_limits(maxamp: float = 0.0, maxphs: float = 0.0) -> int:
+    """Configure maxamp/maxphs pour selfcal."""
+    return cdifmap.native_set_selfcal_limits(maxamp, maxphs)
+
+def selfcal_mintel(p_mintel: int = 3, a_mintel: int = 4) -> int:
+    """Configure le nombre min de télescopes pour les solutions selfcal."""
+    return cdifmap.native_set_selfcal_mintel(p_mintel, a_mintel)
+
+def selfcal_flags(doflag: int = 1, clip: int = 0) -> int:
+    """Configure doflag/clip pour selfcal."""
+    return cdifmap.native_set_selfcal_flags(doflag, clip)
