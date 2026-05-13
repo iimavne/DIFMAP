@@ -1056,6 +1056,11 @@ class ControlPanel(QDockWidget):
         self.chk_show_windows.setChecked(True)
         self.chk_show_windows.setToolTip("Afficher les rectangles des fenêtres CLEAN")
         dw.addWidget(self.chk_show_windows)
+
+        self.chk_show_model_map = QCheckBox("Show Model Components  [M]")
+        self.chk_show_model_map.setToolTip("Afficher les composantes CLEAN sur la carte")
+        self.chk_show_model_map.setChecked(False)
+        dw.addWidget(self.chk_show_model_map)
         layout.addWidget(self._display_windows_section)
 
         # ── Affichage avancé — Clean Map uniquement ───────────────
@@ -1112,11 +1117,6 @@ class ControlPanel(QDockWidget):
         v_custom.addWidget(self.input_custom_levels)
         self._widget_custom_levels.setVisible(False)
         dc.addWidget(self._widget_custom_levels)
-
-        self.chk_show_model_map = QCheckBox("Show Model Components  [M]")
-        self.chk_show_model_map.setToolTip("Afficher les composantes CLEAN sur la carte")
-        self.chk_show_model_map.setChecked(False)
-        dc.addWidget(self.chk_show_model_map)
 
         self.btn_refresh_view = SecondaryButton("↻  Refresh View")
         self.btn_refresh_view.setToolTip("Appliquer l'affichage sans recalculer la carte")

@@ -533,6 +533,15 @@ class MainWindow(QMainWindow):
         is_uv      = (index == TabIndex.UV)
         is_header  = (index == TabIndex.HEADER)
 
+        # Détection modèle via le compteur C (équivalent ob->hasmod de difmap_src).
+        # Utilisé à la fois pour Radplot et pour les cartes (overlay composantes).
+        has_model = False
+        if has_data and hasattr(self, 'session') and self.session:
+            try:
+                has_model = len(self.session.imager.get_model_components()) > 0
+            except Exception:
+                has_model = False
+
         # Rafraîchissement automatique quand on bascule sur l'onglet Header
         if is_header:
             self.header_widget.refresh()
@@ -546,17 +555,6 @@ class MainWindow(QMainWindow):
             ctrl.lbl_rad_mode.setVisible(has_data and is_radplot)
             ctrl.combo_rad_mode.setVisible(has_data and is_radplot)
             ctrl.sep_display.setVisible(has_data and is_radplot)
-
-            # Détection modèle via le compteur C (équivalent ob->hasmod de difmap_src).
-            # On interroge directement les composantes du moteur — jamais les données
-            # cachées (self.data), dont le champ modamp est zéro tant que get_data()
-            # n'a pas été rappelé après clean().
-            has_model = False
-            if has_data and hasattr(self, 'session') and self.session:
-                try:
-                    has_model = len(self.session.imager.get_model_components()) > 0
-                except Exception:
-                    pass
 
             # Si on arrive sur le radplot avec un modèle dont modamp n'est pas encore
             # dans les données cachées, on rafraîchit self.data (déclenche moddif() côté C)
@@ -844,6 +842,13 @@ class MainWindow(QMainWindow):
             )
             self.session.imager.invert(uvmin_wav, uvmax_wav)
 
+            # Rendre le résiduel disponible immédiatement (avant CLEAN) :
+            # utile pour l'onglet Residual et pour certaines actions dépendantes du résiduel.
+            try:
+                self.session.imager.snapshot_residual_from_current_map()
+            except Exception:
+                pass
+
             img_dict = self.session.imager.get_map_package(cellsize)
             # Suivre la maquette: Dirty Map n'expose pas Scale/Min/Max/Contours.
             # On force donc un rendu auto (linear + vmin/vmax auto) et pas de contours.
@@ -857,6 +862,13 @@ class MainWindow(QMainWindow):
                 contour_absmax=contour_absmax, contour_factor=contour_factor,
                 contour_custom=contour_custom
             )
+
+            # Pré-rendre l'onglet Residual (identique à la dirty au départ) pour
+            # éviter un onglet vide lors du premier switch.
+            try:
+                self._refresh_residual_map()
+            except Exception:
+                pass
             self._set_logical_tab(TabIndex.MAP)
             self.log_console.log("Dirty Map computed successfully.")
 

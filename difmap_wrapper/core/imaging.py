@@ -285,6 +285,23 @@ class DifmapImager:
         self._last_residual_map = self.get_map().copy()
         self._last_residual_rms = float(self._native.get_beam_info()["RMS"])
 
+    def snapshot_residual_from_current_map(self) -> None:
+        """Capture un snapshot du buffer carte courant comme "résiduel".
+
+        Utilisé par la GUI juste après un ``invert()`` (Dirty Map) pour rendre
+        l'onglet Residual immédiatement disponible, même avant tout CLEAN.
+
+        Notes
+        -----
+        - Ne modifie pas ``_current_map_type``.
+        - Ne dépend pas de ``restore()``.
+        """
+        self._last_residual_map = self.get_map().copy()
+        try:
+            self._last_residual_rms = float(self._native.get_beam_info().get("RMS", 0.0))
+        except Exception:
+            self._last_residual_rms = None
+
     def invert(
         self,
         uvmin_wav: float = 0.0,
