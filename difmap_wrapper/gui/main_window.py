@@ -4,7 +4,7 @@ import numpy as np
 import difmap_native
 
 from PyQt6.QtWidgets import QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 
 from difmap_wrapper import DifmapSession
 from difmap_wrapper.types import TabIndex  
@@ -20,6 +20,59 @@ from .widgets.radplot_widget import RadPlotWidget
 from .utils import SignalRouter
 from .widgets.header_widget import HeaderWidget
 
+
+
+class CleanWorker(QThread):
+    """Exécute le CLEAN difmap en arrière-plan, itération par chunk."""
+    progress = pyqtSignal(int, int)   # (done, total)
+    paused   = pyqtSignal(int, int)   # (done, total) when a conditional breakpoint is reached
+    finished = pyqtSignal()
+    error    = pyqtSignal(str)
+
+    def __init__(self, imager, niter, gain, cutoff, chunk_size=50, pause_after=0):
+        super().__init__()
+        self._imager     = imager
+        self._niter      = niter
+        self._gain       = gain
+        self._cutoff     = cutoff
+        self._chunk_size = chunk_size
+        self._pause_after = pause_after   # 0 = no conditional breakpoint
+        self._done   = 0
+        self._paused = False
+        self._abort  = False
+
+    def request_pause(self):
+        self._paused = True
+
+    def request_resume(self):
+        self._paused = False
+
+    def abort(self):
+        self._abort  = True
+        self._paused = False
+
+    def run(self):
+        try:
+            while self._done < self._niter and not self._abort:
+                while self._paused and not self._abort:
+                    self.msleep(50)
+                if self._abort:
+                    break
+                chunk = min(self._chunk_size, self._niter - self._done)
+                if self._pause_after > 0:
+                    since_last = self._done % self._pause_after
+                    to_bp = (self._pause_after - since_last) if since_last else self._pause_after
+                    chunk = min(chunk, to_bp)
+                self._imager.clean(chunk, self._gain, self._cutoff)
+                self._done += chunk
+                self.progress.emit(self._done, self._niter)
+                if self._pause_after > 0 and self._done % self._pause_after == 0 and self._done < self._niter:
+                    self._paused = True
+                    self.paused.emit(self._done, self._niter)
+            if not self._abort:
+                self.finished.emit()
+        except Exception as exc:
+            self.error.emit(str(exc))
 
 
 class MainWindow(QMainWindow):
@@ -101,6 +154,7 @@ class MainWindow(QMainWindow):
         self._last_clean_package = None
         self._last_added_window = None
         self._did_first_clean_cycle = False
+        self._clean_worker = None
 
         # 4. Signaux
         self._connect_signals()
@@ -384,10 +438,15 @@ class MainWindow(QMainWindow):
         self.control_panel.data_color_changed.connect(_on_color_selected)
 
         self.control_panel.uv_limits_changed.connect(self._on_uv_limits_changed)
+        self.control_panel.rad_limits_changed.connect(self._on_rad_limits_changed)
         self.control_panel.btn_compute.clicked.connect(self._compute_dirty_map)
-        self.control_panel.btn_compute_clean.clicked.connect(self._compute_clean_map)
+        self.control_panel.btn_apply_imaging.clicked.connect(self._on_apply_imaging)
+        self.control_panel.btn_compute_clean.clicked.connect(self._start_clean)
+        self.control_panel.btn_pause_clean.clicked.connect(self._pause_clean)
         self.control_panel.btn_refresh_view.clicked.connect(self._refresh_current_map_tab)
         self.control_panel.chk_show_model_map.toggled.connect(self._on_show_model_map_changed)
+        self.control_panel.colormap_changed.connect(self._on_colormap_changed)
+        self.control_panel.show_windows_changed.connect(self._on_show_windows_changed)
         self.control_panel.combo_pol.currentTextChanged.connect(self._change_polarization)
         self.control_panel.ifs_range_changed.connect(self._on_ifs_range_changed)
 
@@ -520,6 +579,29 @@ class MainWindow(QMainWindow):
             ctrl.chk_residuals.setVisible(has_data and is_radplot and has_model)
             ctrl.chk_errors.setVisible(has_data and is_radplot)
             ctrl.chk_conjugate.setVisible(has_data and is_uv)
+
+        # Sections de limites contextuelles
+        if hasattr(ctrl, '_uv_limits_section'):
+            ctrl._uv_limits_section.setVisible(has_data and is_uv)
+        if hasattr(ctrl, '_rad_limits_section'):
+            ctrl._rad_limits_section.setVisible(has_data and is_radplot)
+
+        # Sous-sections Imaging contextuelles (Dirty / Residual / Clean)
+        if is_map and has_data:
+            is_dirty     = (index == TabIndex.MAP)
+            is_residual  = (index == TabIndex.RESIDUAL)
+            is_clean_map = (index == TabIndex.CLEAN)
+            for attr, visible in [
+                ('_imaging_params_section',  True),
+                ('_dirty_btn_section',       is_dirty),
+                ('_clean_controls_section',  is_residual or is_clean_map),
+                ('_map_display_section',     True),
+                ('_display_windows_section', is_residual or is_clean_map),
+                ('_display_clean_section',   is_clean_map),
+            ]:
+                w = getattr(ctrl, attr, None)
+                if w is not None:
+                    w.setVisible(visible)
 
         # Checkbox Show Model visible sur toutes les cartes quand un modèle existe
         ctrl.chk_show_model_map.setVisible(is_map and has_model)
@@ -735,7 +817,18 @@ class MainWindow(QMainWindow):
         else:
             self.session.imager.uvtaper(gaussian_value=0.0, gaussian_radius_wav=0.0)
 
-        return mapsize, cellsize, taper_val
+        uvmin_wav = 0.0
+        uvmax_wav = 0.0
+        try:
+            if self.control_panel.chk_uv_filter.isChecked():
+                t = self.control_panel.input_uvfilter_min.text().strip()
+                uvmin_wav = float(t) * 1e6 if t else 0.0
+                t = self.control_panel.input_uvfilter_max.text().strip()
+                uvmax_wav = float(t) * 1e6 if t else 0.0
+        except (ValueError, AttributeError):
+            pass
+
+        return mapsize, cellsize, taper_val, uvmin_wav, uvmax_wav
 
     def _compute_dirty_map(self):
         """
@@ -743,19 +836,19 @@ class MainWindow(QMainWindow):
         dédié. Ne lance pas CLEAN ni restore().
         """
         try:
-            mapsize, cellsize, taper_val = self._apply_imaging_params()
+            mapsize, cellsize, taper_val, uvmin_wav, uvmax_wav = self._apply_imaging_params()
             weight = self.control_panel.combo_weight.currentText().lower()
             self.log_console.log(
                 f"Computing Dirty Map — size: {mapsize}, cell: {cellsize} mas, "
                 f"weight: {weight}, taper: {taper_val} Mλ ..."
             )
-            self.session.imager.invert()
+            self.session.imager.invert(uvmin_wav, uvmax_wav)
 
             img_dict = self.session.imager.get_map_package(cellsize)
-            scale, vmin, vmax = self.control_panel.get_scale_params()
-            contour_mode, contour_absmin, contour_absmax, contour_factor, contour_custom = (
-                self.control_panel.get_contour_params()
-            )
+            # Suivre la maquette: Dirty Map n'expose pas Scale/Min/Max/Contours.
+            # On force donc un rendu auto (linear + vmin/vmax auto) et pas de contours.
+            scale, vmin, vmax = 'linear', None, None
+            contour_mode, contour_absmin, contour_absmax, contour_factor, contour_custom = 'none', 1.0, 100.0, 2.0, None
             self.map_widget.plot_map(
                 img_dict['data'], cellsize,
                 extent=img_dict.get('extent'),
@@ -772,11 +865,8 @@ class MainWindow(QMainWindow):
             self.log_console.log(err_msg)
             QMessageBox.critical(self, "Imaging Error", err_msg)
 
-    def _compute_clean_map(self):
-        """
-        Calcule la Clean Map restaurée (invert → clean → restore) et l'affiche
-        dans l'onglet Clean Map dédié. Suit fidèlement le cycle de difmap_src.
-        """
+    def _start_clean(self):
+        """Lance le CLEAN de façon asynchrone via CleanWorker (QThread)."""
         try:
             try:
                 niter = int(self.control_panel.input_niter.text())
@@ -794,48 +884,129 @@ class MainWindow(QMainWindow):
                     raise ValueError(f"Cutoff doit être ≥ 0, obtenu: {cutoff}")
             except ValueError as exc:
                 raise ValueError(f"Cutoff invalide: {exc}") from exc
-            mapsize, cellsize, taper_val = self._apply_imaging_params()
-            
-            cutoff_str = f", cutoff: {cutoff}" if cutoff > 0 else ""
-            self.log_console.log(
-                f"CLEAN cycle — niter: {niter}, gain: {gain}{cutoff_str}, taper: {taper_val} Mλ"
-            )
 
-            # 0. Vider le modèle uniquement au premier cycle CLEAN après chargement,
-            # pour reproduire le comportement DIFMAP (le modèle s'accumule tant que
-            # l'utilisateur ne fait pas explicitement clrmod()).
+            mapsize, cellsize, taper_val, uvmin_wav, uvmax_wav = self._apply_imaging_params()
+
+            pause_after = 0
+            if self.control_panel.chk_conditional_bp.isChecked():
+                try:
+                    pause_after = int(self.control_panel.input_pause_after.text())
+                except ValueError:
+                    pause_after = 0
+
             if not self._did_first_clean_cycle:
                 self.session.imager.clrmod()
 
-            # 1. Inversion (Dirty Map)
-            self.session.imager.invert()
+            self.session.imager.invert(uvmin_wav, uvmax_wav)
 
-            # 2. CLEAN (cherche les composants dans les fenêtres)
-            self.session.imager.clean(niter, gain, cutoff)
+            self.control_panel.progress_bar.setValue(0)
+            self.control_panel.lbl_progress.setText(f"0 / {niter}")
 
-            # 3. Restore (convolue le modèle et ajoute au résiduel)
-            self.session.imager.restore()
+            cutoff_str = f", cutoff: {cutoff}" if cutoff > 0 else ""
+            self.log_console.log(
+                f"CLEAN started — niter: {niter}, gain: {gain}{cutoff_str}, taper: {taper_val} Mλ"
+            )
 
-            self._did_first_clean_cycle = True
-
-            # Mise à jour des affichages
-            self._refresh_clean_map()
-            self._refresh_residual_map()
-            
-            # Basculer sur l'onglet Clean Map
-            self._set_logical_tab(TabIndex.CLEAN)
-            
-            # Log des stats finales — lit directement depuis le moteur C (évite np.max sur cache)
-            try:
-                peak_info = self.session.imager.peak()
-                self.log_console.log(f"Clean Map restored — Peak: {peak_info['flux']:.4f} Jy/beam")
-            except Exception:
-                pass
+            self._clean_worker = CleanWorker(
+                imager=self.session.imager,
+                niter=niter,
+                gain=gain,
+                cutoff=cutoff,
+                chunk_size=50,
+                pause_after=pause_after,
+            )
+            self._clean_worker.progress.connect(self._on_clean_progress)
+            self._clean_worker.paused.connect(self._on_clean_paused)
+            self._clean_worker.finished.connect(self._on_clean_finished)
+            self._clean_worker.error.connect(self._on_clean_error)
+            self._set_ui_for_clean(True)
+            self._clean_worker.start()
 
         except Exception as e:
-            err_msg = f"Failed to compute Clean Map: {e}"
+            err_msg = f"Failed to start CLEAN: {e}"
             self.log_console.log(err_msg)
             QMessageBox.critical(self, "Imaging Error", err_msg)
+
+    def _pause_clean(self):
+        """Toggle pause/resume sur le worker CLEAN actif."""
+        if self._clean_worker is None or not self._clean_worker.isRunning():
+            return
+        if self._clean_worker._paused:
+            self._clean_worker.request_resume()
+            self.control_panel.btn_pause_clean.setText("⏸  Pause")
+            self.log_console.log("CLEAN resumed.")
+        else:
+            self._clean_worker.request_pause()
+            self.control_panel.btn_pause_clean.setText("▶  Resume")
+            self.log_console.log("CLEAN paused.")
+
+    def _on_clean_progress(self, done: int, total: int) -> None:
+        pct = int(done / total * 100) if total > 0 else 0
+        self.control_panel.progress_bar.setValue(pct)
+        self.control_panel.lbl_progress.setText(f"{done} / {total}")
+
+    def _on_clean_paused(self, done: int, total: int) -> None:
+        """Called when conditional breakpoint triggers an auto-pause."""
+        try:
+            # Show what we have after this batch.
+            self._refresh_residual_map()
+            # Residual is the immediate post-clean buffer (before restore).
+            self._set_logical_tab(TabIndex.RESIDUAL)
+        except Exception:
+            pass
+        # Update pause button to reflect current state.
+        self.control_panel.btn_pause_clean.setText("▶  Resume")
+        self.log_console.log(f"CLEAN paused at {done} / {total} iterations.")
+
+    def _on_clean_finished(self) -> None:
+        try:
+            self.session.imager.restore()
+            self._did_first_clean_cycle = True
+            self._refresh_clean_map()
+            self._refresh_residual_map()
+            self._set_logical_tab(TabIndex.CLEAN)
+            self.control_panel.progress_bar.setValue(100)
+            try:
+                peak_info = self.session.imager.peak()
+                self.log_console.log(f"CLEAN complete — Peak: {peak_info['flux']:.4f} Jy/beam")
+            except Exception:
+                self.log_console.log("CLEAN complete.")
+        except Exception as e:
+            self.log_console.log(f"Post-CLEAN restore error: {e}")
+        finally:
+            self._set_ui_for_clean(False)
+            self._clean_worker = None
+
+    def _on_clean_error(self, msg: str) -> None:
+        self.log_console.log(f"CLEAN error: {msg}")
+        QMessageBox.critical(self, "CLEAN Error", msg)
+        self._set_ui_for_clean(False)
+        self._clean_worker = None
+
+    def _set_ui_for_clean(self, running: bool) -> None:
+        ctrl = self.control_panel
+        ctrl.btn_compute.setEnabled(not running)
+        ctrl.btn_compute_clean.setEnabled(not running)
+        ctrl.btn_apply_imaging.setEnabled(not running)
+        ctrl.btn_pause_clean.setEnabled(running)
+        ctrl.btn_compute_clean.setText("⏳  Running..." if running else "▶  Start")
+        if not running:
+            ctrl.btn_pause_clean.setText("⏸  Pause")
+
+    def _on_apply_imaging(self) -> None:
+        try:
+            self._apply_imaging_params()
+            self.log_console.log("Imaging parameters applied.")
+        except Exception as e:
+            self.log_console.log(f"Error applying imaging params: {e}")
+
+    def _on_colormap_changed(self, cmap_name: str) -> None:
+        for w in (self.map_widget, self.clean_map_widget, self.residual_map_widget):
+            if hasattr(w, 'update_colormap'):
+                w.update_colormap(cmap_name)
+
+    def _on_show_windows_changed(self, _visible: bool) -> None:
+        self._refresh_current_map_tab()
 
     def _add_clean_window_from_coords(self, xa, xb, ya, yb):
         """Ajoute une fenêtre CLEAN depuis les coordonnées de la souris."""
@@ -916,13 +1087,13 @@ class MainWindow(QMainWindow):
             # Garde-fou scientifique (soft): peakwin() doit se baser sur une dirty map
             # fraîche correspondant aux paramètres d'imagerie courants (mapsize/weight/taper).
             # On applique les paramètres et on force invert() avant peakwin().
-            mapsize, cellsize, taper_val = self._apply_imaging_params()
+            mapsize, cellsize, taper_val, uvmin_wav, uvmax_wav = self._apply_imaging_params()
             weight = self.control_panel.combo_weight.currentText().lower()
             self.log_console.log(
                 f"PeakWin — refreshing dirty map first (size: {mapsize}, cell: {cellsize} mas, "
                 f"weight: {weight}, taper: {taper_val} Mλ)"
             )
-            self.session.imager.invert()
+            self.session.imager.invert(uvmin_wav, uvmax_wav)
             self.session.imager.peakwin(size=1.0)
             self.log_console.log("Added peak window (1.0 FWHM)")
             windows = self.session.imager._get_clean_windows()
@@ -1005,7 +1176,9 @@ class MainWindow(QMainWindow):
             if not (map_package and map_package.get('data') is not None):
                 return
 
-            scale, vmin, vmax = self.control_panel.get_scale_params()
+            # Suivre la maquette: Dirty Map n'expose pas Scale/Min/Max/Contours.
+            # Forcer un rendu auto.
+            scale, vmin, vmax = 'linear', None, None
             info = map_package.get('info', {})
             show_model = self.control_panel.chk_show_model_map.isChecked()
             model_components = []
@@ -1037,6 +1210,9 @@ class MainWindow(QMainWindow):
             if not self.session.imager.has_map_data():
                 return
 
+            chk_win = getattr(self.control_panel, 'chk_show_windows', None)
+            show_windows = (chk_win is None or chk_win.isChecked())
+
             cellsize = self._get_valid_cellsize()
             clean_package = self.session.imager.get_map_package(cellsize=cellsize)
             if not (clean_package and clean_package.get('data') is not None):
@@ -1056,7 +1232,7 @@ class MainWindow(QMainWindow):
                     )
                     show_model = self.control_panel.chk_show_model_map.isChecked()
                     model_components = pkg.get('model_components', [])
-                    windows = self.session.imager._get_clean_windows()
+                    windows = self.session.imager._get_clean_windows() if show_windows else []
                     self.clean_map_widget.plot_map(
                         map_data=pkg['data'],
                         cellsize=info.get('cellsize', cellsize),
@@ -1081,6 +1257,7 @@ class MainWindow(QMainWindow):
             )
             show_model = self.control_panel.chk_show_model_map.isChecked()
             model_components = clean_package.get('model_components', [])
+            windows = clean_package.get('windows', []) if show_windows else []
             self.clean_map_widget.plot_map(
                 map_data=clean_package['data'],
                 cellsize=info.get('cellsize', cellsize),
@@ -1089,7 +1266,7 @@ class MainWindow(QMainWindow):
                 vmin=vmin, vmax=vmax,
                 extent=clean_package['extent'],
                 beam_info=info,
-                windows=clean_package.get('windows', []),
+                windows=windows,
                 contour_mode=contour_mode,
                 contour_absmin=contour_absmin,
                 contour_absmax=contour_absmax,
@@ -1123,12 +1300,14 @@ class MainWindow(QMainWindow):
                 return
             if not self._last_clean_package:
                 return
+            chk_win = getattr(self.control_panel, 'chk_show_windows', None)
+            show_windows = (chk_win is None or chk_win.isChecked())
             cellsize = self._get_valid_cellsize()
             scale, vmin, vmax = self.control_panel.get_scale_params()
             contour_mode, contour_absmin, contour_absmax, contour_factor, contour_custom = (
                 self.control_panel.get_contour_params()
             )
-            windows = self.session.imager._get_clean_windows()
+            windows = self.session.imager._get_clean_windows() if show_windows else []
             pkg = self._last_clean_package
             info = pkg.get('info', {})
             show_model = self.control_panel.chk_show_model_map.isChecked()
@@ -1176,6 +1355,8 @@ class MainWindow(QMainWindow):
                     model_components = self.session.imager.get_model_components()
                 except Exception:
                     pass
+            chk_win = getattr(self.control_panel, 'chk_show_windows', None)
+            windows = residual_package.get('windows', []) if (chk_win is None or chk_win.isChecked()) else []
             self.residual_map_widget.plot_map(
                 map_data=residual_package['data'],
                 cellsize=info.get('cellsize', cellsize),
@@ -1183,7 +1364,7 @@ class MainWindow(QMainWindow):
                 scale=scale,
                 vmin=vmin, vmax=vmax,
                 extent=residual_package['extent'],
-                windows=residual_package.get('windows', []),
+                windows=windows,
                 show_model=show_model,
                 model_components=model_components,
             )
@@ -1194,6 +1375,11 @@ class MainWindow(QMainWindow):
         """Applique les limites d'axe UV (umax / vmax difmap) au plot UV."""
         if self.plot_widget and hasattr(self.plot_widget, 'set_uv_limits'):
             self.plot_widget.set_uv_limits(umin, umax, vmin, vmax)
+
+    def _on_rad_limits_changed(self, uvmin, uvmax, ampmin, ampmax, phsmin, phsmax) -> None:
+        """Applique les limites d'affichage Radplot (équivalent r_setrange difmap)."""
+        if self.radplot_widget and hasattr(self.radplot_widget, 'set_rad_limits'):
+            self.radplot_widget.set_rad_limits(uvmin, uvmax, ampmin, ampmax, phsmin, phsmax)
 
     def _change_polarization(self, pol_text: str) -> None:
         """
@@ -1351,8 +1537,9 @@ class MainWindow(QMainWindow):
                     ctrl.combo_rad_mode.setCurrentIndex(mode_idx)
                 if 'crosshair' in state_dict:
                     ctrl.chk_crosshair.setChecked(state_dict['crosshair'])
-                    if self.plot_widget and hasattr(self.plot_widget, 'sync_crosshair_btn'):
-                        self.plot_widget.sync_crosshair_btn(state_dict['crosshair'])
+                    for w in (self.plot_widget, self.radplot_widget):
+                        if w and hasattr(w, 'sync_crosshair_btn'):
+                            w.sync_crosshair_btn(state_dict['crosshair'])
                 if 'show_conjugate' in state_dict:
                     ctrl.chk_conjugate.setChecked(state_dict['show_conjugate'])
                 if 'marker_size' in state_dict:

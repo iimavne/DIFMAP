@@ -257,6 +257,7 @@ class MapPlotWidget(BasePlotWidget):
 
         self.image = None
         self.cbar = None
+        self._instance_cmap = self.__class__._cmap
 
         # CLEAN window selection
         self.window_selector = None
@@ -457,7 +458,7 @@ class MapPlotWidget(BasePlotWidget):
         data_show = np.ma.masked_less_equal(cropped_data, 0.0) if scale_l == 'log' else cropped_data
         norm = Visualizer._make_norm(scale, vmin, vmax, cropped_data)
         self.image = self.ax.imshow(
-            data_show, cmap=self._cmap, origin='lower', extent=astrometric_extent, norm=norm
+            data_show, cmap=self._instance_cmap, origin='lower', extent=astrometric_extent, norm=norm
         )
         self.ax.set_aspect('equal', adjustable='box')
 
@@ -625,6 +626,12 @@ class MapPlotWidget(BasePlotWidget):
     def enable_window_selection(self):
         self._activate_window_selection_mode()
 
+    def update_colormap(self, cmap_name: str) -> None:
+        self._instance_cmap = cmap_name
+        if self.image is not None:
+            self.image.set_cmap(cmap_name)
+            self.draw()
+
 class DirtyMapPlotWidget(MapPlotWidget):
     """Widget d'affichage de la Dirty Map (résidu après inversion FFT, avant CLEAN)."""
 
@@ -765,7 +772,7 @@ class CleanMapPlotWidget(MapPlotWidget):
         data_show = np.ma.masked_less_equal(cropped_data, 0.0) if scale_l == 'log' else cropped_data
         norm = Visualizer._make_norm(scale, vmin, vmax, cropped_data)
         self.image = self.ax.imshow(
-            data_show, cmap=self._cmap, origin='lower', extent=astrometric_extent, norm=norm
+            data_show, cmap=self._instance_cmap, origin='lower', extent=astrometric_extent, norm=norm
         )
         self.ax.set_aspect('equal', adjustable='box')
 

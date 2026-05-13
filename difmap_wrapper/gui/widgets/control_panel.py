@@ -2,7 +2,7 @@
 from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QComboBox, QLineEdit, QCheckBox,
                              QScrollArea, QSlider, QPushButton, QMessageBox,
-                             QColorDialog, QSpinBox, QFrame)
+                             QColorDialog, QSpinBox, QFrame, QProgressBar)
 from PyQt6.QtGui import QColor
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtCore import Qt
@@ -203,9 +203,12 @@ class CollapsibleSection(QWidget):
 class ControlPanel(QDockWidget):
     """Panneau de contrôle gauche de DIFMAP Modern."""
 
-    data_color_changed = pyqtSignal(str)
-    ifs_range_changed  = pyqtSignal(int, int)   # (if_beg, if_end) — 1-indexed, 0=last
-    uv_limits_changed  = pyqtSignal(object, object, object, object)  # umin, umax, vmin, vmax
+    data_color_changed   = pyqtSignal(str)
+    ifs_range_changed    = pyqtSignal(int, int)
+    uv_limits_changed    = pyqtSignal(object, object, object, object)
+    rad_limits_changed   = pyqtSignal(object, object, object, object, object, object)
+    colormap_changed     = pyqtSignal(str)
+    show_windows_changed = pyqtSignal(bool)
 
     def __init__(self, session, title="Controls", parent=None):
         """
@@ -497,10 +500,15 @@ class ControlPanel(QDockWidget):
             layout.addWidget(chk)
 
         # ── Limite plan UV ─────────────────────────────────────────
+        self._uv_limits_section = QWidget()
+        _uv_sec = QVBoxLayout(self._uv_limits_section)
+        _uv_sec.setContentsMargins(0, 0, 0, 0)
+        _uv_sec.setSpacing(4)
+
         sep_uv = QWidget()
         sep_uv.setFixedHeight(1)
         sep_uv.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 4px 0;")
-        layout.addWidget(sep_uv)
+        _uv_sec.addWidget(sep_uv)
 
         toggle_style = f"""
             QPushButton {{
@@ -548,7 +556,7 @@ class ControlPanel(QDockWidget):
         h_uv_hdr.addWidget(lbl_uv)
         h_uv_hdr.addStretch()
         h_uv_hdr.addWidget(self.chk_uv_limit)
-        layout.addLayout(h_uv_hdr)
+        _uv_sec.addLayout(h_uv_hdr)
 
         # Grille U min / U max / V min / V max
         self._uv_limit_box = QWidget()
@@ -588,7 +596,8 @@ class ControlPanel(QDockWidget):
         row_v.addWidget(lbl_vmax); row_v.addWidget(self.input_vmax_uv)
         grid.addLayout(row_v)
 
-        layout.addWidget(self._uv_limit_box)
+        _uv_sec.addWidget(self._uv_limit_box)
+        layout.addWidget(self._uv_limits_section)
 
         # Désactiver les champs par défaut (toggle OFF)
         for w in (self.input_umin, self.input_umax, self.input_vmin_uv, self.input_vmax_uv):
@@ -619,6 +628,99 @@ class ControlPanel(QDockWidget):
         self.chk_uv_limit.toggled.connect(_on_uv_toggle)
         for w in (self.input_umin, self.input_umax, self.input_vmin_uv, self.input_vmax_uv):
             w.editingFinished.connect(_emit_uv_limits_checked)
+
+        # ── Limite Radplot ─────────────────────────────────────────
+        self._rad_limits_section = QWidget()
+        _rad_sec = QVBoxLayout(self._rad_limits_section)
+        _rad_sec.setContentsMargins(0, 0, 0, 0)
+        _rad_sec.setSpacing(4)
+
+        sep_rad = QWidget()
+        sep_rad.setFixedHeight(1)
+        sep_rad.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 4px 0;")
+        _rad_sec.addWidget(sep_rad)
+
+        h_rad_hdr = QHBoxLayout()
+        lbl_rad_lim = QLabel("Limite Radplot")
+        lbl_rad_lim.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: 10px; font-weight: 500;")
+        self.chk_rad_limit = QPushButton("OFF")
+        self.chk_rad_limit.setCheckable(True)
+        self.chk_rad_limit.setChecked(False)
+        self.chk_rad_limit.setStyleSheet(toggle_style)
+        self.chk_rad_limit.setToolTip("Activer les limites manuelles du Radplot")
+        h_rad_hdr.addWidget(lbl_rad_lim)
+        h_rad_hdr.addStretch()
+        h_rad_hdr.addWidget(self.chk_rad_limit)
+        _rad_sec.addLayout(h_rad_hdr)
+
+        self._rad_limit_box = QWidget()
+        grid_rad = QVBoxLayout(self._rad_limit_box)
+        grid_rad.setContentsMargins(0, 4, 0, 0)
+        grid_rad.setSpacing(4)
+
+        def _make_rad_row(lbl_a, lbl_b):
+            row = QHBoxLayout()
+            row.setSpacing(6)
+            la = QLabel(lbl_a); la.setFixedWidth(40)
+            ia = QLineEdit(); ia.setPlaceholderText("auto"); ia.setStyleSheet(field_style)
+            lb = QLabel(lbl_b); lb.setFixedWidth(40)
+            ib = QLineEdit(); ib.setPlaceholderText("auto"); ib.setStyleSheet(field_style)
+            row.addWidget(la); row.addWidget(ia)
+            row.addWidget(lb); row.addWidget(ib)
+            grid_rad.addLayout(row)
+            return ia, ib
+
+        lbl_uvr = QLabel("UV Radius (Mλ)")
+        lbl_uvr.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        grid_rad.addWidget(lbl_uvr)
+        self.input_rad_uvmin, self.input_rad_uvmax = _make_rad_row("UV min", "UV max")
+
+        lbl_amp = QLabel("Amplitude (Jy)")
+        lbl_amp.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        grid_rad.addWidget(lbl_amp)
+        self.input_rad_ampmin, self.input_rad_ampmax = _make_rad_row("Amp min", "Amp max")
+
+        lbl_phs = QLabel("Phase (°)")
+        lbl_phs.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        grid_rad.addWidget(lbl_phs)
+        self.input_rad_phsmin, self.input_rad_phsmax = _make_rad_row("Phs min", "Phs max")
+
+        _rad_sec.addWidget(self._rad_limit_box)
+        layout.addWidget(self._rad_limits_section)
+
+        _rad_fields = (self.input_rad_uvmin, self.input_rad_uvmax,
+                       self.input_rad_ampmin, self.input_rad_ampmax,
+                       self.input_rad_phsmin, self.input_rad_phsmax)
+
+        for w in _rad_fields:
+            w.setEnabled(False)
+
+        def _on_rad_toggle(checked):
+            self.chk_rad_limit.setText("ON" if checked else "OFF")
+            for w in _rad_fields:
+                w.setEnabled(checked)
+            self._emit_rad_limits()
+
+        def _parse_rad(field):
+            t = field.text().strip()
+            try:
+                return float(t) if t and t.lower() != "auto" else None
+            except ValueError:
+                return None
+
+        def _emit_rad_limits_checked():
+            if self.chk_rad_limit.isChecked():
+                self._emit_rad_limits()
+
+        self._emit_rad_limits = lambda: self.rad_limits_changed.emit(
+            _parse_rad(self.input_rad_uvmin),  _parse_rad(self.input_rad_uvmax),
+            _parse_rad(self.input_rad_ampmin), _parse_rad(self.input_rad_ampmax),
+            _parse_rad(self.input_rad_phsmin), _parse_rad(self.input_rad_phsmax),
+        )
+
+        self.chk_rad_limit.toggled.connect(_on_rad_toggle)
+        for w in _rad_fields:
+            w.editingFinished.connect(_emit_rad_limits_checked)
 
         # ── Taille des marqueurs ───────────────────────────────────
         sep2 = QWidget()
@@ -726,24 +828,70 @@ class ControlPanel(QDockWidget):
         layout = self.group_imaging.content_layout
         layout.setSpacing(4)
 
-        # ── GRID ─────────────────────────────────────────────────
-        layout.addWidget(self._subsection_header("Grid"))
+        # ── Styles locaux ────────────────────────────────────────
+        toggle_style = f"""
+            QPushButton {{
+                background-color: {D.ASTRAL_MUTED}; color: {D.ASTRAL_TEXT};
+                border: none; border-radius: 9px; padding: 2px 8px;
+                font-size: 9px; font-weight: bold;
+                min-width: 38px; max-width: 38px; min-height: 18px;
+            }}
+            QPushButton:checked {{ background-color: {D.ASTRAL_ACCENT}; color: #FFFFFF; }}
+        """
+        field_s = f"""
+            QLineEdit {{
+                background-color: {D.ASTRAL_SURFACE}; border: 1px solid {D.ASTRAL_BORDER};
+                border-radius: 3px; padding: 3px 5px;
+                color: {D.ASTRAL_TEXT}; font-size: 10px; min-height: 20px;
+            }}
+            QLineEdit:focus {{ border: 1px solid {D.ASTRAL_ACCENT}; }}
+            QLineEdit:disabled {{ background-color: {D.ASTRAL_DEEP}; color: {D.ASTRAL_MUTED}; }}
+        """
 
-        h_grid = QHBoxLayout()
-        h_grid.setSpacing(6)
-        self.input_mapsize = QLineEdit("512")
-        self.input_mapsize.setFixedWidth(52)
+        # ══════════════════════════════════════════════════════════
+        # IMAGING PARAMS — tous les onglets carte
+        # ══════════════════════════════════════════════════════════
+        self._imaging_params_section = QWidget()
+        ip = QVBoxLayout(self._imaging_params_section)
+        ip.setContentsMargins(0, 0, 0, 0); ip.setSpacing(4)
+
+        ip.addWidget(self._subsection_header("Grid"))
+        h_grid = QHBoxLayout(); h_grid.setSpacing(6)
+        self.input_mapsize = QLineEdit("512"); self.input_mapsize.setFixedWidth(52)
         self.input_mapsize.setToolTip("Taille de la grille FFT (puissance de 2 recommandée)")
-        self.input_cellsize = QLineEdit("0.1")
-        self.input_cellsize.setFixedWidth(52)
+        self.input_cellsize = QLineEdit("0.1"); self.input_cellsize.setFixedWidth(52)
         self.input_cellsize.setToolTip("Taille du pixel en mas")
         h_grid.addWidget(QLabel("Size:")); h_grid.addWidget(self.input_mapsize)
         h_grid.addWidget(QLabel("Cell (mas):")); h_grid.addWidget(self.input_cellsize)
         h_grid.addStretch()
-        layout.addLayout(h_grid)
+        ip.addLayout(h_grid)
 
-        h_wt = QHBoxLayout()
-        h_wt.setSpacing(6)
+        h_uvf_hdr = QHBoxLayout(); h_uvf_hdr.setSpacing(6)
+        lbl_uvf = QLabel("UV Filtering")
+        lbl_uvf.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: 10px; font-weight: 500;")
+        self.chk_uv_filter = QPushButton("OFF")
+        self.chk_uv_filter.setCheckable(True); self.chk_uv_filter.setChecked(False)
+        self.chk_uv_filter.setStyleSheet(toggle_style)
+        self.chk_uv_filter.setToolTip("Activer le filtre de plage UV (uvrange) en Mλ")
+        h_uvf_hdr.addWidget(lbl_uvf); h_uvf_hdr.addStretch(); h_uvf_hdr.addWidget(self.chk_uv_filter)
+        ip.addLayout(h_uvf_hdr)
+
+        self._uv_filter_box = QWidget()
+        h_uvf = QHBoxLayout(self._uv_filter_box)
+        h_uvf.setContentsMargins(0, 0, 0, 0); h_uvf.setSpacing(6)
+        lbl_uvfmin = QLabel("UV min"); lbl_uvfmin.setFixedWidth(40)
+        self.input_uvfilter_min = QLineEdit(); self.input_uvfilter_min.setPlaceholderText("0")
+        self.input_uvfilter_min.setStyleSheet(field_s); self.input_uvfilter_min.setEnabled(False)
+        self.input_uvfilter_min.setToolTip("Rayon UV minimum (Mλ)")
+        lbl_uvfmax = QLabel("UV max"); lbl_uvfmax.setFixedWidth(40)
+        self.input_uvfilter_max = QLineEdit(); self.input_uvfilter_max.setPlaceholderText("0")
+        self.input_uvfilter_max.setStyleSheet(field_s); self.input_uvfilter_max.setEnabled(False)
+        self.input_uvfilter_max.setToolTip("Rayon UV maximum (Mλ)")
+        h_uvf.addWidget(lbl_uvfmin); h_uvf.addWidget(self.input_uvfilter_min)
+        h_uvf.addWidget(lbl_uvfmax); h_uvf.addWidget(self.input_uvfilter_max)
+        ip.addWidget(self._uv_filter_box)
+
+        h_wt = QHBoxLayout(); h_wt.setSpacing(6)
         h_wt.addWidget(QLabel("Weighting:"))
         self.combo_weight = QComboBox()
         self.combo_weight.addItems(["None", "Natural", "Uniform"])
@@ -754,61 +902,166 @@ class ControlPanel(QDockWidget):
             "  Uniform  : uvweight 2,0   (résolution maximale)"
         )
         h_wt.addWidget(self.combo_weight)
-        layout.addLayout(h_wt)
+        ip.addLayout(h_wt)
 
-        h_tap = QHBoxLayout()
-        h_tap.setSpacing(6)
+        h_tap = QHBoxLayout(); h_tap.setSpacing(6)
         h_tap.addWidget(QLabel("Taper (Mλ):"))
-        self.input_taper = QLineEdit("0")
-        self.input_taper.setFixedWidth(52)
+        self.input_taper = QLineEdit("0"); self.input_taper.setFixedWidth(52)
         self.input_taper.setToolTip("Taper gaussien — 0 = aucun")
-        h_tap.addWidget(self.input_taper)
-        h_tap.addStretch()
-        layout.addLayout(h_tap)
+        h_tap.addWidget(self.input_taper); h_tap.addStretch()
+        ip.addLayout(h_tap)
 
-        self.btn_compute = PrimaryButton("⊞  Dirty Map")
+        self.btn_apply_imaging = SecondaryButton("Apply")
+        self.btn_apply_imaging.setToolTip("Appliquer les paramètres d'imagerie au moteur")
+        ip.addWidget(self.btn_apply_imaging)
+
+        layout.addWidget(self._imaging_params_section)
+
+        # ══════════════════════════════════════════════════════════
+        # DIRTY MAP BUTTON — onglet Dirty Map uniquement
+        # ══════════════════════════════════════════════════════════
+        self._dirty_btn_section = QWidget()
+        db = QVBoxLayout(self._dirty_btn_section)
+        db.setContentsMargins(0, 0, 0, 0); db.setSpacing(4)
+        self.btn_compute = PrimaryButton("⊞  Make Dirty Map")
         self.btn_compute.setToolTip("Calculer la Dirty Map (invert)")
-        layout.addWidget(self.btn_compute)
+        db.addWidget(self.btn_compute)
+        layout.addWidget(self._dirty_btn_section)
 
-        # ── CLEAN ─────────────────────────────────────────────────
-        layout.addWidget(self._thin_sep())
-        layout.addWidget(self._subsection_header("Clean"))
+        # ══════════════════════════════════════════════════════════
+        # CLEAN CONTROLS — Residual + Clean Map
+        # ══════════════════════════════════════════════════════════
+        self._clean_controls_section = QWidget()
+        cc = QVBoxLayout(self._clean_controls_section)
+        cc.setContentsMargins(0, 0, 0, 0); cc.setSpacing(4)
+        cc.addWidget(self._thin_sep())
+        cc.addWidget(self._subsection_header("Clean"))
 
-        # Ligne 1: Niter et Gain
-        h_nc = QHBoxLayout()
-        h_nc.setSpacing(6)
-        h_nc.addWidget(QLabel("Niter:"))
-        self.input_niter = QLineEdit("100")
-        self.input_niter.setFixedWidth(52)
-        self.input_niter.setToolTip("Nombre d'itérations CLEAN\n(si négatif: arrêt au 1er composant négatif)")
-        h_nc.addWidget(self.input_niter)
-        h_nc.addWidget(QLabel("Gain:"))
-        self.input_gain = QLineEdit("0.05")
-        self.input_gain.setFixedWidth(46)
+        lbl_params = QLabel("Parameters")
+        lbl_params.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        cc.addWidget(lbl_params)
+
+        h_nc = QHBoxLayout(); h_nc.setSpacing(6)
+        h_nc.addWidget(QLabel("Total Niter:"))
+        self.input_niter = QLineEdit("1000"); self.input_niter.setFixedWidth(60)
+        self.input_niter.setToolTip("Nombre total d'itérations CLEAN")
+        h_nc.addWidget(self.input_niter); h_nc.addStretch()
+        cc.addLayout(h_nc)
+
+        h_gain = QHBoxLayout(); h_gain.setSpacing(6)
+        h_gain.addWidget(QLabel("Loop Gain:"))
+        self.input_gain = QLineEdit("0.05"); self.input_gain.setFixedWidth(60)
         self.input_gain.setToolTip("Gain de boucle CLEAN (0–1)")
-        h_nc.addWidget(self.input_gain)
-        h_nc.addStretch()
-        layout.addLayout(h_nc)
+        h_gain.addWidget(self.input_gain); h_gain.addStretch()
+        cc.addLayout(h_gain)
 
-        # Ligne 2: Cutoff
-        h_cutoff = QHBoxLayout()
-        h_cutoff.setSpacing(6)
-        h_cutoff.addWidget(QLabel("Cutoff:"))
-        self.input_cutoff = QLineEdit("0.0")
-        self.input_cutoff.setFixedWidth(60)
-        self.input_cutoff.setToolTip("Seuil de flux résiduel (Jy/beam)\n0 = pas de limite")
-        h_cutoff.addWidget(self.input_cutoff)
-        h_cutoff.addWidget(QLabel("Jy/bm"))
-        h_cutoff.addStretch()
-        layout.addLayout(h_cutoff)
+        h_cutoff = QHBoxLayout(); h_cutoff.setSpacing(6)
+        h_cutoff.addWidget(QLabel("Cutoff (Jy/bm):"))
+        self.input_cutoff = QLineEdit("0.001"); self.input_cutoff.setFixedWidth(60)
+        self.input_cutoff.setToolTip("Seuil de flux résiduel (Jy/beam) — 0 = pas de limite")
+        h_cutoff.addWidget(self.input_cutoff); h_cutoff.addStretch()
+        cc.addLayout(h_cutoff)
 
-        self.btn_compute_clean = PrimaryButton("▶  Clean Map")
-        self.btn_compute_clean.setToolTip("Calculer la Clean Map (invert → clean → restore)")
-        layout.addWidget(self.btn_compute_clean)
+        h_bp_hdr = QHBoxLayout(); h_bp_hdr.setSpacing(6)
+        lbl_bp = QLabel("Conditional Breakpoints")
+        lbl_bp.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: 10px;")
+        self.chk_conditional_bp = QPushButton("OFF")
+        self.chk_conditional_bp.setCheckable(True); self.chk_conditional_bp.setChecked(False)
+        self.chk_conditional_bp.setStyleSheet(toggle_style)
+        self.chk_conditional_bp.setToolTip("Pause automatique après X itérations")
+        h_bp_hdr.addWidget(lbl_bp); h_bp_hdr.addStretch(); h_bp_hdr.addWidget(self.chk_conditional_bp)
+        cc.addLayout(h_bp_hdr)
 
-        # ── DISPLAY ───────────────────────────────────────────────
-        layout.addWidget(self._thin_sep())
-        layout.addWidget(self._subsection_header("Display"))
+        self._bp_box = QWidget()
+        h_bp = QHBoxLayout(self._bp_box)
+        h_bp.setContentsMargins(0, 0, 0, 0); h_bp.setSpacing(6)
+        h_bp.addWidget(QLabel("Pause after"))
+        self.input_pause_after = QLineEdit("100"); self.input_pause_after.setFixedWidth(52)
+        self.input_pause_after.setStyleSheet(field_s); self.input_pause_after.setEnabled(False)
+        h_bp.addWidget(self.input_pause_after)
+        h_bp.addWidget(QLabel("iters")); h_bp.addStretch()
+        cc.addWidget(self._bp_box)
+
+        h_prog = QHBoxLayout(); h_prog.setSpacing(4)
+        h_prog.addWidget(QLabel("Progress"))
+        self.lbl_progress = QLabel("0 / 0")
+        self.lbl_progress.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 10px;")
+        self.lbl_progress.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        h_prog.addWidget(self.lbl_progress)
+        cc.addLayout(h_prog)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMinimum(0); self.progress_bar.setMaximum(100)
+        self.progress_bar.setValue(0); self.progress_bar.setFixedHeight(8)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setStyleSheet(f"""
+            QProgressBar {{
+                background-color: {D.ASTRAL_SURFACE}; border: 1px solid {D.ASTRAL_BORDER};
+                border-radius: 4px;
+            }}
+            QProgressBar::chunk {{ background-color: {D.ASTRAL_ACCENT}; border-radius: 4px; }}
+        """)
+        cc.addWidget(self.progress_bar)
+
+        h_sp = QHBoxLayout(); h_sp.setSpacing(6)
+        self.btn_compute_clean = PrimaryButton("▶  Start")
+        self.btn_compute_clean.setToolTip("Lancer invert + CLEAN + restore")
+        self.btn_pause_clean = QPushButton("⏸  Pause")
+        self.btn_pause_clean.setEnabled(False)
+        self.btn_pause_clean.setToolTip("Suspendre / reprendre le CLEAN")
+        self.btn_pause_clean.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {D.ASTRAL_SURFACE}; color: {D.ASTRAL_MUTED};
+                border: 1px solid {D.ASTRAL_BORDER}; border-radius: 4px;
+                padding: 6px 10px; font-size: 11px;
+            }}
+            QPushButton:enabled {{
+                background-color: #8B2222; color: #FFFFFF; border-color: #8B2222;
+            }}
+            QPushButton:enabled:hover {{ background-color: #A03030; }}
+        """)
+        h_sp.addWidget(self.btn_compute_clean); h_sp.addWidget(self.btn_pause_clean)
+        cc.addLayout(h_sp)
+        layout.addWidget(self._clean_controls_section)
+
+        # ══════════════════════════════════════════════════════════
+        # MAP DISPLAY — tous les onglets carte
+        # ══════════════════════════════════════════════════════════
+        self._map_display_section = QWidget()
+        md = QVBoxLayout(self._map_display_section)
+        md.setContentsMargins(0, 0, 0, 0); md.setSpacing(4)
+        md.addWidget(self._thin_sep())
+        md.addWidget(self._subsection_header("Map Display"))
+
+        h_cmap = QHBoxLayout(); h_cmap.setSpacing(6)
+        h_cmap.addWidget(QLabel("Color Map:"))
+        self.combo_colormap = QComboBox()
+        self.combo_colormap.addItems(["inferno", "viridis", "gray", "hot", "plasma"])
+        self.combo_colormap.setToolTip(
+            "inferno : pseudo-color (proche du défaut difmap)\n"
+            "viridis : colorblind-friendly\n"
+            "gray    : niveaux de gris (G natif difmap)\n"
+            "hot     : chaud\n"
+            "plasma  : alternative vibrante"
+        )
+        h_cmap.addWidget(self.combo_colormap)
+        md.addLayout(h_cmap)
+        layout.addWidget(self._map_display_section)
+
+        # ── Show Windows — Residual + Clean ──────────────────────
+        self._display_windows_section = QWidget()
+        dw = QVBoxLayout(self._display_windows_section)
+        dw.setContentsMargins(0, 0, 0, 0); dw.setSpacing(2)
+        self.chk_show_windows = QCheckBox("Show Windows  [W]")
+        self.chk_show_windows.setChecked(True)
+        self.chk_show_windows.setToolTip("Afficher les rectangles des fenêtres CLEAN")
+        dw.addWidget(self.chk_show_windows)
+        layout.addWidget(self._display_windows_section)
+
+        # ── Affichage avancé — Clean Map uniquement ───────────────
+        self._display_clean_section = QWidget()
+        dc = QVBoxLayout(self._display_clean_section)
+        dc.setContentsMargins(0, 0, 0, 0); dc.setSpacing(4)
 
         h_sc = QHBoxLayout(); h_sc.setSpacing(6)
         h_sc.addWidget(QLabel("Scale:"))
@@ -816,7 +1069,7 @@ class ControlPanel(QDockWidget):
         self.combo_scale.addItems(["Linear", "Log", "Sqrt"])
         self.combo_scale.setToolTip("Échelle de couleur (mapfunc)")
         h_sc.addWidget(self.combo_scale)
-        layout.addLayout(h_sc)
+        dc.addLayout(h_sc)
 
         h_range = QHBoxLayout(); h_range.setSpacing(6)
         h_range.addWidget(QLabel("Min:"))
@@ -825,16 +1078,15 @@ class ControlPanel(QDockWidget):
         h_range.addWidget(QLabel("Max:"))
         self.input_vmax = QLineEdit(); self.input_vmax.setPlaceholderText("auto")
         h_range.addWidget(self.input_vmax)
-        layout.addLayout(h_range)
+        dc.addLayout(h_range)
 
-        # Contours
         h_ctr = QHBoxLayout(); h_ctr.setSpacing(6)
         h_ctr.addWidget(QLabel("Contours:"))
         self.combo_contour_mode = QComboBox()
         self.combo_contour_mode.addItems(["Standard %", "Log", "Custom"])
         self.combo_contour_mode.setToolTip("levs / loglevs / niveaux personnalisés")
         h_ctr.addWidget(self.combo_contour_mode)
-        layout.addLayout(h_ctr)
+        dc.addLayout(h_ctr)
 
         self._widget_log_params = QWidget()
         h_log = QHBoxLayout(self._widget_log_params)
@@ -849,7 +1101,7 @@ class ControlPanel(QDockWidget):
         self.input_factor = QLineEdit("2"); self.input_factor.setFixedWidth(34)
         h_log.addWidget(self.input_factor)
         self._widget_log_params.setVisible(False)
-        layout.addWidget(self._widget_log_params)
+        dc.addWidget(self._widget_log_params)
 
         self._widget_custom_levels = QWidget()
         v_custom = QVBoxLayout(self._widget_custom_levels)
@@ -859,19 +1111,34 @@ class ControlPanel(QDockWidget):
         self.input_custom_levels.setPlaceholderText("ex: -1 1 2 4 8 16 32 64 | 1:64:*2")
         v_custom.addWidget(self.input_custom_levels)
         self._widget_custom_levels.setVisible(False)
-        layout.addWidget(self._widget_custom_levels)
+        dc.addWidget(self._widget_custom_levels)
 
-        # Checkbox Show Model pour les cartes (comme PGPLOT 'M')
         self.chk_show_model_map = QCheckBox("Show Model Components  [M]")
         self.chk_show_model_map.setToolTip("Afficher les composantes CLEAN sur la carte")
         self.chk_show_model_map.setChecked(False)
-        layout.addWidget(self.chk_show_model_map)
+        dc.addWidget(self.chk_show_model_map)
 
         self.btn_refresh_view = SecondaryButton("↻  Refresh View")
         self.btn_refresh_view.setToolTip("Appliquer l'affichage sans recalculer la carte")
-        layout.addWidget(self.btn_refresh_view)
+        dc.addWidget(self.btn_refresh_view)
+        layout.addWidget(self._display_clean_section)
 
+        # ── Connexions internes ───────────────────────────────────
+        def _on_uvf_toggle(checked):
+            self.chk_uv_filter.setText("ON" if checked else "OFF")
+            for w in (self.input_uvfilter_min, self.input_uvfilter_max):
+                w.setEnabled(checked)
+
+        def _on_bp_toggle(checked):
+            self.chk_conditional_bp.setText("ON" if checked else "OFF")
+            self.input_pause_after.setEnabled(checked)
+
+        self.chk_uv_filter.toggled.connect(_on_uvf_toggle)
+        self.chk_conditional_bp.toggled.connect(_on_bp_toggle)
         self.combo_contour_mode.currentIndexChanged.connect(self._on_contour_mode_changed)
+        self.combo_colormap.currentTextChanged.connect(lambda t: self.colormap_changed.emit(t))
+        self.chk_show_windows.toggled.connect(lambda v: self.show_windows_changed.emit(v))
+
         self.main_layout.addWidget(self.group_imaging)
 
     def _on_contour_mode_changed(self, index: int) -> None:

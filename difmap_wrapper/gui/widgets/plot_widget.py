@@ -91,7 +91,7 @@ class UVPlotWidget(BasePlotWidget):
 
     # (label, editor_mode, checkable, icon, shortcut_hint, tooltip)
     _UV_TOOLS = [
-        ("Navigate",  "PAN",     True,  "fa5s.arrows-alt",   "[M]", "Mode navigation / déplacement"),
+        ("Navigate",  "PAN",     True,  "fa5s.arrows-alt",   "[G]", "Mode navigation / déplacement"),
         ("Zoom",      "ZOOM",    True,  "fa5s.search-plus",  "[Z]", "Zoom rectangle"),
         ("Flag",      "CUT",     True,  "fa5s.ban",          "[C]", "Flaguer rectangle"),
         ("Info",      "INSPECT", True,  "fa5s.info-circle",  "[S]", "Inspecter baseline / temps"),
@@ -99,7 +99,7 @@ class UVPlotWidget(BasePlotWidget):
     _UV_ACTIONS = [
         ("Dezoom",     None,       False, "fa5s.search-minus", "[O]", "Dézoomer de 50 %"),
         ("Reset View", None,       False, "fa5s.home",         "[R]", "Réinitialiser la vue complète"),
-        ("Undo Flag",  None,       False, "fa5s.undo",         "[U]", "Annuler le dernier flagging"),
+        ("Undo Flag",  None,       False, "fa5s.undo",         "[u]", "Annuler le dernier flagging"),
         ("Crosshair",  "XHAIR",   True,  "fa5s.crosshairs",   "[+]", "Crosshair plein écran"),
     ]
 

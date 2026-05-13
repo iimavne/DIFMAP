@@ -540,6 +540,14 @@ class DifmapImager:
         """
         self._native.clean(niter, gain, cutoff)
         self._current_map_type = "residual"
+        # Rendre le résiduel disponible immédiatement (avant restore()).
+        # Indispensable pour le CLEAN chunké en GUI (pause_after): on veut afficher
+        # l'état après chaque tranche d'itérations.
+        try:
+            self._capture_residual()
+        except Exception:
+            # Ne pas faire échouer le CLEAN si la capture échoue — la carte reste valide.
+            pass
         # clean() met à jour le modèle C : modamp (calculé par moddif dans
         # l_extract_uv) sera périmé dans le cache. On invalide pour que
         # radplot() obtienne des valeurs fraîches au prochain appel.

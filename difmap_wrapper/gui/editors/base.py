@@ -168,6 +168,7 @@ class BasePlotEditor:
             "h": self.action_help, "H": self.action_help,
             "l": self.action_redisplay, "L": self.action_redisplay,
             "z": self.action_toggle_zoom, "Z": self.action_toggle_zoom,
+            "g": self.action_toggle_pan, "G": self.action_toggle_pan,
             "m": self.action_toggle_pan, "M": self.action_toggle_pan,
             "c": self.action_toggle_cut, "C": self.action_toggle_cut,
             "d": self.action_cancel_cut, "D": self.action_cancel_cut,
