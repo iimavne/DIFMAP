@@ -250,10 +250,13 @@ class MapPlotWidget(BasePlotWidget):
         ("Add Window  [W]",    "ADD_WINDOW"),
     ]
 
-    def __init__(self, parent=None):
-        super().__init__(parent=parent, figsize=(6, 6), include_toolbar=True, layout_type='constrained')
+    def __init__(self, parent=None, show_tools: bool = True, show_annotations: bool = True):
+        super().__init__(parent=parent, figsize=(6, 6), include_toolbar=True, layout_type=None)
         # Hide matplotlib NavigationToolbar — we use our own combo-based toolbar
         self.toolbar.setVisible(False)
+
+        self._show_tools = bool(show_tools)
+        self._show_annotations = bool(show_annotations)
 
         self.image = None
         self.cbar = None
@@ -267,7 +270,8 @@ class MapPlotWidget(BasePlotWidget):
         self.canvas.mpl_connect('button_press_event', self._on_mouse_press)
         self.canvas.mpl_connect('key_press_event', self._on_key_press)
 
-        self._build_map_toolbar()
+        if self._show_tools:
+            self._build_map_toolbar()
 
     def _build_map_toolbar(self) -> None:
         """Toolbar — même pattern que UV/Radplot : combo d'outils + boutons d'action."""
@@ -465,9 +469,13 @@ class MapPlotWidget(BasePlotWidget):
         self.cbar = self.fig.colorbar(
             self.image, ax=self.ax,
             label="Flux (Jy/beam)",
-            fraction=0.046, pad=0.04
+            fraction=0.040, pad=0.02
         )
-
+        # Marges minimales : bottom=0.22 réserve la place pour les annotations
+        # (y=-0.12 en coords axes → y_fig ≈ 0.13, soit ~4 lignes de texte).
+        self.ax.set_anchor('C')
+        _bot = 0.22 if self._show_annotations else 0.08
+        self.fig.subplots_adjust(left=0.08, right=0.88, top=0.95, bottom=_bot)
         # DIFMAP: pas de contours sur Dirty/Residual maps.
         # Les contours sont uniquement tracés sur la Clean Map restaurée.
         contour_levels = []
@@ -511,7 +519,8 @@ class MapPlotWidget(BasePlotWidget):
                     )
                     self.ax.add_patch(ell)
 
-        _add_map_annotations(self.ax, self.fig, cropped_data, self._map_type, contour_levels=contour_levels)
+        if self._show_annotations:
+            _add_map_annotations(self.ax, self.fig, cropped_data, self._map_type, contour_levels=contour_levels)
         self.draw()
 
     def _on_mouse_press(self, event):
@@ -639,6 +648,9 @@ class DirtyMapPlotWidget(MapPlotWidget):
     _cmap = "inferno"
     _map_type = "dirty"
 
+    def __init__(self, parent=None, show_annotations: bool = True):
+        super().__init__(parent=parent, show_tools=False, show_annotations=show_annotations)
+
     def plot_map(self, map_data, cellsize, cellsize_y=None,
                 scale='linear', vmin=None, vmax=None, extent=None,
                 contour_mode='pct', contour_absmin=1.0, contour_absmax=100.0,
@@ -669,6 +681,9 @@ class ResidualMapPlotWidget(MapPlotWidget):
     _map_title = "Residual Map"
     _cmap = "inferno"
     _map_type = "residual"
+
+    def __init__(self, parent=None, show_annotations: bool = True):
+        super().__init__(parent=parent, show_tools=False, show_annotations=show_annotations)
 
     def plot_map(self, map_data, cellsize, cellsize_y=None,
                 scale='linear', vmin=None, vmax=None, extent=None,
@@ -701,6 +716,9 @@ class CleanMapPlotWidget(MapPlotWidget):
     _map_title = "Clean Map"
     _cmap = "inferno"
     _map_type = "clean"
+
+    def __init__(self, parent=None, show_annotations: bool = True):
+        super().__init__(parent=parent, show_tools=False, show_annotations=show_annotations)
 
     def plot_map(self, map_data, cellsize, cellsize_y=None,
                  beam_info=None, windows=None,
@@ -779,9 +797,12 @@ class CleanMapPlotWidget(MapPlotWidget):
         self.cbar = self.fig.colorbar(
             self.image, ax=self.ax,
             label="Flux (Jy/beam)",
-            fraction=0.046, pad=0.04
+            fraction=0.040, pad=0.02
         )
-
+        # Clean map = jusqu'à 9 lignes d'annotations → bottom=0.32 nécessaire.
+        self.ax.set_anchor('C')
+        _bot = 0.32 if self._show_annotations else 0.08
+        self.fig.subplots_adjust(left=0.08, right=0.88, top=0.95, bottom=_bot)
         # 2. Contours isophotes - SEULEMENT sur la clean map (comme difmap.c:3855)
         # Ici on est dans le widget CleanMap, donc on trace les contours si demandés.
         drawn = []
@@ -943,8 +964,9 @@ class CleanMapPlotWidget(MapPlotWidget):
                 import logging
                 logging.info(f"[MODEL] {nhidden} composante(s) hors de la zone d'affichage")
 
-        _add_map_annotations(self.ax, self.fig, cropped_data, "clean",
-                              beam_info=beam_info, contour_levels=drawn,
-                              contour_mode=contour_mode, map_info=map_info)
+        if self._show_annotations:
+            _add_map_annotations(self.ax, self.fig, cropped_data, "clean",
+                                  beam_info=beam_info, contour_levels=drawn,
+                                  contour_mode=contour_mode, map_info=map_info)
 
         self.draw()

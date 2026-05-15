@@ -164,35 +164,43 @@ class DesignSystem:
         D = DesignSystem
         return f"""
             QTabWidget {{
-                background-color: {D.SURFACE};
+                background-color: {D.SURFACE_ALT};
             }}
             QTabBar {{
-                background-color: {D.SURFACE};
+                background-color: {D.SURFACE_ALT};
             }}
             QTabBar::tab {{
-                background-color: transparent;
+                background-color: {D.SURFACE_ALT};
                 color: {D.TEXT_SECONDARY};
-                padding: 8px 22px;
-                border: none;
-                border-bottom: 2px solid transparent;
-                margin-right: 4px;
+                padding: 8px 18px;
+                border: 1px solid {D.BORDER_LIGHT};
+                border-bottom: none;
+                border-top-left-radius: 10px;
+                border-top-right-radius: 10px;
+                margin-right: 6px;
+                margin-top: 4px;
+                margin-bottom: -1px;
                 font-family: {D.FONT_FAMILY};
                 font-weight: {D.FONT_WEIGHT_MEDIUM};
                 font-size: {D.FONT_SIZE_LG};
                 min-width: 90px;
             }}
             QTabBar::tab:selected {{
+                background-color: {D.SURFACE};
                 color: {D.ASTRAL_BG};
                 font-weight: {D.FONT_WEIGHT_BOLD};
-                border-bottom: 2px solid {D.ASTRAL_ACCENT};
+                border: 2px solid {D.ASTRAL_ACCENT};
+                border-bottom: none;
+                margin-top: 0px;
+                margin-bottom: -1px;
             }}
             QTabBar::tab:hover:!selected {{
+                background-color: {D.SURFACE};
                 color: {D.TEXT};
-                border-bottom: 2px solid {D.BORDER};
+                border-color: {D.BORDER};
             }}
             QTabWidget::pane {{
-                border: none;
-                border-top: 1px solid {D.BORDER};
+                border: 1px solid {D.BORDER};
                 background-color: {D.SURFACE};
             }}
         """
@@ -203,32 +211,32 @@ class DesignSystem:
         D = DesignSystem
         return f"""
             QTabWidget {{
-                background-color: {D.SURFACE};
+                background-color: {D.SURFACE_ALT};
             }}
             QTabBar {{
-                background-color: transparent;
+                background-color: {D.SURFACE_ALT};
             }}
             QTabBar::tab {{
-                background-color: {D.SURFACE};
+                background-color: {D.SURFACE_ALT};
                 color: {D.TEXT_SECONDARY};
-                padding: 4px 14px;
-                border: 1px solid {D.BORDER};
+                padding: 5px 16px;
+                border: 1px solid {D.BORDER_LIGHT};
                 border-radius: 14px;
-                margin-right: 5px;
+                margin-right: 6px;
                 margin-top: 6px;
-                margin-bottom: 4px;
+                margin-bottom: 6px;
                 font-family: {D.FONT_FAMILY};
                 font-weight: {D.FONT_WEIGHT_MEDIUM};
                 font-size: {D.FONT_SIZE_SM};
             }}
             QTabBar::tab:selected {{
-                background-color: {D.ASTRAL_BG};
-                color: #FFFFFF;
-                border-color: {D.ASTRAL_BG};
+                background-color: rgba(74, 152, 212, 0.12);
+                color: {D.ASTRAL_BG};
+                border: 1px solid {D.ASTRAL_ACCENT};
                 font-weight: {D.FONT_WEIGHT_SEMIBOLD};
             }}
             QTabBar::tab:hover:!selected {{
-                background-color: {D.SURFACE_ALT};
+                background-color: {D.SURFACE};
                 border-color: {D.ASTRAL_ACCENT};
                 color: {D.TEXT};
             }}

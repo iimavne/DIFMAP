@@ -3,7 +3,7 @@ import re
 import numpy as np
 import difmap_native
 
-from PyQt6.QtWidgets import QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox
+from PyQt6.QtWidgets import QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox, QGridLayout
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 
 from difmap_wrapper import DifmapSession
@@ -118,9 +118,25 @@ class MainWindow(QMainWindow):
 
         # ── Widgets de contenu ────────────────────────────────────────
         self.plot_widget          = None
-        self.map_widget           = DirtyMapPlotWidget(self)
-        self.clean_map_widget     = CleanMapPlotWidget(self)
-        self.residual_map_widget  = ResidualMapPlotWidget(self)
+        self.map_widget           = DirtyMapPlotWidget(self, show_annotations=True)
+        self.clean_map_widget     = CleanMapPlotWidget(self, show_annotations=True)
+        self.residual_map_widget  = ResidualMapPlotWidget(self, show_annotations=True)
+
+        self.all_maps_widget = QWidget(self)
+        all_maps_layout = QGridLayout(self.all_maps_widget)
+        all_maps_layout.setContentsMargins(10, 10, 10, 10)
+        all_maps_layout.setHorizontalSpacing(10)
+        all_maps_layout.setVerticalSpacing(10)
+        self.all_maps_residual_widget = ResidualMapPlotWidget(self.all_maps_widget, show_annotations=True)
+        self.all_maps_dirty_widget    = DirtyMapPlotWidget(self.all_maps_widget, show_annotations=False)
+        self.all_maps_clean_widget    = CleanMapPlotWidget(self.all_maps_widget, show_annotations=False)
+        all_maps_layout.addWidget(self.all_maps_residual_widget, 0, 0, 2, 1)
+        all_maps_layout.addWidget(self.all_maps_dirty_widget,    0, 1, 1, 1)
+        all_maps_layout.addWidget(self.all_maps_clean_widget,    1, 1, 1, 1)
+        all_maps_layout.setColumnStretch(0, 3)
+        all_maps_layout.setColumnStretch(1, 2)
+        all_maps_layout.setRowStretch(0, 1)
+        all_maps_layout.setRowStretch(1, 1)
         self.radplot_widget    = RadPlotWidget(
             parent=self,
             sync_callback=self._sync_all_plots,
@@ -139,7 +155,7 @@ class MainWindow(QMainWindow):
         self.inner_imagerie.addTab(self.map_widget,          "Dirty Map")    # inner 0 → MAP=2
         self.inner_imagerie.addTab(self.clean_map_widget,    "Clean Map")    # inner 1 → CLEAN=3
         self.inner_imagerie.addTab(self.residual_map_widget, "Residual Map") # inner 2 → RESIDUAL=4
-        self.inner_imagerie.addTab(QWidget(),                "All Maps")     # inner 3 → ALL_MAPS=6
+        self.inner_imagerie.addTab(self.all_maps_widget,     "All Maps")     # inner 3 → ALL_MAPS=6
 
         # ── Super-onglets (outer) ──────────────────────────────────
         self.tabs = QTabWidget()
@@ -152,6 +168,7 @@ class MainWindow(QMainWindow):
         self._help_dialog_open = False   # garde anti-ouvertures multiples
 
         self._last_clean_package = None
+        self._last_dirty_package = None
         self._last_added_window = None
         self._did_first_clean_cycle = False
         self._clean_worker = None
@@ -528,7 +545,7 @@ class MainWindow(QMainWindow):
         ctrl = self.control_panel
         tb   = self.toolbar
         has_data   = self.plot_widget is not None
-        is_map     = index in (TabIndex.MAP, TabIndex.CLEAN, TabIndex.RESIDUAL)
+        is_map     = index in (TabIndex.MAP, TabIndex.CLEAN, TabIndex.RESIDUAL, TabIndex.ALL_MAPS)
         is_radplot = (index == TabIndex.RADPLOT)
         is_uv      = (index == TabIndex.UV)
         is_header  = (index == TabIndex.HEADER)
@@ -584,22 +601,30 @@ class MainWindow(QMainWindow):
         if hasattr(ctrl, '_rad_limits_section'):
             ctrl._rad_limits_section.setVisible(has_data and is_radplot)
 
-        # Sous-sections Imaging contextuelles (Dirty / Residual / Clean)
+        # Sous-sections Imaging contextuelles (Dirty / Residual / Clean / All Maps)
         if is_map and has_data:
             is_dirty     = (index == TabIndex.MAP)
             is_residual  = (index == TabIndex.RESIDUAL)
             is_clean_map = (index == TabIndex.CLEAN)
+            is_all_maps  = (index == TabIndex.ALL_MAPS)
             for attr, visible in [
                 ('_imaging_params_section',  True),
                 ('_dirty_btn_section',       is_dirty),
-                ('_clean_controls_section',  is_residual or is_clean_map),
+                ('_clean_controls_section',  is_residual or is_clean_map or is_all_maps),
                 ('_map_display_section',     True),
-                ('_display_windows_section', is_residual or is_clean_map),
-                ('_display_clean_section',   is_clean_map),
+                ('_display_windows_section', is_residual or is_clean_map or is_all_maps),
+                ('_display_clean_section',   is_clean_map or is_all_maps),
             ]:
                 w = getattr(ctrl, attr, None)
                 if w is not None:
                     w.setVisible(visible)
+
+            # All Maps : on ne veut pas d'options Dirty (bouton invert + options spécifiques)
+            if is_all_maps:
+                try:
+                    ctrl._dirty_btn_section.setVisible(False)
+                except Exception:
+                    pass
 
         # Checkbox Show Model visible sur toutes les cartes quand un modèle existe
         ctrl.chk_show_model_map.setVisible(is_map and has_model)
@@ -620,6 +645,12 @@ class MainWindow(QMainWindow):
                 chk.blockSignals(False)
 
         tb.action_save.setVisible(has_data)
+
+        if has_data and index == TabIndex.ALL_MAPS:
+            try:
+                self._refresh_all_maps()
+            except Exception:
+                pass
 
     def _create_menu_bar(self):
         """
@@ -962,8 +993,6 @@ class MainWindow(QMainWindow):
         try:
             # Show what we have after this batch.
             self._refresh_residual_map()
-            # Residual is the immediate post-clean buffer (before restore).
-            self._set_logical_tab(TabIndex.RESIDUAL)
         except Exception:
             pass
         # Update pause button to reflect current state.
@@ -976,7 +1005,7 @@ class MainWindow(QMainWindow):
             self._did_first_clean_cycle = True
             self._refresh_clean_map()
             self._refresh_residual_map()
-            self._set_logical_tab(TabIndex.CLEAN)
+            self._refresh_all_maps()
             self.control_panel.progress_bar.setValue(100)
             try:
                 peak_info = self.session.imager.peak()
@@ -1145,6 +1174,8 @@ class MainWindow(QMainWindow):
             self._refresh_dirty_map()
         elif current_tab == TabIndex.RESIDUAL:
             self._refresh_residual_map()
+        elif current_tab == TabIndex.ALL_MAPS:
+            self._refresh_all_maps()
 
     def _refresh_current_map_tab(self):
         """Rafraîchit l'onglet de carte actif sans recalculer."""
@@ -1156,8 +1187,25 @@ class MainWindow(QMainWindow):
                 self._refresh_clean_map()
             elif current_tab == TabIndex.RESIDUAL:
                 self._refresh_residual_map()
+            elif current_tab == TabIndex.ALL_MAPS:
+                self._refresh_all_maps()
         except Exception as e:
             self.log_console.log_error(f"Failed to refresh map: {e}")
+
+    def _refresh_all_maps(self) -> None:
+        """Rafraîchit l'onglet All Maps (Residual grand + Dirty/Clean à droite)."""
+        try:
+            self._refresh_residual_map(target_widget=self.all_maps_residual_widget)
+        except Exception:
+            pass
+        try:
+            self._refresh_dirty_map(target_widget=self.all_maps_dirty_widget)
+        except Exception:
+            pass
+        try:
+            self._refresh_clean_map(target_widget=self.all_maps_clean_widget)
+        except Exception:
+            pass
 
     def _get_valid_cellsize(self) -> float:
         """Récupère un cellsize valide depuis le panneau de contrôle."""
@@ -1174,7 +1222,7 @@ class MainWindow(QMainWindow):
         # Valeur par défaut robuste
         return 0.1
 
-    def _refresh_dirty_map(self):
+    def _refresh_dirty_map(self, target_widget=None):
         """Rafraîchit la Dirty Map sans recalculer."""
         try:
             if not (hasattr(self, 'session') and self.session and
@@ -1188,6 +1236,14 @@ class MainWindow(QMainWindow):
             if not (map_package and map_package.get('data') is not None):
                 return
 
+            info = map_package.get('info', {})
+            map_type = map_package.get('map_type') or info.get('map_type')
+            if map_type != 'dirty':
+                if self._last_dirty_package:
+                    map_package = self._last_dirty_package
+                else:
+                    return
+
             # Suivre la maquette: Dirty Map n'expose pas Scale/Min/Max/Contours.
             # Forcer un rendu auto.
             scale, vmin, vmax = 'linear', None, None
@@ -1199,7 +1255,8 @@ class MainWindow(QMainWindow):
                     model_components = self.session.imager.get_model_components()
                 except Exception:
                     pass
-            self.map_widget.plot_map(
+            widget = target_widget or self.map_widget
+            widget.plot_map(
                 map_data=map_package['data'],
                 cellsize=info.get('cellsize', cellsize),
                 cellsize_y=info.get('cellsize_y'),
@@ -1210,10 +1267,22 @@ class MainWindow(QMainWindow):
                 show_model=show_model,
                 model_components=model_components,
             )
+
+            data = map_package.get('data')
+            frozen = dict(map_package)
+            if hasattr(data, 'copy'):
+                frozen['data'] = data.copy()
+            extent = map_package.get('extent')
+            if isinstance(extent, list):
+                frozen['extent'] = list(extent)
+            info_frozen = map_package.get('info')
+            if isinstance(info_frozen, dict):
+                frozen['info'] = dict(info_frozen)
+            self._last_dirty_package = frozen
         except Exception as e:
             self.log_console.log_error(f"Failed to refresh dirty map: {e}")
 
-    def _refresh_clean_map(self):
+    def _refresh_clean_map(self, target_widget=None):
         """Rafraîchit la Clean Map sans recalculer."""
         try:
             if not (hasattr(self, 'session') and self.session and
@@ -1245,7 +1314,8 @@ class MainWindow(QMainWindow):
                     show_model = self.control_panel.chk_show_model_map.isChecked()
                     model_components = pkg.get('model_components', [])
                     windows = self.session.imager._get_clean_windows() if show_windows else []
-                    self.clean_map_widget.plot_map(
+                    widget = target_widget or self.clean_map_widget
+                    widget.plot_map(
                         map_data=pkg['data'],
                         cellsize=info.get('cellsize', cellsize),
                         cellsize_y=info.get('cellsize_y'),
@@ -1270,7 +1340,8 @@ class MainWindow(QMainWindow):
             show_model = self.control_panel.chk_show_model_map.isChecked()
             model_components = clean_package.get('model_components', [])
             windows = clean_package.get('windows', []) if show_windows else []
-            self.clean_map_widget.plot_map(
+            widget = target_widget or self.clean_map_widget
+            widget.plot_map(
                 map_data=clean_package['data'],
                 cellsize=info.get('cellsize', cellsize),
                 cellsize_y=info.get('cellsize_y'),
@@ -1344,7 +1415,7 @@ class MainWindow(QMainWindow):
         except Exception:
             return
 
-    def _refresh_residual_map(self):
+    def _refresh_residual_map(self, target_widget=None):
         """Rafraîchit la Residual Map sans recalculer."""
         try:
             if not (hasattr(self, 'session') and self.session and
@@ -1369,7 +1440,8 @@ class MainWindow(QMainWindow):
                     pass
             chk_win = getattr(self.control_panel, 'chk_show_windows', None)
             windows = residual_package.get('windows', []) if (chk_win is None or chk_win.isChecked()) else []
-            self.residual_map_widget.plot_map(
+            widget = target_widget or self.residual_map_widget
+            widget.plot_map(
                 map_data=residual_package['data'],
                 cellsize=info.get('cellsize', cellsize),
                 cellsize_y=info.get('cellsize_y'),

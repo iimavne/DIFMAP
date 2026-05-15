@@ -126,6 +126,42 @@ class _IFRangeBar(QWidget):
         p.end()
 
 
+class ToggleSwitch(QPushButton):
+    """Interrupteur iOS-style (ovale coloré + cercle blanc glissant)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCheckable(True)
+        self.setFixedSize(44, 24)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.toggled.connect(self._refresh)
+        self._refresh(False)
+
+    def _refresh(self, checked: bool):
+        bg = D.ASTRAL_ACCENT if checked else D.ASTRAL_MUTED
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                border-radius: 12px;
+                border: none;
+            }}
+        """)
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        from PyQt6.QtGui import QPainter, QBrush, QColor
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(QColor("#FFFFFF")))
+        margin = 4
+        size = self.height() - 2 * margin
+        x = self.width() - size - margin if self.isChecked() else margin
+        p.drawEllipse(x, margin, size, size)
+        p.end()
+
+
 class CollapsibleSection(QWidget):
     """
     Section accordéon déroulante remplaçant le ``QGroupBox`` standard.
@@ -911,8 +947,29 @@ class ControlPanel(QDockWidget):
         h_tap.addWidget(self.input_taper); h_tap.addStretch()
         ip.addLayout(h_tap)
 
-        self.btn_apply_imaging = SecondaryButton("Apply")
+        self.btn_apply_imaging = QPushButton("⊞  Apply")
         self.btn_apply_imaging.setToolTip("Appliquer les paramètres d'imagerie au moteur")
+        self.btn_apply_imaging.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_apply_imaging.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {D.ASTRAL_ACCENT};
+                border: 1px solid {D.ASTRAL_ACCENT};
+                border-radius: 4px;
+                padding: 6px 10px;
+                font-size: 11px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background-color: {D.ASTRAL_SURFACE};
+                color: #FFFFFF;
+            }}
+            QPushButton:pressed {{ background-color: {D.ASTRAL_HOVER}; }}
+            QPushButton:disabled {{
+                color: {D.ASTRAL_MUTED};
+                border-color: {D.ASTRAL_MUTED};
+            }}
+        """)
         ip.addWidget(self.btn_apply_imaging)
 
         layout.addWidget(self._imaging_params_section)
@@ -923,8 +980,21 @@ class ControlPanel(QDockWidget):
         self._dirty_btn_section = QWidget()
         db = QVBoxLayout(self._dirty_btn_section)
         db.setContentsMargins(0, 0, 0, 0); db.setSpacing(4)
-        self.btn_compute = PrimaryButton("⊞  Make Dirty Map")
+        self.btn_compute = QPushButton("▼  Make Dirty Map")
         self.btn_compute.setToolTip("Calculer la Dirty Map (invert)")
+        self.btn_compute.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_compute.setStyleSheet("""
+            QPushButton {
+                background-color: #2E6B2E; color: #FFFFFF;
+                border: none; border-radius: 4px;
+                padding: 6px 10px; font-size: 11px; font-weight: 600;
+            }
+            QPushButton:hover  { background-color: #3A8A3A; }
+            QPushButton:pressed { background-color: #245424; }
+            QPushButton:disabled {
+                background-color: #1C3A1C; color: #4A6A4A;
+            }
+        """)
         db.addWidget(self.btn_compute)
         layout.addWidget(self._dirty_btn_section)
 
@@ -938,36 +1008,43 @@ class ControlPanel(QDockWidget):
         cc.addWidget(self._subsection_header("Clean"))
 
         lbl_params = QLabel("Parameters")
-        lbl_params.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        lbl_params.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: 10px; font-weight: 500;")
         cc.addWidget(lbl_params)
 
-        h_nc = QHBoxLayout(); h_nc.setSpacing(6)
-        h_nc.addWidget(QLabel("Total Niter:"))
-        self.input_niter = QLineEdit("1000"); self.input_niter.setFixedWidth(60)
+        # Ligne 1 : Total Niter | Loop Gain côte à côte
+        h_row1 = QHBoxLayout(); h_row1.setSpacing(8)
+        col_niter = QVBoxLayout(); col_niter.setSpacing(2)
+        lbl_niter = QLabel("Total Niter")
+        lbl_niter.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        col_niter.addWidget(lbl_niter)
+        self.input_niter = QLineEdit("1000")
         self.input_niter.setToolTip("Nombre total d'itérations CLEAN")
-        h_nc.addWidget(self.input_niter); h_nc.addStretch()
-        cc.addLayout(h_nc)
+        col_niter.addWidget(self.input_niter)
+        h_row1.addLayout(col_niter)
 
-        h_gain = QHBoxLayout(); h_gain.setSpacing(6)
-        h_gain.addWidget(QLabel("Loop Gain:"))
-        self.input_gain = QLineEdit("0.05"); self.input_gain.setFixedWidth(60)
+        col_gain = QVBoxLayout(); col_gain.setSpacing(2)
+        lbl_gain = QLabel("Loop Gain")
+        lbl_gain.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        col_gain.addWidget(lbl_gain)
+        self.input_gain = QLineEdit("0.05")
         self.input_gain.setToolTip("Gain de boucle CLEAN (0–1)")
-        h_gain.addWidget(self.input_gain); h_gain.addStretch()
-        cc.addLayout(h_gain)
+        col_gain.addWidget(self.input_gain)
+        h_row1.addLayout(col_gain)
+        cc.addLayout(h_row1)
 
-        h_cutoff = QHBoxLayout(); h_cutoff.setSpacing(6)
-        h_cutoff.addWidget(QLabel("Cutoff (Jy/bm):"))
-        self.input_cutoff = QLineEdit("0.001"); self.input_cutoff.setFixedWidth(60)
+        # Cutoff pleine largeur, label au-dessus
+        lbl_cutoff = QLabel("Cutoff (Jy/bm)")
+        lbl_cutoff.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        cc.addWidget(lbl_cutoff)
+        self.input_cutoff = QLineEdit("0.001")
         self.input_cutoff.setToolTip("Seuil de flux résiduel (Jy/beam) — 0 = pas de limite")
-        h_cutoff.addWidget(self.input_cutoff); h_cutoff.addStretch()
-        cc.addLayout(h_cutoff)
+        cc.addWidget(self.input_cutoff)
 
         h_bp_hdr = QHBoxLayout(); h_bp_hdr.setSpacing(6)
         lbl_bp = QLabel("Conditional Breakpoints")
         lbl_bp.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: 10px;")
-        self.chk_conditional_bp = QPushButton("OFF")
-        self.chk_conditional_bp.setCheckable(True); self.chk_conditional_bp.setChecked(False)
-        self.chk_conditional_bp.setStyleSheet(toggle_style)
+        self.chk_conditional_bp = ToggleSwitch()
+        self.chk_conditional_bp.setChecked(False)
         self.chk_conditional_bp.setToolTip("Pause automatique après X itérations")
         h_bp_hdr.addWidget(lbl_bp); h_bp_hdr.addStretch(); h_bp_hdr.addWidget(self.chk_conditional_bp)
         cc.addLayout(h_bp_hdr)
@@ -983,9 +1060,12 @@ class ControlPanel(QDockWidget):
         cc.addWidget(self._bp_box)
 
         h_prog = QHBoxLayout(); h_prog.setSpacing(4)
-        h_prog.addWidget(QLabel("Progress"))
+        lbl_prog_title = QLabel("Progress")
+        lbl_prog_title.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        h_prog.addWidget(lbl_prog_title)
+        h_prog.addStretch()
         self.lbl_progress = QLabel("0 / 0")
-        self.lbl_progress.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 10px;")
+        self.lbl_progress.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
         self.lbl_progress.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         h_prog.addWidget(self.lbl_progress)
         cc.addLayout(h_prog)
@@ -999,16 +1079,30 @@ class ControlPanel(QDockWidget):
                 background-color: {D.ASTRAL_SURFACE}; border: 1px solid {D.ASTRAL_BORDER};
                 border-radius: 4px;
             }}
-            QProgressBar::chunk {{ background-color: {D.ASTRAL_ACCENT}; border-radius: 4px; }}
+            QProgressBar::chunk {{ background-color: #2E6B2E; border-radius: 4px; }}
         """)
         cc.addWidget(self.progress_bar)
 
         h_sp = QHBoxLayout(); h_sp.setSpacing(6)
-        self.btn_compute_clean = PrimaryButton("▶  Start")
+        self.btn_compute_clean = QPushButton("▶  Start")
         self.btn_compute_clean.setToolTip("Lancer invert + CLEAN + restore")
+        self.btn_compute_clean.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_compute_clean.setStyleSheet("""
+            QPushButton {
+                background-color: #2E6B2E; color: #FFFFFF;
+                border: none; border-radius: 4px;
+                padding: 6px 10px; font-size: 11px; font-weight: 600;
+            }
+            QPushButton:hover  { background-color: #3A8A3A; }
+            QPushButton:pressed { background-color: #245424; }
+            QPushButton:disabled {
+                background-color: #1C3A1C; color: #4A6A4A;
+            }
+        """)
         self.btn_pause_clean = QPushButton("⏸  Pause")
         self.btn_pause_clean.setEnabled(False)
         self.btn_pause_clean.setToolTip("Suspendre / reprendre le CLEAN")
+        self.btn_pause_clean.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_pause_clean.setStyleSheet(f"""
             QPushButton {{
                 background-color: {D.ASTRAL_SURFACE}; color: {D.ASTRAL_MUTED};
@@ -1016,9 +1110,9 @@ class ControlPanel(QDockWidget):
                 padding: 6px 10px; font-size: 11px;
             }}
             QPushButton:enabled {{
-                background-color: #8B2222; color: #FFFFFF; border-color: #8B2222;
+                background-color: #7A3B20; color: #FFFFFF; border-color: #7A3B20;
             }}
-            QPushButton:enabled:hover {{ background-color: #A03030; }}
+            QPushButton:enabled:hover {{ background-color: #9A4E2A; }}
         """)
         h_sp.addWidget(self.btn_compute_clean); h_sp.addWidget(self.btn_pause_clean)
         cc.addLayout(h_sp)
@@ -1130,7 +1224,6 @@ class ControlPanel(QDockWidget):
                 w.setEnabled(checked)
 
         def _on_bp_toggle(checked):
-            self.chk_conditional_bp.setText("ON" if checked else "OFF")
             self.input_pause_after.setEnabled(checked)
 
         self.chk_uv_filter.toggled.connect(_on_uvf_toggle)
