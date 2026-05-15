@@ -1,7 +1,9 @@
 # difmap_wrapper/gui/plot_widget.py
 import numpy as np
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtWidgets import QLabel, QPushButton, QHBoxLayout, QWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt as _Qt
+from PyQt6.QtGui import QAction
+from PyQt6.QtWidgets import QLabel, QHBoxLayout, QMenu, QToolButton, QWidget
 try:
     import qtawesome as qta
     _HAS_QTA = True
@@ -15,47 +17,7 @@ from difmap_wrapper.gui.styles import DesignSystem
 
 D = DesignSystem
 
-_TOOLBAR_QSS = f"""
-QWidget#PlotToolbar {{
-    background-color: {D.BACKGROUND};
-    border-bottom: 1px solid {D.BORDER};
-    padding: 5px 8px;
-}}
-QLabel#ToolsLabel {{
-    color: {D.TEXT_MUTED};
-    font-size: 10px;
-    font-weight: bold;
-    background: transparent;
-    padding-right: 4px;
-}}
-QPushButton {{
-    background-color: {D.SURFACE};
-    color: {D.TEXT_SECONDARY};
-    border: 1px solid {D.BORDER};
-    border-radius: 12px;
-    padding: 3px 12px;
-    font-size: 10px;
-    font-family: {D.FONT_FAMILY};
-    font-weight: 500;
-    min-height: 22px;
-    min-width: 60px;
-}}
-QPushButton:hover {{
-    background-color: {D.SURFACE_ALT};
-    border-color: {D.ASTRAL_ACCENT};
-    color: {D.TEXT};
-}}
-QPushButton:checked {{
-    background-color: {D.ASTRAL_BG};
-    color: #FFFFFF;
-    border-color: {D.ASTRAL_BG};
-    font-weight: 600;
-}}
-QPushButton:pressed {{
-    background-color: {D.ASTRAL_HOVER};
-    color: #FFFFFF;
-}}
-"""
+_TOOLBAR_QSS = D.get_plot_toolbar_qss("PlotToolbar", with_menu=True)
 
 
 def _icon(name: str, color: str = "#4A6A8A"):
@@ -67,18 +29,48 @@ def _icon(name: str, color: str = "#4A6A8A"):
         return None
 
 
-def _make_tool_btn(label: str, checkable: bool = True, icon_name: str = None,
-                   tooltip: str = None) -> QPushButton:
-    btn = QPushButton(label)
-    btn.setCheckable(checkable)
-    if icon_name:
-        ico = _icon(icon_name)
-        if ico:
-            btn.setIcon(ico)
-            btn.setIconSize(QSize(12, 12))
-    if tooltip:
-        btn.setToolTip(tooltip)
+def _make_separator() -> QWidget:
+    sep = QWidget()
+    sep.setFixedWidth(1)
+    sep.setFixedHeight(22)
+    sep.setStyleSheet(f"background-color: {D.BORDER};")
+    return sep
+
+
+def _make_mode_dropdown(items: list, tool_buttons: dict, on_mode_click) -> QToolButton:
+    btn = QToolButton()
+    btn.setCheckable(True)
+    btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+    btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+    menu = QMenu(btn)
+    for label, mode, _checkable, _icon_name, shortcut, tip in items:
+        act = QAction(f"{label} {shortcut}", btn)
+        act.setCheckable(True)
+        act.setData(mode)
+        act.setToolTip(tip)
+        act.triggered.connect(
+            lambda checked, m=mode, l=label, b=btn: _select_mode_dropdown(b, l, m, on_mode_click)
+        )
+        menu.addAction(act)
+        tool_buttons[mode] = btn
+    btn.setMenu(menu)
+    first = items[0]
+    _set_mode_dropdown_label(btn, first[0], first[1])
     return btn
+
+
+def _set_mode_dropdown_label(btn: QToolButton, label: str, mode: str) -> None:
+    btn.setText(f"{label} ▾")
+    btn.setProperty("activeMode", mode)
+    if btn.menu():
+        for act in btn.menu().actions():
+            act.setChecked(act.data() == mode)
+
+
+def _select_mode_dropdown(btn: QToolButton, label: str, mode: str, on_mode_click) -> None:
+    _set_mode_dropdown_label(btn, label, mode)
+    if on_mode_click:
+        on_mode_click(mode, btn)
 
 
 class UVPlotWidget(BasePlotWidget):
@@ -92,15 +84,16 @@ class UVPlotWidget(BasePlotWidget):
     # (label, editor_mode, checkable, icon, shortcut_hint, tooltip)
     _UV_TOOLS = [
         ("Navigate",  "PAN",     True,  "fa5s.arrows-alt",   "[G]", "Mode navigation / déplacement"),
-        ("Zoom",      "ZOOM",    True,  "fa5s.search-plus",  "[Z]", "Zoom rectangle"),
         ("Flag",      "CUT",     True,  "fa5s.ban",          "[C]", "Flaguer rectangle"),
         ("Info",      "INSPECT", True,  "fa5s.info-circle",  "[S]", "Inspecter baseline / temps"),
     ]
-    _UV_ACTIONS = [
-        ("Dezoom",     None,       False, "fa5s.search-minus", "[O]", "Dézoomer de 50 %"),
-        ("Reset View", None,       False, "fa5s.home",         "[R]", "Réinitialiser la vue complète"),
-        ("Undo Flag",  None,       False, "fa5s.undo",         "[u]", "Annuler le dernier flagging"),
-        ("Crosshair",  "XHAIR",   True,  "fa5s.crosshairs",   "[+]", "Crosshair plein écran"),
+    _UV_ZOOM = [
+        ("Zoom Box", "ZOOM", "fa5s.search-plus", "[Z]", "Zoom rectangle"),
+        ("Dezoom", None, "fa5s.search-minus", "[O]", "Dézoomer de 50 %"),
+    ]
+    _UV_VIEW = [
+        ("Undo Flag", None, "fa5s.undo", "[u]", "Annuler le dernier flagging"),
+        ("Crosshair", "XHAIR", "fa5s.crosshairs", "[+]", "Crosshair plein écran"),
     ]
 
     def __init__(self, observation, data, parent=None,
@@ -131,56 +124,104 @@ class UVPlotWidget(BasePlotWidget):
         row.setVisible(True)
         lay = self.plot_toolbar_layout
 
-        lbl = QLabel("Tools:")
-        lbl.setObjectName("ToolsLabel")
-        lay.addWidget(lbl)
+        lay.setContentsMargins(8, 5, 8, 5)
+        lay.setSpacing(6)
 
-        # ── Boutons de mode (exclusifs) ────────────────────────
-        self._tool_buttons: dict[str, QPushButton] = {}
-        for label, mode, checkable, icon, shortcut, tip in self._UV_TOOLS:
-            btn = _make_tool_btn(f"{label} {shortcut}", checkable, icon, tip)
-            btn.setProperty("editorMode", mode)
-            btn.clicked.connect(lambda checked, m=mode, b=btn: self._on_tool_btn(m, b))
-            self._tool_buttons[mode] = btn
-            lay.addWidget(btn)
+        self._tool_buttons: dict[str, object] = {}
 
-        # Séparateur visuel entre modes et actions
-        sep = QWidget()
-        sep.setFixedWidth(1)
-        sep.setFixedHeight(20)
-        sep.setStyleSheet(f"background-color: {D.BORDER};")
-        lay.addWidget(sep)
+        lay.addWidget(QLabel("Tool:"))
+        tool_menu = _make_mode_dropdown(self._UV_TOOLS, self._tool_buttons, self._on_tool_btn)
+        lay.addWidget(tool_menu)
 
-        # ── Boutons d'action ──────────────────────────────────
-        for label, mode, checkable, icon, shortcut, tip in self._UV_ACTIONS:
-            btn = _make_tool_btn(f"{label} {shortcut}", checkable, icon, tip)
-            btn.setProperty("editorMode", mode)
-            if mode == "XHAIR":
-                btn.clicked.connect(lambda checked, b=btn: self._on_crosshair_btn(b))
-                self._tool_buttons["XHAIR"] = btn
-            elif label == "Dezoom":
-                btn.clicked.connect(
-                    lambda: self._on_button_click(
+        lay.addWidget(_make_separator())
+
+        lay.addWidget(QLabel("Zoom:"))
+        zoom_btn = QToolButton()
+        zoom_btn.setText("Zoom ▾")
+        zoom_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        zoom_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        zoom_menu = QMenu(zoom_btn)
+        for label, mode, _icon, shortcut, tip in self._UV_ZOOM:
+            act = QAction(f"{label} {shortcut}", zoom_btn)
+            act.setToolTip(tip)
+            if mode == "ZOOM":
+                act.setCheckable(True)
+                act.setData(mode)
+                act.triggered.connect(
+                    lambda checked, m=mode, l=label, b=zoom_btn: self._select_zoom_mode(b, l, m)
+                )
+                self._tool_buttons[mode] = zoom_btn
+            else:
+                act.triggered.connect(
+                    lambda checked=False: self._on_button_click(
                         self.editor.action_dezoom, None) if self.editor else None)
-            elif label == "Reset View":
-                btn.clicked.connect(
-                    lambda: self._on_button_click(
-                        self.editor.action_home, None) if self.editor else None)
+            zoom_menu.addAction(act)
+        zoom_btn.setMenu(zoom_menu)
+        lay.addWidget(zoom_btn)
+
+        lay.addWidget(_make_separator())
+
+        reset_btn = QToolButton()
+        reset_btn.setText("Reset [R]")
+        reset_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        reset_btn.setToolTip("Réinitialiser la vue complète")
+        reset_btn.clicked.connect(
+            lambda checked=False: self._on_button_click(
+                self.editor.action_home, None) if self.editor else None)
+        lay.addWidget(reset_btn)
+
+        lay.addWidget(_make_separator())
+
+        lay.addWidget(QLabel("View:"))
+        view_btn = QToolButton()
+        view_btn.setText("View ▾")
+        view_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        view_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        view_menu = QMenu(view_btn)
+        for label, mode, _icon, shortcut, tip in self._UV_VIEW:
+            text = f"{label} {shortcut}"
+            act = QAction(text, view_btn)
+            act.setToolTip(tip)
+            if label == "Crosshair":
+                act.setCheckable(True)
+                act.triggered.connect(lambda checked, a=act: self._on_crosshair_btn(a, checked))
+                self._tool_buttons["XHAIR"] = act
             elif label == "Undo Flag":
-                btn.clicked.connect(
-                    lambda: self._on_button_click(
+                act.triggered.connect(
+                    lambda checked=False: self._on_button_click(
                         self.editor.action_undo, None) if self.editor else None)
-            lay.addWidget(btn)
+            view_menu.addAction(act)
+        view_btn.setMenu(view_menu)
+        lay.addWidget(view_btn)
 
         lay.addStretch()
 
         # Sélectionner Navigate par défaut
         self._set_active_tool_btn("PAN")
 
-    def _on_tool_btn(self, mode: str, btn: QPushButton) -> None:
+    def _select_zoom_mode(self, btn: QToolButton, label: str, mode: str) -> None:
+        btn.setText(f"{label} ▾")
+        btn.setProperty("activeMode", mode)
+        if btn.menu():
+            for action in btn.menu().actions():
+                action.setChecked(action.data() == mode)
+        self._on_tool_btn(mode, btn)
+
+    def _on_tool_btn(self, mode: str, btn) -> None:
         """Exclusif : active le mode et désélectionne les autres boutons de mode."""
         for m, b in self._tool_buttons.items():
-            if m != "XHAIR":
+            if m == "XHAIR":
+                continue
+            if isinstance(b, QToolButton) and b.menu():
+                owns = any(a.data() == mode for a in b.menu().actions())
+                b.setChecked(owns)
+                if owns:
+                    for action in b.menu().actions():
+                        action.setChecked(action.data() == mode)
+                        if action.data() == mode:
+                            b.setText(action.text().split("[")[0].strip() + " ▾")
+                            b.setProperty("activeMode", mode)
+            else:
                 b.setChecked(m == mode)
         if not self.editor:
             return
@@ -192,15 +233,27 @@ class UVPlotWidget(BasePlotWidget):
             self.editor._set_mode(mode)
         self.canvas.setFocus()
 
-    def _on_crosshair_btn(self, btn: QPushButton) -> None:
-        """Toggle indépendant pour le crosshair."""
+    def _on_crosshair_btn(self, btn, checked: bool | None = None) -> None:
+        """Active/désactive explicitement le crosshair."""
         if self.editor:
-            self.editor.action_toggle_crosshair(None)
+            visible = btn.isChecked() if checked is None else bool(checked)
+            self.editor.set_crosshair_visible(visible)
         self.canvas.setFocus()
 
     def _set_active_tool_btn(self, mode: str) -> None:
         for m, b in self._tool_buttons.items():
-            if m != "XHAIR":
+            if m == "XHAIR":
+                continue
+            if isinstance(b, QToolButton) and b.menu():
+                owns = any(a.data() == mode for a in b.menu().actions())
+                b.setChecked(owns)
+                if owns:
+                    for action in b.menu().actions():
+                        action.setChecked(action.data() == mode)
+                        if action.data() == mode:
+                            b.setText(action.text().split("[")[0].strip() + " ▾")
+                            b.setProperty("activeMode", mode)
+            else:
                 b.setChecked(m == mode)
 
     def _on_button_click(self, func, arg=None):
@@ -250,7 +303,12 @@ class UVPlotWidget(BasePlotWidget):
         self.editor.update_marker_size(self.editor.marker_size_pct)
         # Appliquer le mode actif au nouvel éditeur
         for mode, btn in self._tool_buttons.items():
-            if mode != "XHAIR" and btn.isChecked():
+            if mode == "XHAIR":
+                continue
+            if isinstance(btn, QToolButton) and btn.property("activeMode") == mode:
+                self._on_tool_btn(mode, btn)
+                break
+            if not isinstance(btn, QToolButton) and btn.isChecked():
                 self._on_tool_btn(mode, btn)
                 break
 
@@ -269,8 +327,7 @@ class UVPlotWidget(BasePlotWidget):
         self._draw_and_create_editor()
 
         if crosshair_was_active and self.editor and hasattr(self.editor, 'cursor_active'):
-            if not self.editor.cursor_active:
-                self.editor.action_toggle_crosshair(None)
+            self.editor.set_crosshair_visible(True)
 
         self.fig.canvas.draw()
 
@@ -292,7 +349,7 @@ class UVPlotWidget(BasePlotWidget):
     def _setup_axes(self):
         MatplotlibStyler.setup_axes(
             self.ax,
-            title_text="UV Coverage",
+            title_text="UV Plan",
             xlabel=r"U ($M\lambda$)",
             ylabel=r"V ($M\lambda$)"
         )

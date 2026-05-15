@@ -13,80 +13,9 @@ from difmap_wrapper.types import POLARIZATIONS
 D = DesignSystem
 
 # Style de base pour les éléments classiques
-_QSS = f"""
-QWidget {{
-    background-color: {D.ASTRAL_BG};
-    color: {D.ASTRAL_TEXT};
-    font-family: {D.FONT_FAMILY};
-    font-size: {D.FONT_SIZE_BASE};
-}}
-QDockWidget::title {{
-    background-color: {D.ASTRAL_DEEPEST};
-    color: {D.ASTRAL_TEXT};
-    padding: 5px 10px;
-    font-weight: bold;
-    font-size: 10px;
-    text-transform: uppercase;
-}}
-QCheckBox {{
-    color: {D.ASTRAL_TEXT};
-    spacing: 6px;
-    padding: 2px 0;
-}}
-QCheckBox:disabled {{ color: {D.ASTRAL_MUTED}; }}
-QCheckBox::indicator {{
-    width: 14px; height: 14px;
-    border-radius: 3px;
-    border: 1px solid {D.ASTRAL_BORDER};
-    background-color: {D.ASTRAL_DEEP};
-}}
-QCheckBox::indicator:checked {{
-    background-color: {D.ASTRAL_ACCENT};
-    border-color: {D.ASTRAL_ACCENT};
-}}
-QLabel {{
-    color: {D.ASTRAL_DIM};
-    font-size: 10px;
-}}
-QLabel:disabled {{ color: {D.ASTRAL_MUTED}; }}
-QComboBox {{
-    background-color: {D.ASTRAL_SURFACE};
-    border: 1px solid {D.ASTRAL_BORDER};
-    border-radius: {D.RADIUS_SM};
-    padding: 4px 8px;
-    color: {D.ASTRAL_TEXT};
-    font-size: {D.FONT_SIZE_BASE};
-    min-height: 22px;
-}}
-QComboBox:hover {{ border: 1px solid {D.ASTRAL_ACCENT}; }}
-QComboBox::drop-down {{ border: none; width: 18px; }}
-QLineEdit {{
-    background-color: {D.ASTRAL_SURFACE};
-    border: 1px solid {D.ASTRAL_BORDER};
-    border-radius: {D.RADIUS_SM};
-    padding: 4px 6px;
-    color: {D.ASTRAL_TEXT};
-    font-size: {D.FONT_SIZE_BASE};
-    min-height: 20px;
-}}
-QLineEdit:focus {{ border: 1px solid {D.ASTRAL_ACCENT}; }}
-QSlider::groove:horizontal {{
-    border: 1px solid {D.ASTRAL_BORDER};
-    height: 4px;
-    background: {D.ASTRAL_SURFACE};
-    border-radius: 2px;
-    margin: 0 4px;
-}}
-QSlider::handle:horizontal {{
-    background: {D.ASTRAL_ACCENT};
-    border: 1px solid {D.PRIMARY_HOVER};
-    width: 12px; height: 12px;
-    border-radius: 6px;
-    margin: -5px 0;
-}}
-QSlider::handle:horizontal:hover {{ background: {D.PRIMARY_HOVER}; }}
-QScrollArea {{ border: none; background-color: {D.ASTRAL_BG}; }}
-"""
+_QSS = D.get_panel_qss()
+_TOGGLE_QSS = D.get_panel_toggle_button_qss()
+_FIELD_QSS = D.get_panel_field_qss()
 
 class _IFRangeBar(QWidget):
     """Barre horizontale indiquant visuellement la plage d'IFs sélectionnée."""
@@ -190,11 +119,11 @@ class CollapsibleSection(QWidget):
                 background-color: {D.ASTRAL_DEEPEST};
                 color: {D.ASTRAL_TEXT};
                 border: 1px solid {D.ASTRAL_BORDER};
-                border-radius: 4px;
-                padding: 8px;
+                border-radius: {D.RADIUS_MD};
+                padding: 10px 9px;
                 text-align: left;
                 font-weight: bold;
-                font-size: 11px;
+                font-size: {D.FONT_SIZE_BASE};
             }}
             QPushButton:hover {{
                 background-color: {D.ASTRAL_HOVER};
@@ -219,8 +148,8 @@ class CollapsibleSection(QWidget):
                 background-color: {D.ASTRAL_BG};
                 border: 1px solid {D.ASTRAL_BORDER};
                 border-top: none;
-                border-bottom-left-radius: 4px;
-                border-bottom-right-radius: 4px;
+                border-bottom-left-radius: {D.RADIUS_MD};
+                border-bottom-right-radius: {D.RADIUS_MD};
             }}
         """)
 
@@ -267,8 +196,8 @@ class ControlPanel(QDockWidget):
 
         self.container = QWidget()
         self.main_layout = QVBoxLayout(self.container)
-        self.main_layout.setSpacing(12)
-        self.main_layout.setContentsMargins(8, 8, 8, 8)
+        self.main_layout.setSpacing(14)
+        self.main_layout.setContentsMargins(10, 10, 10, 10)
         self.container.setStyleSheet(_QSS)
 
         self._build_data_selection()
@@ -279,7 +208,7 @@ class ControlPanel(QDockWidget):
         self.main_layout.addStretch()
 
         lbl = QLabel("Press H for keyboard shortcuts")
-        lbl.setStyleSheet(f"color: {D.ASTRAL_MUTED}; font-size: 9px; font-style: italic;")
+        lbl.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; font-style: italic;")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.main_layout.addWidget(lbl)
 
@@ -315,34 +244,15 @@ class ControlPanel(QDockWidget):
         layout.addWidget(sep)
 
         # --- Sélecteur de plage d'IFs ---
-        spin_style = f"""
-            QSpinBox {{
-                background-color: {D.ASTRAL_SURFACE};
-                border: 1px solid {D.ASTRAL_BORDER};
-                border-radius: {D.RADIUS_SM};
-                padding: 2px 4px;
-                color: {D.ASTRAL_TEXT};
-                font-size: {D.FONT_SIZE_BASE};
-                min-height: 20px;
-            }}
-            QSpinBox:focus {{ border: 1px solid {D.ASTRAL_ACCENT}; }}
-            QSpinBox::up-button, QSpinBox::down-button {{
-                width: 14px;
-                background-color: {D.ASTRAL_DEEP};
-                border: none;
-            }}
-            QSpinBox::up-button:hover, QSpinBox::down-button:hover {{
-                background-color: {D.ASTRAL_HOVER};
-            }}
-        """
+        spin_style = _QSS
         btn_all_style = f"""
             QPushButton {{
                 background-color: {D.ASTRAL_SURFACE};
                 border: 1px solid {D.ASTRAL_BORDER};
-                border-radius: 3px;
-                color: {D.ASTRAL_DIM};
-                font-size: 9px;
-                padding: 2px 6px;
+                border-radius: {D.RADIUS_MD};
+                color: {D.ASTRAL_TEXT};
+                font-size: {D.FONT_SIZE_XS};
+                padding: 3px 7px;
             }}
             QPushButton:hover {{ background-color: {D.ASTRAL_HOVER}; color: {D.ASTRAL_TEXT}; }}
         """
@@ -362,7 +272,7 @@ class ControlPanel(QDockWidget):
         self.spin_if_start.setToolTip("Premier IF (1 = début)")
 
         lbl_arrow = QLabel("→")
-        lbl_arrow.setStyleSheet(f"color: {D.ASTRAL_MUTED}; font-size: 11px;")
+        lbl_arrow.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_BASE};")
         lbl_arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.spin_if_end = QSpinBox()
@@ -546,44 +456,12 @@ class ControlPanel(QDockWidget):
         sep_uv.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 4px 0;")
         _uv_sec.addWidget(sep_uv)
 
-        toggle_style = f"""
-            QPushButton {{
-                background-color: {D.ASTRAL_MUTED};
-                color: {D.ASTRAL_TEXT};
-                border: none;
-                border-radius: 9px;
-                padding: 2px 8px;
-                font-size: 9px;
-                font-weight: bold;
-                min-width: 38px;
-                max-width: 38px;
-                min-height: 18px;
-            }}
-            QPushButton:checked {{
-                background-color: {D.ASTRAL_ACCENT};
-                color: #FFFFFF;
-            }}
-        """
-        field_style = f"""
-            QLineEdit {{
-                background-color: {D.ASTRAL_SURFACE};
-                border: 1px solid {D.ASTRAL_BORDER};
-                border-radius: 3px;
-                padding: 3px 5px;
-                color: {D.ASTRAL_TEXT};
-                font-size: 10px;
-                min-height: 20px;
-            }}
-            QLineEdit:focus {{ border: 1px solid {D.ASTRAL_ACCENT}; }}
-            QLineEdit:disabled {{
-                background-color: {D.ASTRAL_DEEP};
-                color: {D.ASTRAL_MUTED};
-            }}
-        """
+        toggle_style = _TOGGLE_QSS
+        field_style = _FIELD_QSS
 
         h_uv_hdr = QHBoxLayout()
         lbl_uv = QLabel("Limite plan UV")
-        lbl_uv.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: 10px; font-weight: 500;")
+        lbl_uv.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
         self.chk_uv_limit = QPushButton("OFF")
         self.chk_uv_limit.setCheckable(True)
         self.chk_uv_limit.setChecked(False)
@@ -678,7 +556,7 @@ class ControlPanel(QDockWidget):
 
         h_rad_hdr = QHBoxLayout()
         lbl_rad_lim = QLabel("Limite Radplot")
-        lbl_rad_lim.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: 10px; font-weight: 500;")
+        lbl_rad_lim.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
         self.chk_rad_limit = QPushButton("OFF")
         self.chk_rad_limit.setCheckable(True)
         self.chk_rad_limit.setChecked(False)
@@ -707,17 +585,17 @@ class ControlPanel(QDockWidget):
             return ia, ib
 
         lbl_uvr = QLabel("UV Radius (Mλ)")
-        lbl_uvr.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        lbl_uvr.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
         grid_rad.addWidget(lbl_uvr)
         self.input_rad_uvmin, self.input_rad_uvmax = _make_rad_row("UV min", "UV max")
 
         lbl_amp = QLabel("Amplitude (Jy)")
-        lbl_amp.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        lbl_amp.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
         grid_rad.addWidget(lbl_amp)
         self.input_rad_ampmin, self.input_rad_ampmax = _make_rad_row("Amp min", "Amp max")
 
         lbl_phs = QLabel("Phase (°)")
-        lbl_phs.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        lbl_phs.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
         grid_rad.addWidget(lbl_phs)
         self.input_rad_phsmin, self.input_rad_phsmax = _make_rad_row("Phs min", "Phs max")
 
@@ -827,7 +705,7 @@ class ControlPanel(QDockWidget):
         lbl = QLabel(text.upper())
         lbl.setStyleSheet(f"""
             color: {D.ASTRAL_ACCENT};
-            font-size: 9px;
+            font-size: {D.FONT_SIZE_XS};
             font-weight: bold;
             letter-spacing: 1.5px;
             padding: 6px 0 2px 0;
@@ -839,7 +717,7 @@ class ControlPanel(QDockWidget):
         """Ligne de séparation fine entre sous-sections."""
         sep = QWidget()
         sep.setFixedHeight(1)
-        sep.setStyleSheet(f"background-color: {D.ASTRAL_MUTED}; margin: 2px 0;")
+        sep.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 3px 0;")
         return sep
 
     def _row(self, *items) -> QHBoxLayout:
@@ -849,7 +727,7 @@ class ControlPanel(QDockWidget):
         for item in items:
             if isinstance(item, str):
                 lbl = QLabel(item)
-                lbl.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 10px;")
+                lbl.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_SM};")
                 h.addWidget(lbl)
             else:
                 h.addWidget(item)
@@ -865,24 +743,8 @@ class ControlPanel(QDockWidget):
         layout.setSpacing(4)
 
         # ── Styles locaux ────────────────────────────────────────
-        toggle_style = f"""
-            QPushButton {{
-                background-color: {D.ASTRAL_MUTED}; color: {D.ASTRAL_TEXT};
-                border: none; border-radius: 9px; padding: 2px 8px;
-                font-size: 9px; font-weight: bold;
-                min-width: 38px; max-width: 38px; min-height: 18px;
-            }}
-            QPushButton:checked {{ background-color: {D.ASTRAL_ACCENT}; color: #FFFFFF; }}
-        """
-        field_s = f"""
-            QLineEdit {{
-                background-color: {D.ASTRAL_SURFACE}; border: 1px solid {D.ASTRAL_BORDER};
-                border-radius: 3px; padding: 3px 5px;
-                color: {D.ASTRAL_TEXT}; font-size: 10px; min-height: 20px;
-            }}
-            QLineEdit:focus {{ border: 1px solid {D.ASTRAL_ACCENT}; }}
-            QLineEdit:disabled {{ background-color: {D.ASTRAL_DEEP}; color: {D.ASTRAL_MUTED}; }}
-        """
+        toggle_style = _TOGGLE_QSS
+        field_s = _FIELD_QSS
 
         # ══════════════════════════════════════════════════════════
         # IMAGING PARAMS — tous les onglets carte
@@ -904,7 +766,7 @@ class ControlPanel(QDockWidget):
 
         h_uvf_hdr = QHBoxLayout(); h_uvf_hdr.setSpacing(6)
         lbl_uvf = QLabel("UV Filtering")
-        lbl_uvf.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: 10px; font-weight: 500;")
+        lbl_uvf.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
         self.chk_uv_filter = QPushButton("OFF")
         self.chk_uv_filter.setCheckable(True); self.chk_uv_filter.setChecked(False)
         self.chk_uv_filter.setStyleSheet(toggle_style)
@@ -950,26 +812,7 @@ class ControlPanel(QDockWidget):
         self.btn_apply_imaging = QPushButton("⊞  Apply")
         self.btn_apply_imaging.setToolTip("Appliquer les paramètres d'imagerie au moteur")
         self.btn_apply_imaging.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_apply_imaging.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                color: {D.ASTRAL_ACCENT};
-                border: 1px solid {D.ASTRAL_ACCENT};
-                border-radius: 4px;
-                padding: 6px 10px;
-                font-size: 11px;
-                font-weight: 600;
-            }}
-            QPushButton:hover {{
-                background-color: {D.ASTRAL_SURFACE};
-                color: #FFFFFF;
-            }}
-            QPushButton:pressed {{ background-color: {D.ASTRAL_HOVER}; }}
-            QPushButton:disabled {{
-                color: {D.ASTRAL_MUTED};
-                border-color: {D.ASTRAL_MUTED};
-            }}
-        """)
+        self.btn_apply_imaging.setStyleSheet(D.get_panel_action_button_qss("primary"))
         ip.addWidget(self.btn_apply_imaging)
 
         layout.addWidget(self._imaging_params_section)
@@ -983,18 +826,7 @@ class ControlPanel(QDockWidget):
         self.btn_compute = QPushButton("▼  Make Dirty Map")
         self.btn_compute.setToolTip("Calculer la Dirty Map (invert)")
         self.btn_compute.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_compute.setStyleSheet("""
-            QPushButton {
-                background-color: #2E6B2E; color: #FFFFFF;
-                border: none; border-radius: 4px;
-                padding: 6px 10px; font-size: 11px; font-weight: 600;
-            }
-            QPushButton:hover  { background-color: #3A8A3A; }
-            QPushButton:pressed { background-color: #245424; }
-            QPushButton:disabled {
-                background-color: #1C3A1C; color: #4A6A4A;
-            }
-        """)
+        self.btn_compute.setStyleSheet(D.get_panel_action_button_qss("success"))
         db.addWidget(self.btn_compute)
         layout.addWidget(self._dirty_btn_section)
 
@@ -1008,14 +840,14 @@ class ControlPanel(QDockWidget):
         cc.addWidget(self._subsection_header("Clean"))
 
         lbl_params = QLabel("Parameters")
-        lbl_params.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: 10px; font-weight: 500;")
+        lbl_params.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
         cc.addWidget(lbl_params)
 
         # Ligne 1 : Total Niter | Loop Gain côte à côte
         h_row1 = QHBoxLayout(); h_row1.setSpacing(8)
         col_niter = QVBoxLayout(); col_niter.setSpacing(2)
         lbl_niter = QLabel("Total Niter")
-        lbl_niter.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        lbl_niter.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
         col_niter.addWidget(lbl_niter)
         self.input_niter = QLineEdit("1000")
         self.input_niter.setToolTip("Nombre total d'itérations CLEAN")
@@ -1024,7 +856,7 @@ class ControlPanel(QDockWidget):
 
         col_gain = QVBoxLayout(); col_gain.setSpacing(2)
         lbl_gain = QLabel("Loop Gain")
-        lbl_gain.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        lbl_gain.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
         col_gain.addWidget(lbl_gain)
         self.input_gain = QLineEdit("0.05")
         self.input_gain.setToolTip("Gain de boucle CLEAN (0–1)")
@@ -1034,7 +866,7 @@ class ControlPanel(QDockWidget):
 
         # Cutoff pleine largeur, label au-dessus
         lbl_cutoff = QLabel("Cutoff (Jy/bm)")
-        lbl_cutoff.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        lbl_cutoff.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
         cc.addWidget(lbl_cutoff)
         self.input_cutoff = QLineEdit("0.001")
         self.input_cutoff.setToolTip("Seuil de flux résiduel (Jy/beam) — 0 = pas de limite")
@@ -1042,7 +874,7 @@ class ControlPanel(QDockWidget):
 
         h_bp_hdr = QHBoxLayout(); h_bp_hdr.setSpacing(6)
         lbl_bp = QLabel("Conditional Breakpoints")
-        lbl_bp.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: 10px;")
+        lbl_bp.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE};")
         self.chk_conditional_bp = ToggleSwitch()
         self.chk_conditional_bp.setChecked(False)
         self.chk_conditional_bp.setToolTip("Pause automatique après X itérations")
@@ -1061,11 +893,11 @@ class ControlPanel(QDockWidget):
 
         h_prog = QHBoxLayout(); h_prog.setSpacing(4)
         lbl_prog_title = QLabel("Progress")
-        lbl_prog_title.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        lbl_prog_title.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
         h_prog.addWidget(lbl_prog_title)
         h_prog.addStretch()
         self.lbl_progress = QLabel("0 / 0")
-        self.lbl_progress.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: 9px;")
+        self.lbl_progress.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
         self.lbl_progress.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         h_prog.addWidget(self.lbl_progress)
         cc.addLayout(h_prog)
@@ -1079,7 +911,7 @@ class ControlPanel(QDockWidget):
                 background-color: {D.ASTRAL_SURFACE}; border: 1px solid {D.ASTRAL_BORDER};
                 border-radius: 4px;
             }}
-            QProgressBar::chunk {{ background-color: #2E6B2E; border-radius: 4px; }}
+            QProgressBar::chunk {{ background-color: #2F7D4A; border-radius: 4px; }}
         """)
         cc.addWidget(self.progress_bar)
 
@@ -1087,33 +919,12 @@ class ControlPanel(QDockWidget):
         self.btn_compute_clean = QPushButton("▶  Start")
         self.btn_compute_clean.setToolTip("Lancer invert + CLEAN + restore")
         self.btn_compute_clean.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_compute_clean.setStyleSheet("""
-            QPushButton {
-                background-color: #2E6B2E; color: #FFFFFF;
-                border: none; border-radius: 4px;
-                padding: 6px 10px; font-size: 11px; font-weight: 600;
-            }
-            QPushButton:hover  { background-color: #3A8A3A; }
-            QPushButton:pressed { background-color: #245424; }
-            QPushButton:disabled {
-                background-color: #1C3A1C; color: #4A6A4A;
-            }
-        """)
+        self.btn_compute_clean.setStyleSheet(D.get_panel_action_button_qss("success"))
         self.btn_pause_clean = QPushButton("⏸  Pause")
         self.btn_pause_clean.setEnabled(False)
         self.btn_pause_clean.setToolTip("Suspendre / reprendre le CLEAN")
         self.btn_pause_clean.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_pause_clean.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {D.ASTRAL_SURFACE}; color: {D.ASTRAL_MUTED};
-                border: 1px solid {D.ASTRAL_BORDER}; border-radius: 4px;
-                padding: 6px 10px; font-size: 11px;
-            }}
-            QPushButton:enabled {{
-                background-color: #7A3B20; color: #FFFFFF; border-color: #7A3B20;
-            }}
-            QPushButton:enabled:hover {{ background-color: #9A4E2A; }}
-        """)
+        self.btn_pause_clean.setStyleSheet(D.get_panel_action_button_qss("warning"))
         h_sp.addWidget(self.btn_compute_clean); h_sp.addWidget(self.btn_pause_clean)
         cc.addLayout(h_sp)
         layout.addWidget(self._clean_controls_section)
@@ -1212,9 +1023,6 @@ class ControlPanel(QDockWidget):
         self._widget_custom_levels.setVisible(False)
         dc.addWidget(self._widget_custom_levels)
 
-        self.btn_refresh_view = SecondaryButton("↻  Refresh View")
-        self.btn_refresh_view.setToolTip("Appliquer l'affichage sans recalculer la carte")
-        dc.addWidget(self.btn_refresh_view)
         layout.addWidget(self._display_clean_section)
 
         # ── Connexions internes ───────────────────────────────────

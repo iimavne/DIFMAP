@@ -55,9 +55,10 @@ class ImprovedLogConsole(QDockWidget):
                 background-color: {DesignSystem.TERMINAL_BG};
                 color: {DesignSystem.TERMINAL_TEXT};
                 font-family: {DesignSystem.FONT_MONO};
-                font-size: 12px;
+                font-size: {DesignSystem.FONT_SIZE_BASE};
                 border: none;
-                padding: 8px;
+                padding: 10px;
+                selection-background-color: {DesignSystem.ASTRAL_ACCENT};
             }}
         """)
         

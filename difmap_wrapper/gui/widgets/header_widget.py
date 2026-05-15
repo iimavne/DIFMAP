@@ -70,7 +70,7 @@ class HeaderWidget(QWidget):
 
         lbl = QLabel("Observation Header")
         lbl.setStyleSheet(
-            f"color: {D.ASTRAL_TEXT}; font-size: 13px; font-weight: bold;"
+            f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_LG}; font-weight: bold;"
         )
         bar.addWidget(lbl)
         bar.addStretch()
@@ -79,10 +79,11 @@ class HeaderWidget(QWidget):
             QPushButton {{
                 background-color: {D.ASTRAL_SURFACE};
                 border: 1px solid {D.ASTRAL_BORDER};
-                border-radius: 4px;
+                border-radius: {D.RADIUS_MD};
                 color: {D.ASTRAL_TEXT};
-                font-size: 11px;
-                padding: 4px 12px;
+                font-size: {D.FONT_SIZE_BASE};
+                padding: 6px 12px;
+                min-height: 28px;
             }}
             QPushButton:hover {{ background-color: {D.ASTRAL_HOVER}; }}
             QPushButton:disabled {{ color: {D.ASTRAL_MUTED}; }}
@@ -93,7 +94,7 @@ class HeaderWidget(QWidget):
         self.btn_save    = QPushButton("⬇  Save…")
         for btn in (self.btn_refresh, self.btn_copy, self.btn_save):
             btn.setStyleSheet(btn_style)
-            btn.setFixedHeight(26)
+            btn.setMinimumHeight(30)
             bar.addWidget(btn)
 
         root.addLayout(bar)
@@ -101,7 +102,7 @@ class HeaderWidget(QWidget):
         # ── Zone de texte monospace ──────────────────────────────────
         self.text_area = QTextEdit()
         self.text_area.setReadOnly(True)
-        font = QFont("Monospace", 10)
+        font = QFont("Monospace", 12)
         font.setStyleHint(QFont.StyleHint.TypeWriter)
         self.text_area.setFont(font)
         self.text_area.setStyleSheet(f"""
@@ -109,8 +110,8 @@ class HeaderWidget(QWidget):
                 background-color: {D.ASTRAL_DEEPEST};
                 color: {D.ASTRAL_TEXT};
                 border: 1px solid {D.ASTRAL_BORDER};
-                border-radius: 4px;
-                padding: 8px;
+                border-radius: {D.RADIUS_MD};
+                padding: 10px;
                 selection-background-color: {D.ASTRAL_ACCENT};
             }}
             QScrollBar:vertical {{
@@ -126,7 +127,7 @@ class HeaderWidget(QWidget):
         # ── Status bar ───────────────────────────────────────────────
         self.lbl_status = QLabel("No observation loaded.")
         self.lbl_status.setStyleSheet(
-            f"color: {D.ASTRAL_MUTED}; font-size: 9px; font-style: italic;"
+            f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; font-style: italic;"
         )
         root.addWidget(self.lbl_status)
 

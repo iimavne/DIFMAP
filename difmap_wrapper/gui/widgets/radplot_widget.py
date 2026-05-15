@@ -6,10 +6,9 @@ from typing import Optional
 
 import numpy as np
 from matplotlib.collections import PathCollection
-from PyQt6.QtCore import QSize
 from PyQt6.QtCore import Qt as _Qt
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QPushButton, QToolButton, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QToolButton, QWidget
 try:
     import qtawesome as qta
     _HAS_QTA = True
@@ -24,94 +23,7 @@ from difmap_wrapper.types import DisplayMode
 
 D = DesignSystem
 
-# Teinte accent légère pour l'état actif (fond bleu pâle, texte bleu, bordure bleue)
-_TOOLBAR_QSS = f"""
-QWidget#PlotToolbar {{
-    background-color: {D.BACKGROUND};
-    border-bottom: 1px solid {D.BORDER};
-    padding: 5px 8px;
-}}
-/* ── Pills (même style que UV plot) ── */
-QPushButton {{
-    background-color: {D.SURFACE};
-    color: {D.TEXT_SECONDARY};
-    border: 1px solid {D.BORDER};
-    border-radius: 12px;
-    padding: 3px 12px;
-    font-size: 10px;
-    font-family: {D.FONT_FAMILY};
-    font-weight: 500;
-    min-height: 22px;
-    min-width: 60px;
-}}
-QPushButton:hover {{
-    background-color: {D.SURFACE_ALT};
-    border-color: {D.ASTRAL_ACCENT};
-    color: {D.TEXT};
-}}
-QPushButton:checked {{
-    background-color: {D.ASTRAL_BG};
-    color: #FFFFFF;
-    border-color: {D.ASTRAL_BG};
-    font-weight: 600;
-}}
-QPushButton:pressed {{
-    background-color: {D.ASTRAL_HOVER};
-    color: #FFFFFF;
-}}
-/* ── Sélecteur déroulant : même pill mais plus large ── */
-QToolButton {{
-    background-color: {D.SURFACE};
-    color: {D.TEXT_SECONDARY};
-    border: 1px solid {D.BORDER};
-    border-radius: 12px;
-    padding: 3px 12px;
-    font-size: 10px;
-    font-family: {D.FONT_FAMILY};
-    font-weight: 500;
-    min-height: 22px;
-    min-width: 110px;
-}}
-QToolButton:hover {{
-    background-color: {D.SURFACE_ALT};
-    border-color: {D.ASTRAL_ACCENT};
-    color: {D.TEXT};
-}}
-QToolButton:checked {{
-    background-color: {D.ASTRAL_BG};
-    color: #FFFFFF;
-    border-color: {D.ASTRAL_BG};
-    font-weight: 600;
-}}
-QToolButton:pressed {{
-    background-color: {D.ASTRAL_HOVER};
-    color: #FFFFFF;
-}}
-QToolButton::menu-indicator {{ image: none; width: 0; }}
-/* ── Menu déroulant ── */
-QMenu {{
-    background-color: {D.SURFACE};
-    border: 1px solid {D.BORDER};
-    border-radius: 8px;
-    padding: 4px;
-    font-family: {D.FONT_FAMILY};
-    font-size: 10px;
-}}
-QMenu::item {{
-    padding: 5px 14px 5px 10px;
-    border-radius: 5px;
-    color: {D.TEXT};
-    min-width: 150px;
-}}
-QMenu::item:selected {{
-    background-color: {D.ASTRAL_BG};
-    color: #FFFFFF;
-}}
-QMenu::item:checked {{
-    color: {D.ASTRAL_ACCENT};
-    font-weight: 600;
-}}
-"""
+_TOOLBAR_QSS = D.get_plot_toolbar_qss("PlotToolbar", with_menu=True)
 
 
 def _icon(name: str, color: str = "#4A6A8A"):
@@ -244,112 +156,61 @@ class RadPlotWidget(BasePlotWidget):
 
     def _build_local_toolbar(self) -> None:
         """
-        Deux lignes de toolbar :
-        - Ligne 1 (haut)  : boutons d'action (Dezoom, Reset, Undo, Refresh, Crosshair)
-        - Ligne 2 (bas)   : sélecteurs déroulants de mode (Navigate, Zoom, Flag, Stats)
+        Toolbar compacte homogène : groupes déroulants Tool / Zoom / Stats / View.
         """
         self._tool_buttons: dict[str, QToolButton] = {}
 
-        # ── Ligne 1 : actions ─────────────────────────────────
-        row1 = self.plot_toolbar_row
-        row1.setObjectName("PlotToolbar")
-        row1.setStyleSheet(_TOOLBAR_QSS)
-        row1.setVisible(True)
-        lay1 = self.plot_toolbar_layout
+        row = self.plot_toolbar_row
+        row.setObjectName("PlotToolbar")
+        row.setStyleSheet(_TOOLBAR_QSS)
+        row.setVisible(True)
+        lay = self.plot_toolbar_layout
+        lay.setContentsMargins(8, 5, 8, 5)
+        lay.setSpacing(6)
 
-        _actions = [
-            ("Dezoom",     "fa5s.search-minus", "O", "Dézoomer de 50 %",           False, None),
-            ("Reset View", "fa5s.home",         "R", "Réinitialiser la vue",        False, None),
-            ("Undo Flag",  "fa5s.undo",         "u",  "Annuler le dernier flagging  (distinct de Shift+u = Zoom Radius)", False, None),
-            ("Refresh",    "fa5s.sync-alt",     "L", "Rafraîchir l'affichage",      False, None),
-            ("Crosshair",  "fa5s.crosshairs",   "+", "Crosshair plein écran",       True,  "XHAIR"),
-        ]
-        for label, icon_name, shortcut, tip, checkable, mode in _actions:
-            btn = QPushButton(f"{label} [{shortcut}]")
-            btn.setCheckable(checkable)
-            btn.setToolTip(f"{tip}  [{shortcut}]")
-            ico = _icon(icon_name)
-            if ico:
-                btn.setIcon(ico)
-                btn.setIconSize(QSize(14, 14))
-            if mode == "XHAIR":
-                btn.clicked.connect(lambda checked, b=btn: self._on_crosshair_btn(b))
-                self._tool_buttons["XHAIR"] = btn
-            elif label == "Dezoom":
-                btn.clicked.connect(
-                    lambda: self._on_button_click(
-                        self.editor.action_dezoom, None) if self.editor else None)
-            elif label == "Reset View":
-                btn.clicked.connect(
-                    lambda: self._on_button_click(
-                        self.editor.action_home, None) if self.editor else None)
-            elif label == "Undo Flag":
-                btn.clicked.connect(
-                    lambda: self._on_button_click(
-                        self.editor.action_undo, None) if self.editor else None)
-            elif label == "Refresh":
-                btn.clicked.connect(
-                    lambda: self._on_button_click(
-                        self.editor.action_redisplay, None) if self.editor else None)
-            lay1.addWidget(btn)
-        lay1.addStretch()
+        lay.addWidget(QLabel("Tool:"))
+        dd_tool = _make_dropdown("Tool", self._RAD_NAVIGATE + self._RAD_FLAG,
+                                 self._tool_buttons, self._on_tool_btn)
+        lay.addWidget(dd_tool)
+        lay.addWidget(_make_separator())
 
-        # ── Ligne 2 : outils de mode ──────────────────────────
-        row2 = QWidget()
-        row2.setObjectName("PlotToolbar")
-        row2.setStyleSheet(_TOOLBAR_QSS)
-        lay2 = QHBoxLayout(row2)
-        lay2.setContentsMargins(10, 4, 10, 4)
-        lay2.setSpacing(8)
-
-        # Pan et Inspect : pills indépendantes
-        for label, mode, icon_name, shortcut, tip in self._RAD_NAVIGATE:
-            btn = QPushButton(f"{label} [{shortcut}]")
-            btn.setCheckable(True)
-            btn.setToolTip(f"{tip}  [{shortcut}]")
-            ico = _icon(icon_name)
-            if ico:
-                btn.setIcon(ico)
-                btn.setIconSize(QSize(14, 14))
-            btn.clicked.connect(
-                lambda checked, m=mode, b=btn: self._on_tool_btn(m, b))
-            self._tool_buttons[mode] = btn
-            lay2.addWidget(btn)
-
-        lay2.addWidget(_make_separator())
-
-        # Zoom : dropdown (Zoom Box / Zoom X / Zoom Y)
+        lay.addWidget(QLabel("Zoom:"))
         dd_zoom = _make_dropdown("Zoom", self._RAD_ZOOM,
                                  self._tool_buttons, self._on_tool_btn)
-        lay2.addWidget(dd_zoom)
+        lay.addWidget(dd_zoom)
+        lay.addWidget(_make_separator())
 
-        lay2.addWidget(_make_separator())
-
-        # Flag Box : pill toggle simple
-        flag_def = self._RAD_FLAG[0]  # ("Flag Box", "CUT", icon, shortcut, tip)
-        btn_flag = QPushButton(f"{flag_def[0]} [{flag_def[3]}]")
-        btn_flag.setCheckable(True)
-        btn_flag.setToolTip(f"{flag_def[4]}  [{flag_def[3]}]")
-        ico = _icon(flag_def[2])
-        if ico:
-            btn_flag.setIcon(ico)
-            btn_flag.setIconSize(QSize(14, 14))
-        btn_flag.clicked.connect(
-            lambda checked, m=flag_def[1], b=btn_flag: self._on_tool_btn(m, b))
-        self._tool_buttons[flag_def[1]] = btn_flag
-        lay2.addWidget(btn_flag)
-
-        lay2.addWidget(_make_separator())
-
-        # Statistics : dropdown (Amp/Phase / Re/Im)
-        dd_stats = _make_dropdown("Statistics", self._RAD_STATS,
+        lay.addWidget(QLabel("Stats:"))
+        dd_stats = _make_dropdown("Stats", self._RAD_STATS,
                                   self._tool_buttons, self._on_tool_btn)
-        lay2.addWidget(dd_stats)
+        lay.addWidget(dd_stats)
+        lay.addWidget(_make_separator())
 
-        lay2.addStretch()
-
-        # Insérer row2 juste après row1 dans le layout vertical du widget
-        self.layout.insertWidget(1, row2)
+        lay.addWidget(QLabel("View:"))
+        view_btn = QToolButton()
+        view_btn.setText("View ▾")
+        view_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        view_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        view_menu = QMenu(view_btn)
+        view_actions = [
+            ("Dezoom [O]", "Dézoomer de 50 %", lambda: self._on_button_click(self.editor.action_dezoom, None) if self.editor else None),
+            ("Reset [R]", "Réinitialiser la vue", lambda: self._on_button_click(self.editor.action_home, None) if self.editor else None),
+            ("Undo Flag [u]", "Annuler le dernier flagging", lambda: self._on_button_click(self.editor.action_undo, None) if self.editor else None),
+        ]
+        for text, tip, callback in view_actions:
+            act = QAction(text, view_btn)
+            act.setToolTip(tip)
+            act.triggered.connect(lambda checked=False, cb=callback: cb())
+            view_menu.addAction(act)
+        cross = QAction("Crosshair [+]", view_btn)
+        cross.setCheckable(True)
+        cross.setToolTip("Crosshair plein écran")
+        cross.triggered.connect(lambda checked: self._on_crosshair_btn(cross, checked))
+        view_menu.addAction(cross)
+        self._tool_buttons["XHAIR"] = cross
+        view_btn.setMenu(view_menu)
+        lay.addWidget(view_btn)
+        lay.addStretch()
 
     # ── Gestion des boutons ──────────────────────────────────────
 
@@ -395,9 +256,10 @@ class RadPlotWidget(BasePlotWidget):
             self.editor._set_mode(mode)
         self.canvas.setFocus()
 
-    def _on_crosshair_btn(self, btn: QPushButton) -> None:
+    def _on_crosshair_btn(self, btn, checked: bool | None = None) -> None:
         if self.editor:
-            self.editor.action_toggle_crosshair(None)
+            visible = btn.isChecked() if checked is None else bool(checked)
+            self.editor.set_crosshair_visible(visible)
         self.canvas.setFocus()
 
     def _on_button_click(self, func, arg=None):
@@ -522,8 +384,7 @@ class RadPlotWidget(BasePlotWidget):
 
             # Restaurer le crosshair
             if crosshair_was_active and self.editor and hasattr(self.editor, 'cursor_active'):
-                if not self.editor.cursor_active:
-                    self.editor.action_toggle_crosshair(None)
+                self.editor.set_crosshair_visible(True)
 
     # =========================================================
     # M4 : plot_data() décomposé en sous-méthodes
@@ -693,6 +554,8 @@ class RadPlotWidget(BasePlotWidget):
         # Appliquer le mode courant des boutons au nouvel éditeur
         if hasattr(self, '_tool_buttons'):
             for mode, btn in self._tool_buttons.items():
-                if mode != "XHAIR" and btn.isChecked():
+                if mode == "XHAIR":
+                    continue
+                if isinstance(btn, QToolButton) and btn.property("activeMode") == mode:
                     self._on_tool_btn(mode, btn)
                     break

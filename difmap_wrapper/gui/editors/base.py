@@ -255,6 +255,7 @@ class BasePlotEditor:
             except Exception:
                 pass
         self._cids.clear()
+        self._disconnect_crosshair()
         self.obs.unregister_editor(self)
 
     def refresh_data(self) -> None:
@@ -659,6 +660,66 @@ class BasePlotEditor:
             line.set_visible(True)
         self.cursor.set_active(True)
 
+    def _disconnect_crosshair(self) -> None:
+        """Déconnecte et masque entièrement le crosshair courant, s'il existe."""
+        if not self.cursor:
+            self.cursor_active = False
+            return
+        try:
+            if hasattr(self.cursor, 'vlines'):
+                for line in self.cursor.vlines:
+                    line.set_visible(False)
+                    try:
+                        line.remove()
+                    except Exception:
+                        pass
+            if hasattr(self.cursor, 'hlines'):
+                for line in self.cursor.hlines:
+                    line.set_visible(False)
+                    try:
+                        line.remove()
+                    except Exception:
+                        pass
+            if hasattr(self.cursor, 'set_active'):
+                self.cursor.set_active(False)
+            if hasattr(self.cursor, 'disconnect_events'):
+                self.cursor.disconnect_events()
+            elif hasattr(self.cursor, 'disconnect'):
+                self.cursor.disconnect()
+        except Exception:
+            pass
+        self.cursor = None
+        self.cursor_active = False
+
+    def set_crosshair_visible(self, visible: bool):
+        """
+        Définit explicitement l'état du crosshair sans toggle aveugle.
+
+        Cela évite les doublons de MultiCursor quand plusieurs contrôles UI
+        essaient de synchroniser le même état.
+        """
+        visible = bool(visible)
+        if visible == self.cursor_active and (visible or self.cursor is None):
+            return
+
+        _xlim = self.ax.get_xlim()
+        _ylim = self.ax.get_ylim()
+
+        self._disconnect_crosshair()
+        if visible:
+            self.cursor = MultiCursor(
+                self.fig.canvas, self.axes_list,
+                color=DesignSystem.PLOT_FOCUS, lw=0.8,
+                horizOn=True, vertOn=True
+            )
+            self.cursor_active = True
+
+        self.fig.canvas.draw_idle()
+        self.ax.set_xlim(_xlim)
+        self.ax.set_ylim(_ylim)
+        if self.sync_callback:
+            self.sync_callback({'crosshair': self.cursor_active})
+
     def action_toggle_crosshair(self, event=None):
         """
         Active ou désactive le crosshair plein écran (``MultiCursor``). Touche ``+``.
@@ -671,41 +732,9 @@ class BasePlotEditor:
         event : matplotlib.backend_bases.KeyEvent, optional
             Événement clavier (ignoré).
         """
-        self.cursor_active = not self.cursor_active
-        # Sauvegarder les limites : le draw() forcé peut déclencher le moteur de
-        # layout contraint qui, avec set_aspect('equal'), recalcule les limites.
-        _xlim = self.ax.get_xlim()
-        _ylim = self.ax.get_ylim()
-        if self.cursor_active:
-            self.cursor = MultiCursor(
-                self.fig.canvas, self.axes_list,
-                color=DesignSystem.PLOT_FOCUS, lw=0.8,
-                horizOn=True, vertOn=True
-            )
-        else:
-            if self.cursor:
-                if hasattr(self.cursor, 'vlines'):
-                    for line in self.cursor.vlines:
-                        line.set_visible(False)
-                if hasattr(self.cursor, 'hlines'):
-                    for line in self.cursor.hlines:
-                        line.set_visible(False)
-                if hasattr(self.cursor, 'set_active'):
-                    self.cursor.set_active(False)
-                if hasattr(self.cursor, 'disconnect_events'):
-                    self.cursor.disconnect_events()
-                elif hasattr(self.cursor, 'disconnect'):
-                    self.cursor.disconnect()
-                self.cursor = None
-
-        self.fig.canvas.draw()
-        # Restaurer les limites après le draw pour annuler tout recalcul parasite
-        self.ax.set_xlim(_xlim)
-        self.ax.set_ylim(_ylim)
+        self.set_crosshair_visible(not self.cursor_active)
         status = "Activé" if self.cursor_active else "Désactivé"
         logger.info("Cross-hair : %s", status)
-        if self.sync_callback:
-            self.sync_callback({'crosshair': self.cursor_active})
 
     def action_toggle_channels(self, event=None):
         """
@@ -735,18 +764,6 @@ class BasePlotEditor:
         self.update_marker_size(next_pct)
         if self.sync_callback:
             self.sync_callback({'marker_size': next_pct})
-
-    def set_crosshair_visible(self, visible: bool):
-        """
-        Appelé depuis MainWindow checkboxe (et routing).
-        Utile pour basculer le crosshair sans action clavier.
-        """
-        if visible and not self.cursor_active:
-            # Activer : même logique que action_toggle_crosshair(True)
-            self.action_toggle_crosshair(None)
-        elif not visible and self.cursor_active:
-            # Désactiver : même logique que action_toggle_crosshair(True) qui toggle
-            self.action_toggle_crosshair(None)
 
     def set_conjugate_visible(self, visible: bool):
         """

@@ -3,6 +3,7 @@ import os
 import locale
 import difmap_native
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QFont
 
 # --- Forcer Python à lire les fichiers sources directement ---
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -13,6 +14,7 @@ from difmap_wrapper.gui.main_window import MainWindow
 def main():
     # 1. Initialisation de l'application Qt
     app = QApplication(sys.argv)
+    app.setFont(QFont("Segoe UI", 10))
 
     # 2. Forcer le locale numérique à 'C' pour éviter les problèmes de parsing
     try:

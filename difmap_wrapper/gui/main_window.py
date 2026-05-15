@@ -127,9 +127,15 @@ class MainWindow(QMainWindow):
         all_maps_layout.setContentsMargins(10, 10, 10, 10)
         all_maps_layout.setHorizontalSpacing(10)
         all_maps_layout.setVerticalSpacing(10)
-        self.all_maps_residual_widget = ResidualMapPlotWidget(self.all_maps_widget, show_annotations=True)
-        self.all_maps_dirty_widget    = DirtyMapPlotWidget(self.all_maps_widget, show_annotations=False)
-        self.all_maps_clean_widget    = CleanMapPlotWidget(self.all_maps_widget, show_annotations=False)
+        self.all_maps_residual_widget = ResidualMapPlotWidget(
+            self.all_maps_widget, show_annotations=True, show_tools=True
+        )
+        self.all_maps_dirty_widget = DirtyMapPlotWidget(
+            self.all_maps_widget, show_annotations=False, show_tools=False
+        )
+        self.all_maps_clean_widget = CleanMapPlotWidget(
+            self.all_maps_widget, show_annotations=False, show_tools=False
+        )
         all_maps_layout.addWidget(self.all_maps_residual_widget, 0, 0, 2, 1)
         all_maps_layout.addWidget(self.all_maps_dirty_widget,    0, 1, 1, 1)
         all_maps_layout.addWidget(self.all_maps_clean_widget,    1, 1, 1, 1)
@@ -146,7 +152,7 @@ class MainWindow(QMainWindow):
         # ── Sous-onglets "Graphiques" ──────────────────────────────
         self.inner_graphiques = QTabWidget()
         self.inner_graphiques.setStyleSheet(DesignSystem.get_inner_tab_style())
-        self.inner_graphiques.addTab(QWidget(),             "UV Coverage")  # inner 0 → UV=0
+        self.inner_graphiques.addTab(QWidget(),             "UV Plan")      # inner 0 → UV=0
         self.inner_graphiques.addTab(self.radplot_widget,   "Radplot")      # inner 1 → RADPLOT=1
 
         # ── Sous-onglets "Imagerie" ────────────────────────────────
@@ -326,7 +332,7 @@ class MainWindow(QMainWindow):
                     sync_callback=self._sync_all_plots,
                 )
                 self.inner_graphiques.removeTab(0)  # UV placeholder
-                self.inner_graphiques.insertTab(0, self.plot_widget, "UV Coverage")
+                self.inner_graphiques.insertTab(0, self.plot_widget, "UV Plan")
             else:
                 self.plot_widget.reload_data(self.data, self.session.obs)
 
@@ -420,10 +426,8 @@ class MainWindow(QMainWindow):
                 if not editor or not hasattr(editor, 'cursor_active'):
                     continue
                 try:
-                    if not checked and getattr(editor, 'cursor_active', False):
-                        editor.action_toggle_crosshair(None)
-                    elif checked and not getattr(editor, 'cursor_active', False):
-                        editor.action_toggle_crosshair(None)
+                    if hasattr(editor, 'set_crosshair_visible'):
+                        editor.set_crosshair_visible(checked)
                 except Exception:
                     pass
 
@@ -460,7 +464,6 @@ class MainWindow(QMainWindow):
         self.control_panel.btn_apply_imaging.clicked.connect(self._on_apply_imaging)
         self.control_panel.btn_compute_clean.clicked.connect(self._start_clean)
         self.control_panel.btn_pause_clean.clicked.connect(self._pause_clean)
-        self.control_panel.btn_refresh_view.clicked.connect(self._refresh_current_map_tab)
         self.control_panel.chk_show_model_map.toggled.connect(self._on_show_model_map_changed)
         self.control_panel.colormap_changed.connect(self._on_colormap_changed)
         self.control_panel.show_windows_changed.connect(self._on_show_windows_changed)
@@ -781,10 +784,14 @@ class MainWindow(QMainWindow):
         dialog.setWindowTitle("Keyboard Shortcuts")
         dialog.resize(520, 650)
         text_browser = QTextBrowser()
-        text_browser.setStyleSheet("""
+        text_browser.setStyleSheet(f"""
             QTextBrowser {
-                background-color: #1e1e1e; color: #d0d0d0;
-                border: 1px solid #3c3c3c; border-radius: 4px; font-size: 12px;
+                background-color: {DesignSystem.TERMINAL_BG};
+                color: {DesignSystem.TERMINAL_TEXT};
+                border: 1px solid {DesignSystem.TERMINAL_BORDER};
+                border-radius: {DesignSystem.RADIUS_MD};
+                font-size: {DesignSystem.FONT_SIZE_BASE};
+                padding: 10px;
             }
         """)
         text_browser.setHtml(help_text)

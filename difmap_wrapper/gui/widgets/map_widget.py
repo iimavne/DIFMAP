@@ -5,8 +5,10 @@ from matplotlib.colors import Normalize, LogNorm, PowerNorm
 from matplotlib.offsetbox import AnchoredOffsetbox, AuxTransformBox
 from matplotlib.widgets import RectangleSelector
 from matplotlib.backend_bases import cursors
-from PyQt6.QtWidgets import QLabel, QPushButton, QComboBox, QHBoxLayout, QWidget
+from PyQt6.QtWidgets import QLabel, QHBoxLayout, QWidget, QMenu, QToolButton
 from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt as _Qt
+from PyQt6.QtGui import QAction
 from .base_plot_widget import BasePlotWidget
 from difmap_wrapper.gui.utils import MatplotlibStyler
 from difmap_wrapper.gui.styles import DesignSystem
@@ -17,54 +19,7 @@ import re
 
 D = DesignSystem
 
-_TOOLBAR_QSS = f"""
-QWidget#MapToolbar {{
-    background-color: {D.SURFACE_ALT};
-    border-bottom: 1px solid {D.BORDER};
-    padding: 4px 0;
-    height: 32px;
-}}
-QPushButton {{
-    background-color: {D.SURFACE};
-    color: {D.TEXT};
-    border: 1px solid {D.BORDER};
-    border-radius: 5px;
-    padding: 4px 10px;
-    font-size: 10px;
-    min-height: 26px;
-    min-width: 70px;
-}}
-QPushButton:hover {{
-    background-color: {D.SURFACE_ALT};
-    border-color: {D.PRIMARY};
-    color: {D.TEXT};
-}}
-QPushButton:pressed {{
-    background-color: {D.BORDER_LIGHT};
-    border-color: {D.PRIMARY_ACTIVE};
-    color: {D.TEXT};
-}}
-QLabel {{
-    color: {D.TEXT_MUTED};
-    font-size: 10px;
-    font-weight: bold;
-    background: transparent;
-    padding-left: 4px;
-}}
-QComboBox {{
-    background-color: {D.SURFACE};
-    color: {D.TEXT};
-    border: 1px solid {D.BORDER};
-    border-radius: 5px;
-    padding: 3px 8px;
-    font-size: 10px;
-    min-width: 160px;
-    min-height: 26px;
-}}
-QComboBox:hover {{ border-color: {D.PRIMARY}; }}
-QComboBox::drop-down {{ border: none; width: 18px; }}
-QComboBox::down-arrow {{ width: 10px; height: 10px; }}
-"""
+_TOOLBAR_QSS = D.get_plot_toolbar_qss("MapToolbar", with_menu=True)
 
 
 def _add_map_annotations(ax, fig, map_data, map_type, beam_info=None,
@@ -244,10 +199,12 @@ class MapPlotWidget(BasePlotWidget):
     _cmap: str = "inferno"
     _map_type: str = "dirty"  # "dirty" | "clean" | "residual"
 
-    _MAP_TOOLS = [
-        ("Navigate  [R]",      "NAVIGATE"),
-        ("Zoom Box  [Z]",      "ZOOM"),
-        ("Add Window  [W]",    "ADD_WINDOW"),
+    _NAV_TOOLS = [
+        ("Navigate [R]", "NAVIGATE"),
+        ("Zoom Box [Z]", "ZOOM"),
+    ]
+    _WINDOW_TOOLS = [
+        ("Add Window [W]", "ADD_WINDOW"),
     ]
 
     def __init__(self, parent=None, show_tools: bool = True, show_annotations: bool = True):
@@ -274,57 +231,122 @@ class MapPlotWidget(BasePlotWidget):
             self._build_map_toolbar()
 
     def _build_map_toolbar(self) -> None:
-        """Toolbar — même pattern que UV/Radplot : combo d'outils + boutons d'action."""
+        """Toolbar compacte, adaptée au type de carte affichée."""
         row = self.plot_toolbar_row
         row.setObjectName("MapToolbar")
         row.setStyleSheet(_TOOLBAR_QSS)
-        row.setFixedHeight(32)
+        row.setMinimumHeight(42)
         row.setVisible(True)
         lay = self.plot_toolbar_layout
+        lay.setContentsMargins(8, 5, 8, 5)
+        lay.setSpacing(6)
 
-        lay.addWidget(QLabel("  Tools:"))
+        has_window_tools = self._supports_windows()
+        self._window_tool_action = None
 
-        self._tool_combo = QComboBox()
-        self._tool_combo.setToolTip("Active tool (keyboard shortcut)")
-        for label, data in self._MAP_TOOLS:
-            self._tool_combo.addItem(label, data)
-        lay.addWidget(self._tool_combo)
+        lay.addWidget(QLabel("Tool:"))
 
-        lay.addSpacing(10)
+        self._tool_button = self._make_tool_dropdown(self._NAV_TOOLS)
+        lay.addWidget(self._tool_button)
 
-        self._btn_peak_window   = QPushButton("Peak Win  [P]")
-        self._btn_delete_windows = QPushButton("Del All  [D]")
-        self._btn_reset          = QPushButton("Reset  [R]")
-        self._btn_dezoom         = QPushButton("Dezoom  [O]")
+        lay.addWidget(self._make_separator())
 
-        self._btn_peak_window.setToolTip("Ajouter une fenêtre autour du pic de flux")
-        self._btn_delete_windows.setToolTip("Supprimer toutes les fenêtres CLEAN")
-        self._btn_reset.setToolTip("Revenir à la vue complète")
-        self._btn_dezoom.setToolTip("Dézoomer (vue précédente)")
+        lay.addWidget(QLabel("View:"))
+        view_btn = QToolButton()
+        view_btn.setText("View ▾")
+        view_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        view_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        view_menu = QMenu(view_btn)
+        reset_action = QAction("Reset [R]", view_btn)
+        reset_action.setToolTip("Revenir à la vue complète")
+        reset_action.triggered.connect(lambda checked=False: self._reset_view())
+        view_menu.addAction(reset_action)
+        dezoom_action = QAction("Dezoom [O]", view_btn)
+        dezoom_action.setToolTip("Dézoomer (vue précédente)")
+        dezoom_action.triggered.connect(lambda checked=False: self._dezoom())
+        view_menu.addAction(dezoom_action)
+        view_btn.setMenu(view_menu)
+        lay.addWidget(view_btn)
 
-        for btn in (self._btn_peak_window, self._btn_delete_windows,
-                    self._btn_reset, self._btn_dezoom):
-            lay.addWidget(btn)
+        if has_window_tools:
+            lay.addWidget(self._make_separator())
+            lay.addWidget(QLabel("Windows:"))
+            windows_btn = QToolButton()
+            windows_btn.setText("Windows ▾")
+            windows_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+            windows_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+            windows_menu = QMenu(windows_btn)
+            add_action = QAction("Add Window [W]", windows_btn)
+            add_action.setCheckable(True)
+            add_action.setData("ADD_WINDOW")
+            add_action.setToolTip("Dessiner une fenêtre CLEAN")
+            add_action.triggered.connect(lambda checked: self._on_tool_changed_data("ADD_WINDOW"))
+            windows_menu.addAction(add_action)
+            self._window_tool_action = add_action
+            peak_action = QAction("Peak [P]", windows_btn)
+            peak_action.setToolTip("Ajouter une fenêtre autour du pic de flux")
+            peak_action.triggered.connect(lambda checked=False: self._add_peak_window())
+            windows_menu.addAction(peak_action)
+            delete_action = QAction("Delete All [D]", windows_btn)
+            delete_action.setToolTip("Supprimer toutes les fenêtres CLEAN")
+            delete_action.triggered.connect(lambda checked=False: self._delete_all_windows())
+            windows_menu.addAction(delete_action)
+            windows_btn.setMenu(windows_menu)
+            lay.addWidget(windows_btn)
+        else:
+            self._window_tool_action = None
 
         lay.addStretch()
 
-        self._tool_combo.currentIndexChanged.connect(self._on_tool_changed)
-        self._btn_peak_window.clicked.connect(self._add_peak_window)
-        self._btn_delete_windows.clicked.connect(self._delete_all_windows)
-        self._btn_reset.clicked.connect(self._reset_view)
-        self._btn_dezoom.clicked.connect(self._dezoom)
+    def _make_tool_dropdown(self, items: list[tuple[str, str]]) -> QToolButton:
+        btn = QToolButton()
+        btn.setCheckable(True)
+        btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        menu = QMenu(btn)
+        for label, data in items:
+            act = QAction(label, btn)
+            act.setCheckable(True)
+            act.setData(data)
+            act.triggered.connect(lambda checked, d=data, l=label, b=btn: self._select_tool(b, l, d))
+            menu.addAction(act)
+        btn.setMenu(menu)
+        self._select_tool(btn, items[0][0], items[0][1], trigger=False)
+        return btn
 
-    def _on_tool_changed(self, index: int) -> None:
-        if index < 0:
-            return
-        mode = self._tool_combo.itemData(index)
+    def _select_tool(self, btn: QToolButton, label: str, data: str, trigger: bool = True) -> None:
+        btn.setText(label.split("[")[0].strip() + " ▾")
+        btn.setProperty("activeMode", data)
+        for act in btn.menu().actions():
+            act.setChecked(act.data() == data)
+        if self._window_tool_action is not None and data != "ADD_WINDOW":
+            self._window_tool_action.setChecked(False)
+        if trigger:
+            self._on_tool_changed_data(data)
+
+    def _on_tool_changed_data(self, mode: str) -> None:
+        if mode == "ADD_WINDOW" and self._window_tool_action is not None:
+            self._window_tool_action.setChecked(True)
+        self._handle_tool_mode(mode)
+
+    def _make_separator(self) -> QWidget:
+        sep = QWidget()
+        sep.setFixedWidth(1)
+        sep.setFixedHeight(22)
+        sep.setStyleSheet(f"background-color: {D.BORDER};")
+        return sep
+
+    def _supports_windows(self) -> bool:
+        return self._map_type in {"clean", "residual"}
+
+    def _handle_tool_mode(self, mode: str) -> None:
         if mode == "NAVIGATE":
             self._exit_window_selection_mode()
             self._deactivate_mpl_tools()
         elif mode == "ZOOM":
             self._exit_window_selection_mode()
             self._activate_mpl_zoom()
-        elif mode == "ADD_WINDOW":
+        elif mode == "ADD_WINDOW" and self._supports_windows():
             self._deactivate_mpl_tools()
             self._activate_window_selection_mode()
         self.canvas.setFocus()
@@ -358,15 +380,22 @@ class MapPlotWidget(BasePlotWidget):
         self.canvas.setFocus()
 
     def _sync_combo_to(self, tool_data: str) -> None:
-        """Sync the combo to the given tool data value without triggering signals."""
-        idx = next((i for i in range(self._tool_combo.count())
-                    if self._tool_combo.itemData(i) == tool_data), 0)
-        self._tool_combo.blockSignals(True)
-        self._tool_combo.setCurrentIndex(idx)
-        self._tool_combo.blockSignals(False)
+        """Synchronise le menu d'outil sans déclencher de changement de mode."""
+        if not hasattr(self, "_tool_button"):
+            return
+        if tool_data == "ADD_WINDOW":
+            if self._window_tool_action is not None:
+                self._window_tool_action.setChecked(True)
+            return
+        for act in self._tool_button.menu().actions():
+            if act.data() == tool_data:
+                self._select_tool(self._tool_button, act.text(), tool_data, trigger=False)
+                break
 
     def _add_peak_window(self):
         """Ajoute une fenêtre autour du pic depuis la toolbar."""
+        if not self._supports_windows():
+            return
         try:
             # Trouver le parent MainWindow
             parent = self.parent()
@@ -380,6 +409,8 @@ class MapPlotWidget(BasePlotWidget):
 
     def _delete_all_windows(self):
         """Supprime toutes les fenêtres depuis la toolbar."""
+        if not self._supports_windows():
+            return
         try:
             # Trouver le parent MainWindow
             parent = self.parent()
@@ -530,7 +561,7 @@ class MapPlotWidget(BasePlotWidget):
             
         if event.button == 1 and self.window_selection_mode:  # Clic gauche en mode sélection
             self._start_window_selection()
-        elif event.button == 3:  # Clic droit pour basculer le mode sélection
+        elif event.button == 3 and self._supports_windows():  # Clic droit pour basculer le mode sélection
             self._toggle_window_selection_mode()
 
     def _on_key_press(self, event):
@@ -542,11 +573,11 @@ class MapPlotWidget(BasePlotWidget):
             self._sync_combo_to("ZOOM")
             self._exit_window_selection_mode()
             self._activate_mpl_zoom()
-        elif event.key == 'w':
+        elif event.key == 'w' and self._supports_windows():
             self._toggle_window_selection_mode()
-        elif event.key == 'p':
+        elif event.key == 'p' and self._supports_windows():
             self._add_peak_window()
-        elif event.key == 'd':
+        elif event.key == 'd' and self._supports_windows():
             self._delete_all_windows()
         elif event.key == 'm':
             self._toggle_show_model()
@@ -566,6 +597,8 @@ class MapPlotWidget(BasePlotWidget):
             parent = parent.parent()
 
     def _activate_window_selection_mode(self):
+        if not self._supports_windows():
+            return
         self.window_selection_mode = True
         if self.window_selector is None:
             self.window_selector = RectangleSelector(
@@ -633,6 +666,8 @@ class MapPlotWidget(BasePlotWidget):
         self._exit_window_selection_mode()
 
     def enable_window_selection(self):
+        if not self._supports_windows():
+            return
         self._activate_window_selection_mode()
 
     def update_colormap(self, cmap_name: str) -> None:
@@ -648,8 +683,12 @@ class DirtyMapPlotWidget(MapPlotWidget):
     _cmap = "inferno"
     _map_type = "dirty"
 
-    def __init__(self, parent=None, show_annotations: bool = True):
-        super().__init__(parent=parent, show_tools=False, show_annotations=show_annotations)
+    def __init__(self, parent=None, show_annotations: bool = True, show_tools: bool = True):
+        super().__init__(
+            parent=parent,
+            show_tools=show_tools,
+            show_annotations=show_annotations,
+        )
 
     def plot_map(self, map_data, cellsize, cellsize_y=None,
                 scale='linear', vmin=None, vmax=None, extent=None,
@@ -682,8 +721,12 @@ class ResidualMapPlotWidget(MapPlotWidget):
     _cmap = "inferno"
     _map_type = "residual"
 
-    def __init__(self, parent=None, show_annotations: bool = True):
-        super().__init__(parent=parent, show_tools=False, show_annotations=show_annotations)
+    def __init__(self, parent=None, show_annotations: bool = True, show_tools: bool = True):
+        super().__init__(
+            parent=parent,
+            show_tools=show_tools,
+            show_annotations=show_annotations,
+        )
 
     def plot_map(self, map_data, cellsize, cellsize_y=None,
                 scale='linear', vmin=None, vmax=None, extent=None,
@@ -717,8 +760,12 @@ class CleanMapPlotWidget(MapPlotWidget):
     _cmap = "inferno"
     _map_type = "clean"
 
-    def __init__(self, parent=None, show_annotations: bool = True):
-        super().__init__(parent=parent, show_tools=False, show_annotations=show_annotations)
+    def __init__(self, parent=None, show_annotations: bool = True, show_tools: bool = True):
+        super().__init__(
+            parent=parent,
+            show_tools=show_tools,
+            show_annotations=show_annotations,
+        )
 
     def plot_map(self, map_data, cellsize, cellsize_y=None,
                  beam_info=None, windows=None,
