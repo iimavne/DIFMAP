@@ -7,7 +7,7 @@ Classe de base pour tous les widgets Matplotlib.
 
 import os
 
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy
 from PyQt6.QtCore import Qt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
@@ -70,9 +70,10 @@ class BasePlotWidget(QWidget):
         # ── Toolbar locale (peuplée par les sous-classes) ────────
         self.plot_toolbar_row = QWidget()
         self.plot_toolbar_row.setVisible(False)
+        self.plot_toolbar_row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.plot_toolbar_layout = QHBoxLayout(self.plot_toolbar_row)
-        self.plot_toolbar_layout.setContentsMargins(6, 3, 6, 3)
-        self.plot_toolbar_layout.setSpacing(6)
+        self.plot_toolbar_layout.setContentsMargins(6, 2, 6, 2)
+        self.plot_toolbar_layout.setSpacing(4)
         self.layout.addWidget(self.plot_toolbar_row)
 
         # Figure Matplotlib

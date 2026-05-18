@@ -925,11 +925,15 @@ class RadPlotEditor(BasePlotEditor):
         Surchargé pour mettre à jour les tableaux intermédiaires (uv_radius, amp, phase…)
         après un notify_data_changed() (calibration, gain apply, etc.).
         """
-        super().refresh_data() 
-        
-        # Re-calcul des tableaux intermédiaires
+        # Mettre à jour self.data d'abord, puis recalculer les tableaux
+        # intermédiaires AVANT d'appeler _update_colors() via super().
+        # Sans ça, _update_colors() utilise self.amp/phase de l'ancienne taille
+        # pendant que self.data["u"] a déjà la nouvelle taille → ValueError.
+        self.data = self.obs.get_data()
         self.uv_radius = np.sqrt(self.data["u"]**2 + self.data["v"]**2) / 1e6
         self.amp    = self.data.get("amp",    np.zeros_like(self.uv_radius))
         self.phase  = self.data.get("phase",  np.zeros_like(self.uv_radius))
         self.modamp = self.data.get("modamp", np.zeros_like(self.uv_radius))
         self.modphs = self.data.get("modphs", np.zeros_like(self.uv_radius))
+        self._refresh_telescope_names()
+        self._update_colors()

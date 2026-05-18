@@ -67,9 +67,9 @@ class TabIndex:
     Indices logiques des onglets (flat, indépendants de la hiérarchie UI).
 
     Outer (super-onglets) :
-        OUTER_GRAPHIQUES = 0  → Graphiques
-        OUTER_IMAGERIE   = 1  → Imagerie
-        OUTER_HEADER     = 2  → Header
+        OUTER_HEADER     = 0  → Header
+        OUTER_GRAPHIQUES = 1  → Graphiques
+        OUTER_IMAGERIE   = 2  → Imagerie
 
     Inner Graphiques :
         UV      = 0  (inner index 0)
@@ -77,8 +77,8 @@ class TabIndex:
 
     Inner Imagerie :
         MAP      = 2  (inner index 0)
-        CLEAN    = 3  (inner index 1)
-        RESIDUAL = 4  (inner index 2)
+        RESIDUAL = 4  (inner index 1)
+        CLEAN    = 3  (inner index 2)
         ALL_MAPS = 6  (inner index 3)
 
     HEADER = 5 reste le code logique renvoyé par _get_logical_tab().
@@ -92,6 +92,6 @@ class TabIndex:
     ALL_MAPS = 6   # Vue combinée (placeholder)
 
     # Outer tab indices
-    OUTER_GRAPHIQUES = 0
-    OUTER_IMAGERIE   = 1
-    OUTER_HEADER     = 2
+    OUTER_HEADER     = 0
+    OUTER_GRAPHIQUES = 1
+    OUTER_IMAGERIE   = 2

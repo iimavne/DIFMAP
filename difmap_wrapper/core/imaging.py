@@ -53,6 +53,26 @@ class DifmapImager:
         self._last_residual_map = None  # copie du buffer résiduel capturée entre clean() et restore()
         self._last_residual_rms = None  # maprms natif au moment de la capture du résiduel
 
+    def reset_state(self) -> None:
+        """Remet à zéro l'état Python du DifmapImager après le chargement d'un nouveau fichier.
+
+        Le moteur C remet invpar/respar/slfpar à leurs valeurs par défaut via
+        native_observe() → invpar=invdef.  Cette méthode synchronise les
+        miroirs Python en conséquence.  À appeler immédiatement après
+        session.observe() dans le pipeline GUI.
+        """
+        self._last_cellsize = None
+        self._last_mapsize = None
+        self._last_ny = None
+        self._last_cellsize_y = None
+        self._current_uvtaper = None
+        self._current_uvweight = None
+        self._current_selfcal_taper = None
+        self._current_map_type = None
+        self.active_windows.clear()
+        self._last_residual_map = None
+        self._last_residual_rms = None
+
     def get_map(self) -> np.ndarray:
         """
         Retourne l'image courante depuis la mémoire C (tableau 2D, float).
@@ -162,9 +182,9 @@ class DifmapImager:
         e = 0.0 if err_power is None else float(err_power)
         r = False if radial is None else bool(radial)
 
-        # difmap.c:7986-7987 : native_uvweight ignore silencieusement uvbin < 0
-        # et errpow > 0 (ils laissent les paramètres inchangés). On reproduit ce
-        # comportement sans lever d'exception, exactement comme DIFMAP.
+        # native_uvweight clamps invalids : uvbin<0→0, 0<uvbin<1→1, errpow>0→0.
+        # Pas besoin de lever une exception ici ; la valeur effectivement utilisée
+        # est celle que difmap aurait choisie.
         # native_uvweight ne touche pas la grille (seulement invpar + domap=STALE),
         # donc pas besoin de _reissue_mapsize_if_needed().
         dorad = 1 if r else 0
@@ -326,9 +346,11 @@ class DifmapImager:
         >>> session.imager.invert()
         >>> img_array = session.imager.get_map()
         """
-        if uvmin_wav != 0.0 or uvmax_wav != 0.0:
-            if self._native.uvrange(float(uvmin_wav), float(uvmax_wav)) != 0:
-                raise DifmapError("Échec de la configuration uvrange().")
+        # Toujours appeler uvrange(), même quand uvmin=uvmax=0 (= pas de filtre).
+        # Ne pas guarden sur 0 : si le filtre était actif lors du dernier appel,
+        # l'ancien invpar.uvmin/uvmax persisterait en C et ne serait pas effacé.
+        if self._native.uvrange(float(uvmin_wav), float(uvmax_wav)) != 0:
+            raise DifmapError("Échec de la configuration uvrange().")
         if uvhwhm_pix != 0.0:
             if self._native.uvhwhm(float(uvhwhm_pix)) != 0:
                 raise DifmapError("Échec de la configuration uvhwhm().")
@@ -336,6 +358,11 @@ class DifmapImager:
         if self._native.invert() != 0:
             raise DifmapError("Échec de la transformée de Fourier (invert).")
         self._current_map_type = "dirty"
+        # invert() met à jour invpar (uvmin/uvmax) et recalcule la grille UV.
+        # Le cache obs contient modamp/modphs calculés par l_extract_uv() qui
+        # utilise les anciens invpar — invalider pour que radplot() lise des
+        # valeurs fraîches au prochain appel.
+        self._session.obs.invalidate_cache()
 
     def _display_map_data(self, map_data: np.ndarray, cellsize: float,
                           cellsize_y: float = None) -> tuple:
@@ -404,7 +431,7 @@ class DifmapImager:
             beam = self._native.get_beam_info()
         else:
             beam = self._native.get_estimated_beam_info()
-        rms = float(self._native.get_beam_info().get('RMS', 0.0))
+        rms = float(beam.get('RMS', 0.0))
 
         map_data = self.get_map()
         display_data, extent, nx_display, ny_display = self._display_map_data(
@@ -602,7 +629,10 @@ class DifmapImager:
             non estimé).
         """
         if self._current_map_type == "residual":
-            self._capture_residual()
+            try:
+                self._capture_residual()
+            except Exception:
+                pass
 
         nr = int(bool(noresid))
         ds = int(bool(dosm))

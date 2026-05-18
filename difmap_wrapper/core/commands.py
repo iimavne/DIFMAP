@@ -28,6 +28,8 @@ class MapsizeCommand:
 
 @dataclass(frozen=True, slots=True)
 class InvertCommand:
+    # Units: wavelengths (λ), NOT Mλ.  Convert with `value_Mlambda * 1e6`.
+    # native_uvrange() receives λ directly and stores them without uvtowav().
     uvmin_wav: float = 0.0
     uvmax_wav: float = 0.0
     uvhwhm_pix: float = 0.0

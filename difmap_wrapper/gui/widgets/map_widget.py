@@ -235,7 +235,7 @@ class MapPlotWidget(BasePlotWidget):
         row = self.plot_toolbar_row
         row.setObjectName("MapToolbar")
         row.setStyleSheet(_TOOLBAR_QSS)
-        row.setMinimumHeight(42)
+        row.setMinimumHeight(28)
         row.setVisible(True)
         lay = self.plot_toolbar_layout
         lay.setContentsMargins(8, 5, 8, 5)

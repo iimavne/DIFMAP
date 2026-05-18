@@ -367,6 +367,7 @@ class DesignSystem:
             QLabel {{
                 color: {D.ASTRAL_DIM};
                 font-size: {D.FONT_SIZE_SM};
+                qproperty-wordWrap: 1;
             }}
             QLabel:disabled {{ color: {D.ASTRAL_MUTED}; }}
             QCheckBox {{
@@ -542,7 +543,7 @@ class DesignSystem:
             QWidget#{name} {{
                 background-color: {D.BACKGROUND};
                 border-bottom: 1px solid {D.BORDER};
-                padding: 5px 8px;
+                padding: 2px 6px;
             }}
             QLabel {{
                 color: {D.TEXT_MUTED};
@@ -555,11 +556,11 @@ class DesignSystem:
                 color: {D.TEXT_SECONDARY};
                 border: 1px solid {D.BORDER};
                 border-radius: {D.RADIUS_LG};
-                padding: 5px 10px;
+                padding: 3px 8px;
                 font-size: {D.FONT_SIZE_SM};
                 font-family: {D.FONT_FAMILY};
                 font-weight: {D.FONT_WEIGHT_MEDIUM};
-                min-height: 28px;
+                min-height: 22px;
                 min-width: 64px;
             }}
             QPushButton:hover, QToolButton:hover {{
@@ -583,10 +584,10 @@ class DesignSystem:
                 color: {D.TEXT};
                 border: 1px solid {D.BORDER};
                 border-radius: {D.RADIUS_MD};
-                padding: 5px 8px;
+                padding: 3px 8px;
                 font-size: {D.FONT_SIZE_SM};
                 min-width: 145px;
-                min-height: 28px;
+                min-height: 22px;
             }}
             QComboBox:hover {{ border-color: {D.PRIMARY}; }}
             QComboBox::drop-down {{ border: none; width: 22px; }}

@@ -2,10 +2,12 @@
 from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QComboBox, QLineEdit, QCheckBox,
                              QScrollArea, QSlider, QPushButton, QMessageBox,
-                             QColorDialog, QSpinBox, QFrame, QProgressBar)
+                             QColorDialog, QSpinBox, QFrame, QProgressBar,
+                             QGridLayout)
 from PyQt6.QtGui import QColor
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtCore import Qt
+import qtawesome as qta
 from .styled_buttons import PrimaryButton, SecondaryButton
 from difmap_wrapper.gui.styles import DesignSystem
 from difmap_wrapper.types import POLARIZATIONS
@@ -124,6 +126,7 @@ class CollapsibleSection(QWidget):
                 text-align: left;
                 font-weight: bold;
                 font-size: {D.FONT_SIZE_BASE};
+                min-width: 150px;
             }}
             QPushButton:hover {{
                 background-color: {D.ASTRAL_HOVER};
@@ -193,6 +196,7 @@ class ControlPanel(QDockWidget):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.container = QWidget()
         self.main_layout = QVBoxLayout(self.container)
@@ -485,11 +489,13 @@ class ControlPanel(QDockWidget):
         self.input_umin = QLineEdit()
         self.input_umin.setPlaceholderText("auto")
         self.input_umin.setStyleSheet(field_style)
+        self.input_umin.setToolTip("Limite U minimum (Mλ)")
         lbl_umax = QLabel("U max")
         lbl_umax.setFixedWidth(34)
         self.input_umax = QLineEdit()
         self.input_umax.setPlaceholderText("auto")
         self.input_umax.setStyleSheet(field_style)
+        self.input_umax.setToolTip("Limite U maximum (Mλ)")
         row_u.addWidget(lbl_umin); row_u.addWidget(self.input_umin)
         row_u.addWidget(lbl_umax); row_u.addWidget(self.input_umax)
         grid.addLayout(row_u)
@@ -501,11 +507,13 @@ class ControlPanel(QDockWidget):
         self.input_vmin_uv = QLineEdit()
         self.input_vmin_uv.setPlaceholderText("auto")
         self.input_vmin_uv.setStyleSheet(field_style)
+        self.input_vmin_uv.setToolTip("Limite V minimum (Mλ)")
         lbl_vmax = QLabel("V max")
         lbl_vmax.setFixedWidth(34)
         self.input_vmax_uv = QLineEdit()
         self.input_vmax_uv.setPlaceholderText("auto")
         self.input_vmax_uv.setStyleSheet(field_style)
+        self.input_vmax_uv.setToolTip("Limite V maximum (Mλ)")
         row_v.addWidget(lbl_vmin); row_v.addWidget(self.input_vmin_uv)
         row_v.addWidget(lbl_vmax); row_v.addWidget(self.input_vmax_uv)
         grid.addLayout(row_v)
@@ -644,7 +652,7 @@ class ControlPanel(QDockWidget):
 
         h_size = QHBoxLayout()
         self.lbl_slider_size = QLabel("Marker size  [.]:")
-        self.lbl_slider_size_val = QLabel("10 %")
+        self.lbl_slider_size_val = QLabel("5 %")
         self.lbl_slider_size_val.setAlignment(Qt.AlignmentFlag.AlignRight)
         h_size.addWidget(self.lbl_slider_size)
         h_size.addWidget(self.lbl_slider_size_val)
@@ -652,7 +660,7 @@ class ControlPanel(QDockWidget):
         self.slider_size = QSlider(Qt.Orientation.Horizontal)
         self.slider_size.setMinimum(1)
         self.slider_size.setMaximum(100)
-        self.slider_size.setValue(10)
+        self.slider_size.setValue(5)
         self.slider_size.setToolTip("Marker size (1–100 %)")
         self.slider_size.valueChanged.connect(
             lambda v: self.lbl_slider_size_val.setText(f"{v} %")
@@ -759,7 +767,7 @@ class ControlPanel(QDockWidget):
         self.input_mapsize.setToolTip("Taille de la grille FFT (puissance de 2 recommandée)")
         self.input_cellsize = QLineEdit("0.1"); self.input_cellsize.setFixedWidth(52)
         self.input_cellsize.setToolTip("Taille du pixel en mas")
-        h_grid.addWidget(QLabel("Size:")); h_grid.addWidget(self.input_mapsize)
+        h_grid.addWidget(QLabel("Size (px):")); h_grid.addWidget(self.input_mapsize)
         h_grid.addWidget(QLabel("Cell (mas):")); h_grid.addWidget(self.input_cellsize)
         h_grid.addStretch()
         ip.addLayout(h_grid)
@@ -777,14 +785,20 @@ class ControlPanel(QDockWidget):
         self._uv_filter_box = QWidget()
         h_uvf = QHBoxLayout(self._uv_filter_box)
         h_uvf.setContentsMargins(0, 0, 0, 0); h_uvf.setSpacing(6)
-        lbl_uvfmin = QLabel("UV min"); lbl_uvfmin.setFixedWidth(40)
+        lbl_uvfmin = QLabel("UV min (Mλ)"); lbl_uvfmin.setFixedWidth(64)
         self.input_uvfilter_min = QLineEdit(); self.input_uvfilter_min.setPlaceholderText("0")
         self.input_uvfilter_min.setStyleSheet(field_s); self.input_uvfilter_min.setEnabled(False)
-        self.input_uvfilter_min.setToolTip("Rayon UV minimum (Mλ)")
-        lbl_uvfmax = QLabel("UV max"); lbl_uvfmax.setFixedWidth(40)
+        self.input_uvfilter_min.setToolTip(
+            "Rayon UV minimum en Méga-lambdas\n"
+            "Correspond au 1er argument de la commande uvrange de Difmap"
+        )
+        lbl_uvfmax = QLabel("UV max (Mλ)"); lbl_uvfmax.setFixedWidth(64)
         self.input_uvfilter_max = QLineEdit(); self.input_uvfilter_max.setPlaceholderText("0")
         self.input_uvfilter_max.setStyleSheet(field_s); self.input_uvfilter_max.setEnabled(False)
-        self.input_uvfilter_max.setToolTip("Rayon UV maximum (Mλ)")
+        self.input_uvfilter_max.setToolTip(
+            "Rayon UV maximum en Méga-lambdas\n"
+            "Correspond au 2e argument de la commande uvrange de Difmap"
+        )
         h_uvf.addWidget(lbl_uvfmin); h_uvf.addWidget(self.input_uvfilter_min)
         h_uvf.addWidget(lbl_uvfmax); h_uvf.addWidget(self.input_uvfilter_max)
         ip.addWidget(self._uv_filter_box)
@@ -792,27 +806,97 @@ class ControlPanel(QDockWidget):
         h_wt = QHBoxLayout(); h_wt.setSpacing(6)
         h_wt.addWidget(QLabel("Weighting:"))
         self.combo_weight = QComboBox()
-        self.combo_weight.addItems(["None", "Natural", "Uniform"])
+        self.combo_weight.addItems(["Uniform", "Natural", "Custom"])
         self.combo_weight.setToolTip(
-            "Pondération des baselines UV\n"
-            "  None     : paramètres par défaut Difmap (bin=2, errpow=0)\n"
+            "Pondération des visibilités UV (commande uvweight de Difmap)\n"
+            "  Uniform  : uvweight 2,0   (résolution maximale — défaut Difmap)\n"
             "  Natural  : uvweight 0,-2  (1/σ² — meilleure sensibilité)\n"
-            "  Uniform  : uvweight 2,0   (résolution maximale)"
+            "  Custom   : bin et errpow personnalisés"
         )
         h_wt.addWidget(self.combo_weight)
         ip.addLayout(h_wt)
 
+        self.custom_weight_widget = QWidget()
+        h_cw = QHBoxLayout(self.custom_weight_widget); h_cw.setContentsMargins(0, 0, 0, 0); h_cw.setSpacing(6)
+        h_cw.addWidget(QLabel("Bin:"))
+        self.input_weight_bin = QLineEdit("2.0")
+        self.input_weight_bin.setFixedWidth(52)
+        self.input_weight_bin.setToolTip("uvweight bin (≥0 ; 0=natural, 2=uniform)")
+        h_cw.addWidget(self.input_weight_bin)
+        h_cw.addWidget(QLabel("ErrPow:"))
+        self.input_weight_err = QLineEdit("0.0")
+        self.input_weight_err.setFixedWidth(52)
+        self.input_weight_err.setToolTip("uvweight errpow (≤0 ; 0=uniform, -2=natural)")
+        h_cw.addWidget(self.input_weight_err)
+        h_cw.addStretch()
+        self.custom_weight_widget.setVisible(False)
+        ip.addWidget(self.custom_weight_widget)
+        self.combo_weight.currentTextChanged.connect(
+            lambda t: self.custom_weight_widget.setVisible(t == "Custom")
+        )
+
+        lbl_taper_hdr = QLabel("Taper gaussien")
+        lbl_taper_hdr.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
+        lbl_taper_hdr.setToolTip(
+            "uvtaper (invert) : pondère les visibilités pour produire la carte.\n"
+            "Différent du selfcal taper (staper) qui n'affecte pas la carte."
+        )
+        ip.addWidget(lbl_taper_hdr)
+
         h_tap = QHBoxLayout(); h_tap.setSpacing(6)
-        h_tap.addWidget(QLabel("Taper (Mλ):"))
-        self.input_taper = QLineEdit("0"); self.input_taper.setFixedWidth(52)
-        self.input_taper.setToolTip("Taper gaussien — 0 = aucun")
-        h_tap.addWidget(self.input_taper); h_tap.addStretch()
+        col_tap_val = QVBoxLayout(); col_tap_val.setSpacing(2)
+        lbl_tap_val = QLabel("Valeur")
+        lbl_tap_val.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
+        col_tap_val.addWidget(lbl_tap_val)
+        self.input_taper_amp = QLineEdit("")
+        self.input_taper_amp.setFixedWidth(64)
+        self.input_taper_amp.setFixedHeight(34)
+        self.input_taper_amp.setPlaceholderText("0")
+        self.input_taper_amp.setToolTip(
+            "Amplitude du taper au rayon (]0, 1[)\n"
+            "Laisser vide ou 0 = aucun taper"
+        )
+        col_tap_val.addWidget(self.input_taper_amp)
+        h_tap.addLayout(col_tap_val)
+
+        col_tap_rad = QVBoxLayout(); col_tap_rad.setSpacing(2)
+        lbl_tap_rad = QLabel("Rayon (Mλ)")
+        lbl_tap_rad.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
+        col_tap_rad.addWidget(lbl_tap_rad)
+        self.input_taper = QLineEdit("")
+        self.input_taper.setFixedWidth(72)
+        self.input_taper.setFixedHeight(34)
+        self.input_taper.setPlaceholderText("0")
+        self.input_taper.setToolTip(
+            "Rayon du taper gaussien en Méga-lambdas — laisser vide ou 0 = aucun taper\n"
+            "(uvtaper : affecte la carte)"
+        )
+        col_tap_rad.addWidget(self.input_taper)
+        h_tap.addLayout(col_tap_rad)
+
+        self.btn_reset_taper = QPushButton("Reset")
+        self.btn_reset_taper.setFixedWidth(64)
+        self.btn_reset_taper.setFixedHeight(34)
+        self.btn_reset_taper.setToolTip("Effacer les valeurs du taper (désactivé)")
+        self.btn_reset_taper.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_reset_taper.setStyleSheet(D.get_panel_action_button_qss("secondary"))
+        self.btn_reset_taper.clicked.connect(lambda: (
+            self.input_taper.setText(""),
+            self.input_taper_amp.setText(""),
+        ))
+        h_tap.addWidget(self.btn_reset_taper)
+        h_tap.setAlignment(self.btn_reset_taper, Qt.AlignmentFlag.AlignBottom)
+        h_tap.addStretch()
         ip.addLayout(h_tap)
 
         self.btn_apply_imaging = QPushButton("⊞  Apply")
-        self.btn_apply_imaging.setToolTip("Appliquer les paramètres d'imagerie au moteur")
+        self.btn_apply_imaging.setToolTip(
+            "Appliquer les paramètres d'imagerie au moteur sans recalculer de carte.\n"
+            "(La plupart des actions Invert/CLEAN appliquent déjà les paramètres automatiquement.)"
+        )
         self.btn_apply_imaging.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_apply_imaging.setStyleSheet(D.get_panel_action_button_qss("primary"))
+        self.btn_apply_imaging.setStyleSheet(D.get_panel_action_button_qss("secondary"))
+        self.btn_apply_imaging.setVisible(False)
         ip.addWidget(self.btn_apply_imaging)
 
         layout.addWidget(self._imaging_params_section)
@@ -823,8 +907,12 @@ class ControlPanel(QDockWidget):
         self._dirty_btn_section = QWidget()
         db = QVBoxLayout(self._dirty_btn_section)
         db.setContentsMargins(0, 0, 0, 0); db.setSpacing(4)
-        self.btn_compute = QPushButton("▼  Make Dirty Map")
-        self.btn_compute.setToolTip("Calculer la Dirty Map (invert)")
+        self.btn_compute = QPushButton("  Make Dirty Map")
+        self.btn_compute.setIcon(qta.icon("fa5s.play", color="white"))
+        self.btn_compute.setToolTip(
+            "Invert → calcule la Dirty Map.\n"
+            "Tu n'as PAS besoin de faire ça avant Start CLEAN (Start CLEAN fait aussi un invert)."
+        )
         self.btn_compute.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_compute.setStyleSheet(D.get_panel_action_button_qss("success"))
         db.addWidget(self.btn_compute)
@@ -846,11 +934,11 @@ class ControlPanel(QDockWidget):
         # Ligne 1 : Total Niter | Loop Gain côte à côte
         h_row1 = QHBoxLayout(); h_row1.setSpacing(8)
         col_niter = QVBoxLayout(); col_niter.setSpacing(2)
-        lbl_niter = QLabel("Total Niter")
+        lbl_niter = QLabel("Niter")
         lbl_niter.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
         col_niter.addWidget(lbl_niter)
         self.input_niter = QLineEdit("1000")
-        self.input_niter.setToolTip("Nombre total d'itérations CLEAN")
+        self.input_niter.setToolTip("Nombre d'itérations CLEAN à effectuer")
         col_niter.addWidget(self.input_niter)
         h_row1.addLayout(col_niter)
 
@@ -865,11 +953,15 @@ class ControlPanel(QDockWidget):
         cc.addLayout(h_row1)
 
         # Cutoff pleine largeur, label au-dessus
-        lbl_cutoff = QLabel("Cutoff (Jy/bm)")
+        lbl_cutoff = QLabel("Cutoff (Jy/beam)")
         lbl_cutoff.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
         cc.addWidget(lbl_cutoff)
         self.input_cutoff = QLineEdit("0.001")
-        self.input_cutoff.setToolTip("Seuil de flux résiduel (Jy/beam) — 0 = pas de limite")
+        self.input_cutoff.setToolTip(
+            "Seuil de flux résiduel en Jy/beam\n"
+            "Le CLEAN s'arrête quand le pic résiduel passe en-dessous de ce seuil.\n"
+            "0 = pas de limite (le CLEAN tourne jusqu'à Niter itérations)"
+        )
         cc.addWidget(self.input_cutoff)
 
         h_bp_hdr = QHBoxLayout(); h_bp_hdr.setSpacing(6)
@@ -887,6 +979,7 @@ class ControlPanel(QDockWidget):
         h_bp.addWidget(QLabel("Pause after"))
         self.input_pause_after = QLineEdit("100"); self.input_pause_after.setFixedWidth(52)
         self.input_pause_after.setStyleSheet(field_s); self.input_pause_after.setEnabled(False)
+        self.input_pause_after.setToolTip("Nombre d'itérations (iters) entre deux pauses automatiques")
         h_bp.addWidget(self.input_pause_after)
         h_bp.addWidget(QLabel("iters")); h_bp.addStretch()
         cc.addWidget(self._bp_box)
@@ -915,19 +1008,268 @@ class ControlPanel(QDockWidget):
         """)
         cc.addWidget(self.progress_bar)
 
-        h_sp = QHBoxLayout(); h_sp.setSpacing(6)
-        self.btn_compute_clean = QPushButton("▶  Start")
-        self.btn_compute_clean.setToolTip("Lancer invert + CLEAN + restore")
+        # Start CLEAN + Restore sur la même ligne
+        h_clean_row = QHBoxLayout(); h_clean_row.setSpacing(6)
+        self.btn_compute_clean = QPushButton("▶  Start CLEAN")
+        self.btn_compute_clean.setToolTip(
+            "Invert + CLEAN — sans restore.\n"
+            "Utilise 'Restore' quand la boucle selfcal est terminée.\n"
+            "(Pas besoin de faire 'Make Dirty Map' avant.)"
+        )
         self.btn_compute_clean.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_compute_clean.setStyleSheet(D.get_panel_action_button_qss("success"))
-        self.btn_pause_clean = QPushButton("⏸  Pause")
-        self.btn_pause_clean.setEnabled(False)
-        self.btn_pause_clean.setToolTip("Suspendre / reprendre le CLEAN")
-        self.btn_pause_clean.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_pause_clean.setStyleSheet(D.get_panel_action_button_qss("warning"))
-        h_sp.addWidget(self.btn_compute_clean); h_sp.addWidget(self.btn_pause_clean)
-        cc.addLayout(h_sp)
+        h_clean_row.addWidget(self.btn_compute_clean)
+
+        self.btn_restore = QPushButton("Restore")
+        self.btn_restore.setToolTip(
+            "Convolue le modèle CLEAN avec le beam pour produire la carte finale.\n"
+            "À appliquer après la dernière itération CLEAN / selfcal."
+        )
+        self.btn_restore.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_restore.setStyleSheet(D.get_panel_action_button_qss("secondary"))
+        self.btn_restore.setFixedWidth(80)
+        h_clean_row.addWidget(self.btn_restore)
+        cc.addLayout(h_clean_row)
+
+        # ── Show Windows — visible uniquement sous CLEAN ──────────
+        cc.addWidget(self._thin_sep())
+        self.chk_show_windows = QCheckBox("Show Windows  [W]")
+        self.chk_show_windows.setChecked(True)
+        self.chk_show_windows.setToolTip(
+            "Afficher les rectangles des fenêtres CLEAN sur la carte résiduelle"
+        )
+        cc.addWidget(self.chk_show_windows)
+
+        self.chk_show_model_map = QCheckBox("Show Model Components  [M]")
+        self.chk_show_model_map.setToolTip("Afficher les composantes CLEAN sur la carte")
+        self.chk_show_model_map.setChecked(False)
+        cc.addWidget(self.chk_show_model_map)
         layout.addWidget(self._clean_controls_section)
+
+        # ══════════════════════════════════════════════════════════
+        # SELFCAL — un bloc par commande difmap
+        # ══════════════════════════════════════════════════════════
+        self._selfcal_section = QWidget()
+        sc = QVBoxLayout(self._selfcal_section)
+        sc.setContentsMargins(0, 0, 0, 0); sc.setSpacing(6)
+        sc.addWidget(self._thin_sep())
+        sc.addWidget(self._subsection_header("Selfcal"))
+
+        self.lbl_selfcal_status = QLabel("Aucun modèle — lancez CLEAN d'abord")
+        self.lbl_selfcal_status.setStyleSheet(
+            f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; font-style: italic;"
+        )
+        sc.addWidget(self.lbl_selfcal_status)
+
+        def _cmd_frame(cmd_name: str) -> tuple:
+            """Retourne (frame, inner_layout) avec un header monospace cmd_name."""
+            frame = QFrame()
+            frame.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {D.ASTRAL_DEEPEST};
+                    border: 1px solid {D.ASTRAL_BORDER};
+                    border-left: 3px solid {D.ASTRAL_ACCENT};
+                    border-radius: 4px;
+                }}
+            """)
+            vbox = QVBoxLayout(frame)
+            vbox.setContentsMargins(8, 6, 8, 6)
+            vbox.setSpacing(5)
+            lbl = QLabel(cmd_name)
+            lbl.setStyleSheet(f"""
+                color: {D.ASTRAL_ACCENT};
+                font-family: monospace;
+                font-size: {D.FONT_SIZE_XS};
+                font-weight: bold;
+                letter-spacing: 1px;
+                background: transparent;
+                border: none;
+            """)
+            vbox.addWidget(lbl)
+            return frame, vbox
+
+        # ── selfcal : doamp, dofloat, solint ─────────────────────
+        frm_sc, vsc = _cmd_frame("selfcal")
+
+        h_mode = QHBoxLayout(); h_mode.setSpacing(6)
+        lbl_doamp = QLabel("doamp")
+        lbl_doamp.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
+        self.combo_sc_mode = QComboBox()
+        self.combo_sc_mode.addItems(["Phase seule", "Amplitude + Phase"])
+        self.combo_sc_mode.setToolTip(
+            "doamp=False : calibration de phase seule (plus sûr, à faire en premier)\n"
+            "doamp=True  : calibration amplitude + phase (nécessite un bon modèle)"
+        )
+        h_mode.addWidget(lbl_doamp)
+        h_mode.addWidget(self.combo_sc_mode, 1)
+        vsc.addLayout(h_mode)
+
+        h_sol_float = QHBoxLayout(); h_sol_float.setSpacing(6)
+        lbl_solint = QLabel("solint")
+        lbl_solint.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
+        self.input_sc_solint = QLineEdit("0")
+        self.input_sc_solint.setFixedWidth(52)
+        self.input_sc_solint.setToolTip("Intervalle de solution en minutes — 0 = une solution par intégration")
+        lbl_solint_unit = QLabel("min")
+        lbl_solint_unit.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
+        self.chk_sc_float_amp = QCheckBox("dofloat")
+        self.chk_sc_float_amp.setToolTip(
+            "Corrections d'amplitude non contraintes (flottantes)\n"
+            "Disponible uniquement en mode Amplitude + Phase"
+        )
+        h_sol_float.addWidget(lbl_solint)
+        h_sol_float.addWidget(self.input_sc_solint)
+        h_sol_float.addWidget(lbl_solint_unit)
+        h_sol_float.addStretch()
+        h_sol_float.addWidget(self.chk_sc_float_amp)
+        vsc.addLayout(h_sol_float)
+        sc.addWidget(frm_sc)
+
+        # ── selfflag : doflag, p_mintel, a_mintel ────────────────
+        frm_sf, vsf = _cmd_frame("selfflag")
+
+        h_doflag = QHBoxLayout(); h_doflag.setSpacing(6)
+        self.chk_sc_doflag = QCheckBox("doflag")
+        self.chk_sc_doflag.setChecked(True)
+        self.chk_sc_doflag.setToolTip("Flaguer automatiquement les solutions jugées mauvaises")
+        h_doflag.addWidget(self.chk_sc_doflag)
+        h_doflag.addStretch()
+        vsf.addLayout(h_doflag)
+
+        h_mintel = QHBoxLayout(); h_mintel.setSpacing(8)
+        lbl_p = QLabel("p_mintel")
+        lbl_p.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
+        self.spin_sc_p_mintel = QSpinBox()
+        self.spin_sc_p_mintel.setRange(3, 99)
+        self.spin_sc_p_mintel.setValue(3)
+        self.spin_sc_p_mintel.setFixedWidth(56)
+        self.spin_sc_p_mintel.setToolTip(
+            "Nb min d'antennes pour une solution de phase.\n"
+            "Difmap défaut = 3 (valeurs < 3 ramenées à 0 en interactif)"
+        )
+        lbl_a = QLabel("a_mintel")
+        lbl_a.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
+        self.spin_sc_a_mintel = QSpinBox()
+        self.spin_sc_a_mintel.setRange(4, 99)
+        self.spin_sc_a_mintel.setValue(4)
+        self.spin_sc_a_mintel.setFixedWidth(56)
+        self.spin_sc_a_mintel.setToolTip(
+            "Nb min d'antennes pour une solution d'amplitude.\n"
+            "Difmap défaut = 4 — actif seulement si doamp=True"
+        )
+        h_mintel.addWidget(lbl_p)
+        h_mintel.addWidget(self.spin_sc_p_mintel)
+        h_mintel.addSpacing(4)
+        h_mintel.addWidget(lbl_a)
+        h_mintel.addWidget(self.spin_sc_a_mintel)
+        h_mintel.addStretch()
+        vsf.addLayout(h_mintel)
+        sc.addWidget(frm_sf)
+
+        # ── selflims : maxphs, maxamp, clip ───────────────────────
+        frm_sl, vsl = _cmd_frame("selflims")
+
+        h_lims = QHBoxLayout(); h_lims.setSpacing(8)
+        lbl_maxphs = QLabel("maxphs (°)")
+        lbl_maxphs.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
+        self.input_sc_maxphs = QLineEdit("")
+        self.input_sc_maxphs.setPlaceholderText("0 = ∞")
+        self.input_sc_maxphs.setFixedWidth(62)
+        self.input_sc_maxphs.setToolTip("Correction de phase max en degrés — 0 = illimitée")
+        lbl_maxamp = QLabel("maxamp")
+        lbl_maxamp.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
+        self.input_sc_maxamp = QLineEdit("")
+        self.input_sc_maxamp.setPlaceholderText("0 = ∞")
+        self.input_sc_maxamp.setFixedWidth(62)
+        self.input_sc_maxamp.setToolTip(
+            "Ratio max de correction d'amplitude (≥ 1, ex: 2.0 = max ×2)\n"
+            "0 = illimité — actif seulement si doamp=True"
+        )
+        h_lims.addWidget(lbl_maxphs)
+        h_lims.addWidget(self.input_sc_maxphs)
+        h_lims.addSpacing(4)
+        h_lims.addWidget(lbl_maxamp)
+        h_lims.addWidget(self.input_sc_maxamp)
+        h_lims.addStretch()
+        vsl.addLayout(h_lims)
+
+        h_clip = QHBoxLayout(); h_clip.setSpacing(6)
+        self.chk_sc_clip = QCheckBox("clip")
+        self.chk_sc_clip.setToolTip(
+            "Clipper les solutions hors limites (maxphs / maxamp)\n"
+            "Actif uniquement si maxphs > 0 ou maxamp > 0"
+        )
+        h_clip.addWidget(self.chk_sc_clip)
+        h_clip.addStretch()
+        vsl.addLayout(h_clip)
+        sc.addWidget(frm_sl)
+
+        # ── selftaper : gauval, gaurad ────────────────────────────
+        frm_st, vst = _cmd_frame("selftaper")
+        lbl_st_hint = QLabel("Taper UV pour selfcal uniquement — n'affecte pas la carte")
+        lbl_st_hint.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; font-style: italic; background: transparent; border: none;")
+        lbl_st_hint.setWordWrap(True)
+        vst.addWidget(lbl_st_hint)
+
+        h_st = QHBoxLayout(); h_st.setSpacing(8)
+        lbl_gauval = QLabel("gauval")
+        lbl_gauval.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
+        self.input_sc_taper_amp = QLineEdit("")
+        self.input_sc_taper_amp.setPlaceholderText("0")
+        self.input_sc_taper_amp.setFixedWidth(56)
+        self.input_sc_taper_amp.setToolTip("Amplitude ]0, 0.99[ — vide/0 = aucun taper")
+        lbl_gaurad = QLabel("gaurad (Mλ)")
+        lbl_gaurad.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
+        self.input_sc_taper_rad = QLineEdit("")
+        self.input_sc_taper_rad.setPlaceholderText("0")
+        self.input_sc_taper_rad.setFixedWidth(56)
+        self.input_sc_taper_rad.setToolTip("Rayon en Mλ — vide/0 = aucun taper")
+        h_st.addWidget(lbl_gauval)
+        h_st.addWidget(self.input_sc_taper_amp)
+        h_st.addSpacing(4)
+        h_st.addWidget(lbl_gaurad)
+        h_st.addWidget(self.input_sc_taper_rad)
+        h_st.addStretch()
+        vst.addLayout(h_st)
+        sc.addWidget(frm_st)
+
+        # ── Ergonomie : activer/désactiver selon les valeurs ──────
+        def _sync_sc() -> None:
+            is_amp = (self.combo_sc_mode.currentIndex() == 1)
+            doflag = self.chk_sc_doflag.isChecked()
+            has_maxphs = bool(self.input_sc_maxphs.text().strip()
+                              and self.input_sc_maxphs.text().strip() not in ("0", "0.0"))
+            has_maxamp = bool(self.input_sc_maxamp.text().strip()
+                              and self.input_sc_maxamp.text().strip() not in ("0", "0.0"))
+
+            self.chk_sc_float_amp.setEnabled(is_amp)
+            if not is_amp:
+                self.chk_sc_float_amp.setChecked(False)
+
+            self.spin_sc_p_mintel.setEnabled(doflag)
+            self.spin_sc_a_mintel.setEnabled(is_amp and doflag)
+            self.input_sc_maxamp.setEnabled(is_amp)
+            self.chk_sc_clip.setEnabled(has_maxphs or has_maxamp)
+            if not (has_maxphs or has_maxamp):
+                self.chk_sc_clip.setChecked(False)
+
+        self.combo_sc_mode.currentIndexChanged.connect(lambda _: _sync_sc())
+        self.chk_sc_doflag.toggled.connect(lambda _: _sync_sc())
+        self.input_sc_maxphs.textChanged.connect(lambda _: _sync_sc())
+        self.input_sc_maxamp.textChanged.connect(lambda _: _sync_sc())
+        _sync_sc()
+
+        # ── Bouton Run Selfcal ────────────────────────────────────
+        self.btn_run_selfcal = QPushButton("⊞  Run Selfcal")
+        self.btn_run_selfcal.setToolTip(
+            "Lancer l'auto-calibration avec le modèle CLEAN courant\n"
+            "Un invert() sera relancé automatiquement après"
+        )
+        self.btn_run_selfcal.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_run_selfcal.setStyleSheet(D.get_panel_action_button_qss("primary"))
+        sc.addWidget(self.btn_run_selfcal)
+
+        layout.addWidget(self._selfcal_section)
 
         # ══════════════════════════════════════════════════════════
         # MAP DISPLAY — tous les onglets carte
@@ -939,34 +1281,21 @@ class ControlPanel(QDockWidget):
         md.addWidget(self._subsection_header("Map Display"))
 
         h_cmap = QHBoxLayout(); h_cmap.setSpacing(6)
-        h_cmap.addWidget(QLabel("Color Map:"))
+        h_cmap.addWidget(QLabel("Colormap:"))
         self.combo_colormap = QComboBox()
-        self.combo_colormap.addItems(["inferno", "viridis", "gray", "hot", "plasma"])
+        self.combo_colormap.addItems(["inferno", "viridis", "cividis", "gray", "hot", "plasma", "jet"])
         self.combo_colormap.setToolTip(
-            "inferno : pseudo-color (proche du défaut difmap)\n"
+            "inferno : pseudo-color (proche du défaut Difmap)\n"
             "viridis : colorblind-friendly\n"
-            "gray    : niveaux de gris (G natif difmap)\n"
+            "cividis : colorblind-friendly, perceptuellement uniforme\n"
+            "gray    : niveaux de gris (G natif Difmap)\n"
             "hot     : chaud\n"
-            "plasma  : alternative vibrante"
+            "plasma  : alternative vibrante\n"
+            "jet     : arc-en-ciel classique"
         )
         h_cmap.addWidget(self.combo_colormap)
         md.addLayout(h_cmap)
         layout.addWidget(self._map_display_section)
-
-        # ── Show Windows — Residual + Clean ──────────────────────
-        self._display_windows_section = QWidget()
-        dw = QVBoxLayout(self._display_windows_section)
-        dw.setContentsMargins(0, 0, 0, 0); dw.setSpacing(2)
-        self.chk_show_windows = QCheckBox("Show Windows  [W]")
-        self.chk_show_windows.setChecked(True)
-        self.chk_show_windows.setToolTip("Afficher les rectangles des fenêtres CLEAN")
-        dw.addWidget(self.chk_show_windows)
-
-        self.chk_show_model_map = QCheckBox("Show Model Components  [M]")
-        self.chk_show_model_map.setToolTip("Afficher les composantes CLEAN sur la carte")
-        self.chk_show_model_map.setChecked(False)
-        dw.addWidget(self.chk_show_model_map)
-        layout.addWidget(self._display_windows_section)
 
         # ── Affichage avancé — Clean Map uniquement ───────────────
         self._display_clean_section = QWidget()
@@ -982,11 +1311,13 @@ class ControlPanel(QDockWidget):
         dc.addLayout(h_sc)
 
         h_range = QHBoxLayout(); h_range.setSpacing(6)
-        h_range.addWidget(QLabel("Min:"))
+        h_range.addWidget(QLabel("Min (Jy/beam):"))
         self.input_vmin = QLineEdit(); self.input_vmin.setPlaceholderText("auto")
+        self.input_vmin.setToolTip("Limite minimale de l'échelle couleur (Jy/beam)")
         h_range.addWidget(self.input_vmin)
-        h_range.addWidget(QLabel("Max:"))
+        h_range.addWidget(QLabel("Max (Jy/beam):"))
         self.input_vmax = QLineEdit(); self.input_vmax.setPlaceholderText("auto")
+        self.input_vmax.setToolTip("Limite maximale de l'échelle couleur (Jy/beam)")
         h_range.addWidget(self.input_vmax)
         dc.addLayout(h_range)
 
@@ -1003,12 +1334,15 @@ class ControlPanel(QDockWidget):
         h_log.setContentsMargins(0, 0, 0, 0); h_log.setSpacing(4)
         h_log.addWidget(QLabel("Min%:"))
         self.input_absmin = QLineEdit("1"); self.input_absmin.setFixedWidth(38)
+        self.input_absmin.setToolTip("Niveau minimum en % du pic")
         h_log.addWidget(self.input_absmin)
         h_log.addWidget(QLabel("Max%:"))
         self.input_absmax = QLineEdit("100"); self.input_absmax.setFixedWidth(38)
+        self.input_absmax.setToolTip("Niveau maximum en % du pic")
         h_log.addWidget(self.input_absmax)
         h_log.addWidget(QLabel("×:"))
         self.input_factor = QLineEdit("2"); self.input_factor.setFixedWidth(34)
+        self.input_factor.setToolTip("Facteur multiplicatif entre niveaux")
         h_log.addWidget(self.input_factor)
         self._widget_log_params.setVisible(False)
         dc.addWidget(self._widget_log_params)

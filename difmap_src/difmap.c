@@ -7984,9 +7984,13 @@ const char *native_get_header_text(void) {
 
 int native_uvweight(float uvbin, float errpow, int dorad) {
     if (vlbob == NULL) return -1;
-    if (uvbin >= 0.0f) invpar.uvbin = uvbin;
-    if (errpow <= 0.0f) invpar.errpow = errpow;
-    invpar.dorad = dorad;
+    /* Mirror the clamping applied by the interactive uvweight command. */
+    if (uvbin < 0.0f)                        uvbin = 0.0f;
+    else if (uvbin > 0.0f && uvbin < 1.0f)   uvbin = 1.0f;
+    if (errpow > 0.0f)                        errpow = 0.0f;
+    invpar.uvbin  = uvbin;
+    invpar.errpow = errpow;
+    invpar.dorad  = dorad;
     if (vlbmap) vlbmap->domap = vlbmap->dobeam = MAP_IS_STALE;
     return 0;
 }
@@ -8028,8 +8032,14 @@ int native_staper(float gauval, float gaurad_wav) {
  */
 int native_uvrange(float uvmin_wav, float uvmax_wav) {
     if (vlbob == NULL) return -1;
+    /* Mirror the validation from the interactive uvrange command (difmap.c:1067-1073). */
+    if (uvmin_wav < 0.0f) uvmin_wav = 0.0f;
+    if (uvmin_wav >= uvmax_wav || uvmax_wav <= 0.0f)
+        uvmin_wav = uvmax_wav = 0.0f;
     invpar.uvmin = uvmin_wav;
     invpar.uvmax = uvmax_wav;
+    /* Mark map and beam stale so the next invert() recomputes them. */
+    if (vlbmap) vlbmap->domap = vlbmap->dobeam = MAP_IS_STALE;
     return 0;
 }
 
@@ -8092,6 +8102,13 @@ int native_clean(int niter, float gain, float cutoff) {
     return 0;
 }
 
+/*
+ * Clears BOTH the established model (doold=1) AND the tentative CLEAN model
+ * (donew=1).  This is intentionally more aggressive than the interactive
+ * "clrmod" command whose default only clears newmod (doold=0, donew=1).
+ * The Python API always wants a clean slate before a fresh CLEAN cycle, so
+ * clearing both is the correct behaviour here.
+ */
 int native_clrmod(void) {
     if (vlbob == NULL) return -1;
     return clrmod(vlbob, 1, 1, 0) ? -1 : 0;
@@ -8196,12 +8213,20 @@ int native_restore_beam(float bmaj_mas, float bmin_mas, float bpa_deg, int nores
  *
  * Paramètres :
  *   maxamp - correction amplitude max autorisée (<=1.0 => ignorée)
- *   maxphs - correction phase max (degrés) (<=0.0 => ignorée)
+ *   maxphs - correction phase max EN DEGRÉS (<=0.0 => ignorée).
+ *            Converti en radians ici, identique à la commande interactive
+ *            (difmap.c:2995 : slfpar.maxphs = user_deg * dtor).
+ *            slfcal() compare les corrections de phase en radians.
  */
 int native_set_selfcal_limits(float maxamp, float maxphs) {
     if (vlbob == NULL) return -1;
-    slfpar.maxamp = maxamp;
-    slfpar.maxphs = maxphs;
+    slfpar.maxamp = maxamp < 1.0f ? 0.0f : maxamp;
+    /* Convert degrees → radians, then apply the same sanity check as the
+     * interactive selfcal setter (difmap.c:3002-3005). */
+    float maxphs_rad = maxphs * (float)(M_PI / 180.0);
+    if (maxphs_rad < 0.0f || maxphs_rad >= (float)M_PI)
+        maxphs_rad = 0.0f;
+    slfpar.maxphs = maxphs_rad;
     return 0;
 }
 

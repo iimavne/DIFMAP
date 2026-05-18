@@ -40,6 +40,7 @@ class CleanWorker(QThread):
         self._done   = 0
         self._paused = False
         self._abort  = False
+        self._cutoff_reached = False
 
     def request_pause(self):
         self._paused = True
@@ -66,6 +67,15 @@ class CleanWorker(QThread):
                 self._imager.clean(chunk, self._gain, self._cutoff)
                 self._done += chunk
                 self.progress.emit(self._done, self._niter)
+
+                if self._cutoff > 0:
+                    try:
+                        peak_info = self._imager.peak()
+                        if peak_info and float(peak_info.get('flux', 0.0)) <= float(self._cutoff):
+                            self._cutoff_reached = True
+                            break
+                    except Exception:
+                        pass
                 if self._pause_after > 0 and self._done % self._pause_after == 0 and self._done < self._niter:
                     self._paused = True
                     self.paused.emit(self._done, self._niter)
@@ -113,7 +123,8 @@ class MainWindow(QMainWindow):
         self.addToolBar(self.toolbar)
         self.menuBar().setVisible(False)  # remplacé par la toolbar unifiée
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea,  self.control_panel)
-        self.control_panel.setMinimumWidth(250)
+        self.control_panel.setMinimumWidth(330)
+        self.control_panel.setMaximumWidth(520)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.log_console)
 
         # ── Widgets de contenu ────────────────────────────────────────
@@ -158,17 +169,17 @@ class MainWindow(QMainWindow):
         # ── Sous-onglets "Imagerie" ────────────────────────────────
         self.inner_imagerie = QTabWidget()
         self.inner_imagerie.setStyleSheet(DesignSystem.get_inner_tab_style())
-        self.inner_imagerie.addTab(self.map_widget,          "Dirty Map")    # inner 0 → MAP=2
-        self.inner_imagerie.addTab(self.clean_map_widget,    "Clean Map")    # inner 1 → CLEAN=3
-        self.inner_imagerie.addTab(self.residual_map_widget, "Residual Map") # inner 2 → RESIDUAL=4
-        self.inner_imagerie.addTab(self.all_maps_widget,     "All Maps")     # inner 3 → ALL_MAPS=6
+        self.inner_imagerie.addTab(self.map_widget,          "Dirty Map")     # inner 0
+        self.inner_imagerie.addTab(self.residual_map_widget, "Residual Map")  # inner 1
+        self.inner_imagerie.addTab(self.clean_map_widget,    "Clean Map")     # inner 2
+        self.inner_imagerie.addTab(self.all_maps_widget,     "All Maps")      # inner 3
 
         # ── Super-onglets (outer) ──────────────────────────────────
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet(DesignSystem.get_outer_tab_style())
-        self.tabs.addTab(self.inner_graphiques, "Graphiques")  # outer 0 = OUTER_GRAPHIQUES
-        self.tabs.addTab(self.inner_imagerie,   "Imagerie")    # outer 1 = OUTER_IMAGERIE
-        self.tabs.addTab(self.header_widget,    "Header")      # outer 2 = OUTER_HEADER
+        self.tabs.addTab(self.header_widget,    "Header")      # outer 0 = OUTER_HEADER
+        self.tabs.addTab(self.inner_graphiques, "Graphiques")  # outer 1 = OUTER_GRAPHIQUES
+        self.tabs.addTab(self.inner_imagerie,   "Imagerie")    # outer 2 = OUTER_IMAGERIE
         self.setCentralWidget(self.tabs)
 
         self._help_dialog_open = False   # garde anti-ouvertures multiples
@@ -176,8 +187,9 @@ class MainWindow(QMainWindow):
         self._last_clean_package = None
         self._last_dirty_package = None
         self._last_added_window = None
-        self._did_first_clean_cycle = False
         self._clean_worker = None
+        self._last_mapsize_params = None   # (mapsize, cellsize) last sent to C
+        self._last_uvtaper_params = None   # (taper_amp, taper_val) last sent to C
 
         # 4. Signaux
         self._connect_signals()
@@ -199,7 +211,7 @@ class MainWindow(QMainWindow):
         if outer == TabIndex.OUTER_GRAPHIQUES:
             return self.inner_graphiques.currentIndex()  # UV=0, RADPLOT=1
         elif outer == TabIndex.OUTER_IMAGERIE:
-            return (TabIndex.MAP, TabIndex.CLEAN, TabIndex.RESIDUAL, TabIndex.ALL_MAPS)[
+            return (TabIndex.MAP, TabIndex.RESIDUAL, TabIndex.CLEAN, TabIndex.ALL_MAPS)[
                 self.inner_imagerie.currentIndex()
             ]
         else:
@@ -213,10 +225,10 @@ class MainWindow(QMainWindow):
         elif idx == TabIndex.MAP:
             self.tabs.setCurrentIndex(TabIndex.OUTER_IMAGERIE)
             self.inner_imagerie.setCurrentIndex(0)
-        elif idx == TabIndex.CLEAN:
+        elif idx == TabIndex.RESIDUAL:
             self.tabs.setCurrentIndex(TabIndex.OUTER_IMAGERIE)
             self.inner_imagerie.setCurrentIndex(1)
-        elif idx == TabIndex.RESIDUAL:
+        elif idx == TabIndex.CLEAN:
             self.tabs.setCurrentIndex(TabIndex.OUTER_IMAGERIE)
             self.inner_imagerie.setCurrentIndex(2)
         elif idx == TabIndex.ALL_MAPS:
@@ -236,9 +248,19 @@ class MainWindow(QMainWindow):
             from PyQt6.QtWidgets import QApplication
             QApplication.processEvents()  # force immediate log display before C operation
             self.session.observe(filepath)
-            # Remettre à zéro l'état UI qui appartient à la session précédente
+            # Remettre à zéro l'état UI qui appartient à la session précédente.
+            # reset_state() synchronise les miroirs Python avec le C qui vient de
+            # réinitialiser invpar=invdef, et efface les fenêtres CLEAN de la
+            # session précédente (active_windows + vlbwins via delwin()).
+            self.session.imager.reset_state()
+            try:
+                self.session.imager.delwin()
+            except Exception:
+                pass
             self._last_clean_package = None
-            self._did_first_clean_cycle = False
+            self._last_mapsize_params = None
+            self._last_uvtaper_params = None
+            self._set_selfcal_ready(False)
             available_pols = self.session.obs.available_polarizations()
             preferred_pol = "I" if "I" in available_pols else (available_pols[0] if available_pols else "I")
             self.control_panel.set_available_polarizations(available_pols, current=preferred_pol)
@@ -461,9 +483,15 @@ class MainWindow(QMainWindow):
         self.control_panel.uv_limits_changed.connect(self._on_uv_limits_changed)
         self.control_panel.rad_limits_changed.connect(self._on_rad_limits_changed)
         self.control_panel.btn_compute.clicked.connect(self._compute_dirty_map)
-        self.control_panel.btn_apply_imaging.clicked.connect(self._on_apply_imaging)
+        try:
+            if self.control_panel.btn_apply_imaging.isVisible():
+                self.control_panel.btn_apply_imaging.clicked.connect(self._on_apply_imaging)
+        except Exception:
+            pass
         self.control_panel.btn_compute_clean.clicked.connect(self._start_clean)
-        self.control_panel.btn_pause_clean.clicked.connect(self._pause_clean)
+        self.control_panel.btn_restore.clicked.connect(self._run_restore)
+        self.control_panel.btn_run_selfcal.clicked.connect(self._run_selfcal)
+        self._set_selfcal_ready(False)  # désactivé jusqu'au premier CLEAN
         self.control_panel.chk_show_model_map.toggled.connect(self._on_show_model_map_changed)
         self.control_panel.colormap_changed.connect(self._on_colormap_changed)
         self.control_panel.show_windows_changed.connect(self._on_show_windows_changed)
@@ -614,6 +642,7 @@ class MainWindow(QMainWindow):
                 ('_imaging_params_section',  True),
                 ('_dirty_btn_section',       is_dirty),
                 ('_clean_controls_section',  is_residual or is_clean_map or is_all_maps),
+                ('_selfcal_section',         is_residual or is_clean_map),
                 ('_map_display_section',     True),
                 ('_display_windows_section', is_residual or is_clean_map or is_all_maps),
                 ('_display_clean_section',   is_clean_map or is_all_maps),
@@ -629,8 +658,13 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
 
-        # Checkbox Show Model visible sur toutes les cartes quand un modèle existe
-        ctrl.chk_show_model_map.setVisible(is_map and has_model)
+        # Show Model Components : visible sur toutes les cartes, grisée si pas de modèle
+        ctrl.chk_show_model_map.setVisible(is_map)
+        ctrl.chk_show_model_map.setEnabled(is_map and has_model)
+        if is_map and not has_model:
+            ctrl.chk_show_model_map.setToolTip("Aucun modèle — lancez CLEAN d'abord")
+        else:
+            ctrl.chk_show_model_map.setToolTip("Afficher les composantes CLEAN sur la carte")
 
         if is_radplot:
             ctrl.chk_conjugate.blockSignals(True)
@@ -834,24 +868,42 @@ class MainWindow(QMainWindow):
                 raise ValueError(f"taper doit être ≥ 0, obtenu: {taper_val}")
         except ValueError as exc:
             raise ValueError(f"Taper invalide: {exc}") from exc
+        taper_amp_str = self.control_panel.input_taper_amp.text().strip()
+        try:
+            taper_amp = float(taper_amp_str) if taper_amp_str else 0.0
+            if taper_amp != 0.0 and not (0.0 < taper_amp < 0.99):
+                raise ValueError(f"amplitude taper doit être dans ]0, 0.99[, obtenu: {taper_amp}")
+        except ValueError as exc:
+            raise ValueError(f"Amplitude taper invalide: {exc}") from exc
 
-        self.session.imager.mapsize(mapsize, cellsize)
+        if taper_val > 0.0 and taper_amp == 0.0:
+            raise ValueError(
+                "Taper: si Rayon (Mλ) > 0, alors Valeur doit être renseignée (]0, 1[)."
+            )
 
-        if weight == "none":
-            pass  # Paramètres par défaut Difmap (bin=2, errpow=0)
+        if self._last_mapsize_params != (mapsize, cellsize):
+            self.session.imager.mapsize(mapsize, cellsize)
+            self._last_mapsize_params = (mapsize, cellsize)
+
+        if weight == "uniform":
+            self.session.imager.uvweight(bin_size=2.0, err_power=0.0)
         elif weight == "natural":
-            self.session.imager.uvweight(bin_size=0.0, err_power=-2.0)   # uvweight 0,-2
-        elif weight == "uniform":
-            self.session.imager.uvweight(bin_size=2.0, err_power=0.0)    # uvweight 2,0
+            self.session.imager.uvweight(bin_size=0.0, err_power=-2.0)
+        elif weight == "custom":
+            try:
+                custom_bin = float(self.control_panel.input_weight_bin.text() or "2.0")
+                custom_err = float(self.control_panel.input_weight_err.text() or "0.0")
+            except ValueError:
+                raise ValueError("Poids Custom invalide — vérifiez Bin et ErrPow.")
+            self.session.imager.uvweight(bin_size=custom_bin, err_power=custom_err)
 
-        if taper_val > 0.0:
-            # gaussian_value=0.3 : amplitude standard difmap (30% au rayon de coupure)
-            # gaussian_radius_wav : rayon en unités UV courantes (Mλ par défaut).
-            # uvtaper() passe la valeur directement au C, qui appelle uvtowav() en interne.
-            # Ne PAS multiplier par 1e6 ici : ce serait une double-conversion Mλ→λ.
-            self.session.imager.uvtaper(gaussian_value=0.3, gaussian_radius_wav=taper_val)
-        else:
-            self.session.imager.uvtaper(gaussian_value=0.0, gaussian_radius_wav=0.0)
+        new_taper = (taper_amp, taper_val)
+        if self._last_uvtaper_params != new_taper:
+            if taper_val > 0.0:
+                self.session.imager.uvtaper(gaussian_value=taper_amp, gaussian_radius_wav=taper_val)
+            else:
+                self.session.imager.uvtaper(gaussian_value=0.0, gaussian_radius_wav=0.0)
+            self._last_uvtaper_params = new_taper
 
         uvmin_wav = 0.0
         uvmax_wav = 0.0
@@ -916,12 +968,22 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Imaging Error", err_msg)
 
     def _start_clean(self):
-        """Lance le CLEAN de façon asynchrone via CleanWorker (QThread)."""
+        """Lance ou reprend le CLEAN de façon asynchrone via CleanWorker (QThread)."""
+        if (self._clean_worker is not None
+                and self._clean_worker.isRunning()
+                and getattr(self._clean_worker, '_paused', False)):
+            self._clean_worker.request_resume()
+            self.control_panel.btn_compute_clean.setText("⏳  Running...")
+            self.control_panel.btn_compute_clean.setEnabled(False)
+            self.log_console.log("CLEAN repris.")
+            return
         try:
             try:
                 niter = int(self.control_panel.input_niter.text())
+                if niter <= 0:
+                    raise ValueError(f"Niter doit être > 0, obtenu: {niter}")
             except ValueError:
-                raise ValueError("Niter invalide — entrez un entier.")
+                raise ValueError("Niter invalide — entrez un entier strictement positif.")
             try:
                 gain = float(self.control_panel.input_gain.text())
                 if not (0.0 < gain <= 1.0):
@@ -944,8 +1006,7 @@ class MainWindow(QMainWindow):
                 except ValueError:
                     pause_after = 0
 
-            if not self._did_first_clean_cycle:
-                self.session.imager.clrmod()
+            self.session.imager.clrmod()
 
             self.session.imager.invert(uvmin_wav, uvmax_wav)
 
@@ -977,19 +1038,6 @@ class MainWindow(QMainWindow):
             self.log_console.log(err_msg)
             QMessageBox.critical(self, "Imaging Error", err_msg)
 
-    def _pause_clean(self):
-        """Toggle pause/resume sur le worker CLEAN actif."""
-        if self._clean_worker is None or not self._clean_worker.isRunning():
-            return
-        if self._clean_worker._paused:
-            self._clean_worker.request_resume()
-            self.control_panel.btn_pause_clean.setText("⏸  Pause")
-            self.log_console.log("CLEAN resumed.")
-        else:
-            self._clean_worker.request_pause()
-            self.control_panel.btn_pause_clean.setText("▶  Resume")
-            self.log_console.log("CLEAN paused.")
-
     def _on_clean_progress(self, done: int, total: int) -> None:
         pct = int(done / total * 100) if total > 0 else 0
         self.control_panel.progress_bar.setValue(pct)
@@ -998,31 +1046,39 @@ class MainWindow(QMainWindow):
     def _on_clean_paused(self, done: int, total: int) -> None:
         """Called when conditional breakpoint triggers an auto-pause."""
         try:
-            # Show what we have after this batch.
             self._refresh_residual_map()
         except Exception:
             pass
-        # Update pause button to reflect current state.
-        self.control_panel.btn_pause_clean.setText("▶  Resume")
-        self.log_console.log(f"CLEAN paused at {done} / {total} iterations.")
+        self.control_panel.btn_compute_clean.setText("▶  Reprendre")
+        self.control_panel.btn_compute_clean.setEnabled(True)
+        self.log_console.log(f"CLEAN en pause à {done} / {total} itérations.")
 
     def _on_clean_finished(self) -> None:
+        cutoff_reached = bool(
+            self._clean_worker is not None
+            and getattr(self._clean_worker, '_cutoff_reached', False)
+        )
         try:
-            self.session.imager.restore()
-            self._did_first_clean_cycle = True
-            self._refresh_clean_map()
             self._refresh_residual_map()
-            self._refresh_all_maps()
             self.control_panel.progress_bar.setValue(100)
             try:
                 peak_info = self.session.imager.peak()
-                self.log_console.log(f"CLEAN complete — Peak: {peak_info['flux']:.4f} Jy/beam")
+                self.log_console.log(
+                    f"CLEAN terminé — Peak résiduel: {peak_info['flux']:.4f} Jy/beam"
+                    " — Cliquez 'Restore' pour la carte finale, ou relancez selfcal."
+                )
             except Exception:
-                self.log_console.log("CLEAN complete.")
+                self.log_console.log("CLEAN terminé. Cliquez 'Restore' ou relancez selfcal.")
+            if cutoff_reached:
+                self.log_console.log(
+                    f"Cutoff atteint — le CLEAN ne peut plus progresser."
+                )
+            # Activer Run Selfcal maintenant qu'un modèle existe
+            self._set_selfcal_ready(True)
         except Exception as e:
-            self.log_console.log(f"Post-CLEAN restore error: {e}")
+            self.log_console.log(f"Post-CLEAN error: {e}")
         finally:
-            self._set_ui_for_clean(False)
+            self._set_ui_for_clean(False, cutoff_reached=cutoff_reached)
             self._clean_worker = None
 
     def _on_clean_error(self, msg: str) -> None:
@@ -1031,15 +1087,33 @@ class MainWindow(QMainWindow):
         self._set_ui_for_clean(False)
         self._clean_worker = None
 
-    def _set_ui_for_clean(self, running: bool) -> None:
+    def _set_ui_for_clean(self, running: bool, cutoff_reached: bool = False) -> None:
         ctrl = self.control_panel
         ctrl.btn_compute.setEnabled(not running)
-        ctrl.btn_compute_clean.setEnabled(not running)
         ctrl.btn_apply_imaging.setEnabled(not running)
-        ctrl.btn_pause_clean.setEnabled(running)
-        ctrl.btn_compute_clean.setText("⏳  Running..." if running else "▶  Start")
-        if not running:
-            ctrl.btn_pause_clean.setText("⏸  Pause")
+        if running:
+            ctrl.btn_compute_clean.setEnabled(False)
+        elif cutoff_reached:
+            ctrl.btn_compute_clean.setText("▶  Start")
+            ctrl.btn_compute_clean.setEnabled(False)
+            ctrl.btn_compute_clean.setToolTip(
+                "Cutoff atteint — modifiez le Cutoff ou Niter pour relancer le CLEAN"
+            )
+            ctrl.input_cutoff.textChanged.connect(self._on_cutoff_edited_after_stop)
+        else:
+            ctrl.btn_compute_clean.setEnabled(True)
+            ctrl.btn_compute_clean.setText("▶  Start")
+            ctrl.btn_compute_clean.setToolTip("Lancer invert + CLEAN + restore")
+
+    def _on_cutoff_edited_after_stop(self) -> None:
+        """Réactive le bouton Start dès que l'utilisateur modifie le cutoff."""
+        ctrl = self.control_panel
+        ctrl.btn_compute_clean.setEnabled(True)
+        ctrl.btn_compute_clean.setToolTip("Lancer invert + CLEAN + restore")
+        try:
+            ctrl.input_cutoff.textChanged.disconnect(self._on_cutoff_edited_after_stop)
+        except Exception:
+            pass
 
     def _on_apply_imaging(self) -> None:
         try:
@@ -1047,6 +1121,129 @@ class MainWindow(QMainWindow):
             self.log_console.log("Imaging parameters applied.")
         except Exception as e:
             self.log_console.log(f"Error applying imaging params: {e}")
+
+    def _set_selfcal_ready(self, ready: bool) -> None:
+        ctrl = self.control_panel
+        if hasattr(ctrl, 'btn_run_selfcal'):
+            ctrl.btn_run_selfcal.setEnabled(ready)
+            ctrl.btn_run_selfcal.setToolTip(
+                "Exécute selfflag + selflims + selftaper + selfcal → invert"
+                if ready else
+                "Lancez d'abord un CLEAN pour construire un modèle."
+            )
+        if hasattr(ctrl, 'lbl_selfcal_status'):
+            ctrl.lbl_selfcal_status.setText(
+                "Modèle CLEAN prêt" if ready else "Aucun modèle — lancez CLEAN d'abord"
+            )
+
+    def _run_restore(self) -> None:
+        try:
+            self.session.imager.restore()
+            self._refresh_clean_map()
+            self._refresh_residual_map()
+            self._refresh_all_maps()
+            self.log_console.log("Restore appliqué — carte finale disponible.")
+        except Exception as e:
+            err_msg = f"Restore error: {e}"
+            self.log_console.log(err_msg)
+            QMessageBox.critical(self, "Restore Error", err_msg)
+
+    def _run_selfcal(self) -> None:
+        """Lance l'auto-calibration avec les paramètres du panneau Selfcal."""
+        ctrl = self.control_panel
+        try:
+            # Garde-fou : selfcal nécessite un modèle CLEAN
+            try:
+                has_model = len(self.session.imager.get_model_components()) > 0
+            except Exception:
+                has_model = False
+
+            if hasattr(ctrl, 'lbl_selfcal_status'):
+                ctrl.lbl_selfcal_status.setText(
+                    "Model: OK" if has_model else "Model: none — do CLEAN first"
+                )
+
+            if not has_model:
+                raise ValueError(
+                    "Selfcal nécessite un modèle CLEAN. Lance d'abord 'Start CLEAN' (au moins quelques itérations)."
+                )
+
+            # Lecture des paramètres
+            doamp = (ctrl.combo_sc_mode.currentText() == "Amp+Phase")
+            dofloat = ctrl.chk_sc_float_amp.isChecked()
+            doflag  = ctrl.chk_sc_doflag.isChecked()
+            clip    = ctrl.chk_sc_clip.isChecked()
+
+            try:
+                solint = float(ctrl.input_sc_solint.text() or "0")
+                if solint < 0:
+                    raise ValueError(f"solint doit être ≥ 0, obtenu: {solint}")
+            except ValueError as exc:
+                raise ValueError(f"Solint invalide: {exc}") from exc
+
+            try:
+                maxphs = float(ctrl.input_sc_maxphs.text() or "0")
+                if maxphs < 0:
+                    raise ValueError(f"maxphs doit être ≥ 0, obtenu: {maxphs}")
+            except ValueError as exc:
+                raise ValueError(f"MaxPhs invalide: {exc}") from exc
+
+            try:
+                maxamp = float(ctrl.input_sc_maxamp.text() or "0")
+                if maxamp != 0.0 and maxamp < 1.0:
+                    raise ValueError(f"maxamp doit être 0 (illimité) ou ≥ 1, obtenu: {maxamp}")
+            except ValueError as exc:
+                raise ValueError(f"MaxAmp invalide: {exc}") from exc
+
+            p_mintel = ctrl.spin_sc_p_mintel.value()
+            a_mintel = ctrl.spin_sc_a_mintel.value()
+
+            # Selfcal taper (optionnel)
+            sc_tap_amp_str = ctrl.input_sc_taper_amp.text().strip()
+            sc_tap_rad_str = ctrl.input_sc_taper_rad.text().strip()
+            sc_tap_amp = float(sc_tap_amp_str) if sc_tap_amp_str else 0.0
+            sc_tap_rad = float(sc_tap_rad_str) if sc_tap_rad_str else 0.0
+            if sc_tap_amp != 0.0 and not (0.0 < sc_tap_amp < 0.99):
+                raise ValueError(f"Amplitude taper selfcal doit être dans ]0, 0.99[, obtenu: {sc_tap_amp}")
+            if sc_tap_rad > 0.0 and sc_tap_amp == 0.0:
+                raise ValueError("Selfcal taper : si Rayon > 0 alors Valeur doit être renseignée.")
+
+            mode_str = "Amp+Phase" if doamp else "Phase only"
+            self.log_console.log(
+                f"Selfcal — mode: {mode_str}, solint: {solint} min, "
+                f"maxphs: {maxphs}°, maxamp: {maxamp}, "
+                f"mintel φ/A: {p_mintel}/{a_mintel}"
+            )
+
+            # Appliquer le taper selfcal si renseigné
+            if sc_tap_rad > 0.0:
+                self.session.imager.selfcal_taper(sc_tap_amp, sc_tap_rad)
+            else:
+                self.session.imager.selfcal_taper(0.0, 0.0)
+
+            # Lancer selfcal
+            self.session.imager.selfcal(
+                doamp=doamp, dofloat=dofloat, solint=solint,
+                maxamp=maxamp, maxphs=maxphs,
+                p_mintel=p_mintel, a_mintel=a_mintel,
+                doflag=doflag, clip=clip,
+            )
+            self.log_console.log("Selfcal terminé.")
+
+            # Re-invert automatique pour obtenir la carte résiduelle corrigée
+            self.log_console.log("Re-invert post-selfcal…")
+            mapsize, cellsize, taper_val, uvmin_wav, uvmax_wav = self._apply_imaging_params()
+            self.session.imager.invert(uvmin_wav, uvmax_wav)
+            self._last_uvtaper_params = None  # force re-apply taper au prochain CLEAN
+
+            self._refresh_residual_map()
+            self._refresh_dirty_map()
+            self.log_console.log("Re-invert post-selfcal effectué — carte résiduelle mise à jour.")
+
+        except Exception as e:
+            err_msg = f"Selfcal error: {e}"
+            self.log_console.log(err_msg)
+            QMessageBox.critical(self, "Selfcal Error", err_msg)
 
     def _on_colormap_changed(self, cmap_name: str) -> None:
         for w in (self.map_widget, self.clean_map_widget, self.residual_map_widget):
@@ -1637,6 +1834,10 @@ class MainWindow(QMainWindow):
                     ctrl.slider_size.blockSignals(True)
                     ctrl.slider_size.setValue(state_dict['marker_size'])
                     ctrl.slider_size.blockSignals(False)
+                    try:
+                        ctrl.lbl_slider_size_val.setText(f"{state_dict['marker_size']} %")
+                    except Exception:
+                        pass
                 if 'focus_search' in state_dict:
                     ctrl.input_search_tel.setFocus()
                 if 'show_help' in state_dict:

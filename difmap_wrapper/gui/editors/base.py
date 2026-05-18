@@ -132,9 +132,9 @@ class BasePlotEditor:
         self.press_info = None
         self.pan_start = None
         self.original_limits = (self.ax.get_xlim(), self.ax.get_ylim())
-        self.marker_size_pct = 10   # pourcentage courant (1–100)
-        self._SIZE_MIN = 1.0   # pts² à 1 %
-        self._SIZE_MAX = 50.0  # pts² à 100 %
+        self.marker_size_pct = 5   # pourcentage courant (1–100)
+        self._SIZE_MIN = 0.35  # pts² à 1 %
+        self._SIZE_MAX = 26.0  # pts² à 100 %
 
         # Widgets Matplotlib
         self.rs = RectangleSelector(
