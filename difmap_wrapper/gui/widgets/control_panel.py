@@ -4,8 +4,8 @@ from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QScrollArea, QSlider, QPushButton, QMessageBox,
                              QColorDialog, QSpinBox, QFrame, QProgressBar,
                              QGridLayout)
-from PyQt6.QtGui import QColor
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QColor, QPainter, QBrush, QPen
+from PyQt6.QtCore import pyqtSignal, QRect
 from PyQt6.QtCore import Qt
 import qtawesome as qta
 from .styled_buttons import PrimaryButton, SecondaryButton
@@ -18,6 +18,122 @@ D = DesignSystem
 _QSS = D.get_panel_qss()
 _TOGGLE_QSS = D.get_panel_toggle_button_qss()
 _FIELD_QSS = D.get_panel_field_qss()
+
+class RangeSlider(QWidget):
+    """Slider double-poignée (min / max) sur une même piste.
+
+    invert=True : axe visuel inversé (droite→gauche), comme l'axe U du plan UV.
+    Les valeurs émises restent toujours (lo, hi) en unités réelles.
+    """
+
+    range_changed = pyqtSignal(float, float)  # (lo, hi) en unités réelles
+
+    _HANDLE = 10
+    _TRACK_H = 4
+
+    def __init__(self, minimum=0.0, maximum=1000.0, invert=False, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(28)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._min    = float(minimum)
+        self._max    = float(maximum)
+        self._lo     = float(minimum)
+        self._hi     = float(maximum)
+        self._invert = invert
+        self._drag   = None   # 'lo' | 'hi' | None
+
+    # ── API publique ──────────────────────────────────────────────
+    def set_data_range(self, minimum: float, maximum: float) -> None:
+        self._min = float(minimum)
+        self._max = float(maximum)
+        self._lo  = float(minimum)
+        self._hi  = float(maximum)
+        self.update()
+
+    def set_values(self, lo: float, hi: float) -> None:
+        self._lo = max(self._min, min(float(lo), self._max))
+        self._hi = max(self._min, min(float(hi), self._max))
+        self.update()
+
+    def values(self) -> tuple[float, float]:
+        return (self._lo, self._hi)
+
+    # ── Coordonnées ───────────────────────────────────────────────
+    def _x_for(self, val: float) -> int:
+        r = self._max - self._min
+        t = self._track_rect()
+        if r == 0:
+            return t.left()
+        frac = (val - self._min) / r
+        if self._invert:
+            frac = 1.0 - frac
+        return int(t.left() + frac * t.width())
+
+    def _val_for(self, x: float) -> float:
+        t = self._track_rect()
+        frac = max(0.0, min(1.0, (x - t.left()) / max(1, t.width())))
+        if self._invert:
+            frac = 1.0 - frac
+        return self._min + frac * (self._max - self._min)
+
+    def _track_rect(self) -> QRect:
+        h = self._HANDLE
+        return QRect(h // 2, (self.height() - self._TRACK_H) // 2,
+                     self.width() - h, self._TRACK_H)
+
+    # ── Rendu ─────────────────────────────────────────────────────
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        t = self._track_rect()
+        h = self._HANDLE
+
+        p.setBrush(QBrush(QColor(D.ASTRAL_SURFACE)))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(t, 2, 2)
+
+        x_lo = self._x_for(self._lo)
+        x_hi = self._x_for(self._hi)
+        # Zone sélectionnée entre les deux poignées (quelle que soit l'inversion)
+        x_left  = min(x_lo, x_hi)
+        x_right = max(x_lo, x_hi)
+        sel = QRect(x_left, t.top(), max(2, x_right - x_left), t.height())
+        p.setBrush(QBrush(QColor(D.ASTRAL_ACCENT)))
+        p.drawRect(sel)
+
+        for x in (x_lo, x_hi):
+            p.setBrush(QBrush(QColor("#FFFFFF")))
+            p.setPen(QPen(QColor(D.ASTRAL_ACCENT), 2))
+            p.drawEllipse(x - h // 2, (self.height() - h) // 2, h, h)
+
+        p.end()
+
+    # ── Interactions ──────────────────────────────────────────────
+    def mousePressEvent(self, ev):
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return
+        x = ev.position().x()
+        x_lo = self._x_for(self._lo)
+        x_hi = self._x_for(self._hi)
+        self._drag = 'lo' if abs(x - x_lo) <= abs(x - x_hi) else 'hi'
+        self._move_drag(x)
+
+    def mouseMoveEvent(self, ev):
+        if self._drag:
+            self._move_drag(ev.position().x())
+
+    def mouseReleaseEvent(self, _ev):
+        self._drag = None
+
+    def _move_drag(self, x: float) -> None:
+        val = self._val_for(x)
+        if self._drag == 'lo':
+            self._lo = max(self._min, min(val, self._hi))
+        else:
+            self._hi = min(self._max, max(val, self._lo))
+        self.update()
+        self.range_changed.emit(self._lo, self._hi)
+
 
 class _IFRangeBar(QWidget):
     """Barre horizontale indiquant visuellement la plage d'IFs sélectionnée."""
@@ -218,6 +334,11 @@ class ControlPanel(QDockWidget):
 
         scroll.setWidget(self.container)
         self.setWidget(scroll)
+
+    def set_uv_data_range(self, umin: float, umax: float, vmin: float, vmax: float) -> None:
+        """Cale les sliders UV sur la plage réelle des données (en Mλ, signée)."""
+        self._slider_u.set_data_range(umin, umax)
+        self._slider_v.set_data_range(vmin, vmax)
 
     def set_available_polarizations(self, polarizations: list[str], current: str | None = None) -> None:
         """Met à jour le combo avec les seules polarisations proposées par le fichier."""
@@ -476,60 +597,50 @@ class ControlPanel(QDockWidget):
         h_uv_hdr.addWidget(self.chk_uv_limit)
         _uv_sec.addLayout(h_uv_hdr)
 
-        # Grille U min / U max / V min / V max
         self._uv_limit_box = QWidget()
         grid = QVBoxLayout(self._uv_limit_box)
         grid.setContentsMargins(0, 4, 0, 0)
-        grid.setSpacing(4)
+        grid.setSpacing(6)
 
-        row_u = QHBoxLayout()
-        row_u.setSpacing(6)
-        lbl_umin = QLabel("U min")
-        lbl_umin.setFixedWidth(34)
-        self.input_umin = QLineEdit()
-        self.input_umin.setPlaceholderText("auto")
-        self.input_umin.setStyleSheet(field_style)
-        self.input_umin.setToolTip("Limite U minimum (Mλ)")
-        lbl_umax = QLabel("U max")
-        lbl_umax.setFixedWidth(34)
-        self.input_umax = QLineEdit()
-        self.input_umax.setPlaceholderText("auto")
-        self.input_umax.setStyleSheet(field_style)
-        self.input_umax.setToolTip("Limite U maximum (Mλ)")
-        row_u.addWidget(lbl_umin); row_u.addWidget(self.input_umin)
-        row_u.addWidget(lbl_umax); row_u.addWidget(self.input_umax)
-        grid.addLayout(row_u)
+        def _make_uv_axis(axis: str, invert: bool = False):
+            """Retourne (slider, inp_min, inp_max) pour un axe U ou V.
 
-        row_v = QHBoxLayout()
-        row_v.setSpacing(6)
-        lbl_vmin = QLabel("V min")
-        lbl_vmin.setFixedWidth(34)
-        self.input_vmin_uv = QLineEdit()
-        self.input_vmin_uv.setPlaceholderText("auto")
-        self.input_vmin_uv.setStyleSheet(field_style)
-        self.input_vmin_uv.setToolTip("Limite V minimum (Mλ)")
-        lbl_vmax = QLabel("V max")
-        lbl_vmax.setFixedWidth(34)
-        self.input_vmax_uv = QLineEdit()
-        self.input_vmax_uv.setPlaceholderText("auto")
-        self.input_vmax_uv.setStyleSheet(field_style)
-        self.input_vmax_uv.setToolTip("Limite V maximum (Mλ)")
-        row_v.addWidget(lbl_vmin); row_v.addWidget(self.input_vmin_uv)
-        row_v.addWidget(lbl_vmax); row_v.addWidget(self.input_vmax_uv)
-        grid.addLayout(row_v)
+            invert=True : axe visuel inversé (←max … min→), labels et champs swappés
+            pour que la gauche corresponde toujours à ce qui est à gauche du plot UV.
+            """
+            h_ax = QHBoxLayout(); h_ax.setContentsMargins(0, 0, 0, 0); h_ax.setSpacing(0)
+            lbl_ax = QLabel(f"{axis}  (Mλ)")
+            lbl_ax.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
+            h_ax.addWidget(lbl_ax)
+            if invert:
+                lbl_orient = QLabel("  ← +   − →")
+                lbl_orient.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; font-style: italic;")
+                h_ax.addStretch(); h_ax.addWidget(lbl_orient)
+            grid.addLayout(h_ax)
+
+            rs = RangeSlider(-1000.0, 1000.0, invert=invert)
+            rs.setEnabled(False)
+            grid.addWidget(rs)
+
+            inp_min = QLineEdit(); inp_min.setPlaceholderText("auto"); inp_min.setStyleSheet(field_style); inp_min.setEnabled(False)
+            inp_min.setToolTip(f"Limite {axis} minimum (Mλ)")
+            inp_max = QLineEdit(); inp_max.setPlaceholderText("auto"); inp_max.setStyleSheet(field_style); inp_max.setEnabled(False)
+            inp_max.setToolTip(f"Limite {axis} maximum (Mλ)")
+
+            row = QHBoxLayout(); row.setSpacing(4)
+            lbl_l = QLabel("min"); lbl_l.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};"); lbl_l.setFixedWidth(22)
+            lbl_r = QLabel("max"); lbl_r.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};"); lbl_r.setFixedWidth(22)
+            row.addWidget(lbl_l); row.addWidget(inp_min)
+            row.addSpacing(6)
+            row.addWidget(lbl_r); row.addWidget(inp_max)
+            grid.addLayout(row)
+            return rs, inp_min, inp_max
+
+        self._slider_u, self.input_umin, self.input_umax = _make_uv_axis("U", invert=True)
+        self._slider_v, self.input_vmin_uv, self.input_vmax_uv = _make_uv_axis("V")
 
         _uv_sec.addWidget(self._uv_limit_box)
         layout.addWidget(self._uv_limits_section)
-
-        # Désactiver les champs par défaut (toggle OFF)
-        for w in (self.input_umin, self.input_umax, self.input_vmin_uv, self.input_vmax_uv):
-            w.setEnabled(False)
-
-        def _on_uv_toggle(checked):
-            self.chk_uv_limit.setText("ON" if checked else "OFF")
-            for w in (self.input_umin, self.input_umax, self.input_vmin_uv, self.input_vmax_uv):
-                w.setEnabled(checked)
-            self._emit_uv_limits()
 
         def _parse_uv(field):
             t = field.text().strip()
@@ -537,6 +648,9 @@ class ControlPanel(QDockWidget):
                 return float(t) if t and t.lower() != "auto" else None
             except ValueError:
                 return None
+
+        def _fmt(v: float) -> str:
+            return f"{v:.1f}" if v != int(v) else str(int(v))
 
         def _emit_uv_limits_checked():
             if self.chk_uv_limit.isChecked():
@@ -547,9 +661,47 @@ class ControlPanel(QDockWidget):
             _parse_uv(self.input_vmin_uv), _parse_uv(self.input_vmax_uv),
         )
 
+        def _on_slider_u(lo, hi):
+            # U inversé : hi (positif) → champ "min" (gauche plot), lo (négatif) → champ "max" (droite plot)
+            self.input_umin.blockSignals(True); self.input_umax.blockSignals(True)
+            self.input_umin.setText(_fmt(hi)); self.input_umax.setText(_fmt(lo))
+            self.input_umin.blockSignals(False); self.input_umax.blockSignals(False)
+            _emit_uv_limits_checked()
+
+        def _on_slider_v(lo, hi):
+            self.input_vmin_uv.blockSignals(True); self.input_vmax_uv.blockSignals(True)
+            self.input_vmin_uv.setText(_fmt(lo)); self.input_vmax_uv.setText(_fmt(hi))
+            self.input_vmin_uv.blockSignals(False); self.input_vmax_uv.blockSignals(False)
+            _emit_uv_limits_checked()
+
+        def _on_field_u():
+            # input_umin contient le positif (hi), input_umax contient le négatif (lo)
+            hi = _parse_uv(self.input_umin); lo = _parse_uv(self.input_umax)
+            mn, mx = self._slider_u._min, self._slider_u._max
+            self._slider_u.set_values(lo if lo is not None else mn, hi if hi is not None else mx)
+            _emit_uv_limits_checked()
+
+        def _on_field_v():
+            lo = _parse_uv(self.input_vmin_uv); hi = _parse_uv(self.input_vmax_uv)
+            mn, mx = self._slider_v._min, self._slider_v._max
+            self._slider_v.set_values(lo if lo is not None else mn, hi if hi is not None else mx)
+            _emit_uv_limits_checked()
+
+        self._slider_u.range_changed.connect(_on_slider_u)
+        self._slider_v.range_changed.connect(_on_slider_v)
+        self.input_umin.editingFinished.connect(_on_field_u)
+        self.input_umax.editingFinished.connect(_on_field_u)
+        self.input_vmin_uv.editingFinished.connect(_on_field_v)
+        self.input_vmax_uv.editingFinished.connect(_on_field_v)
+
+        def _on_uv_toggle(checked):
+            self.chk_uv_limit.setText("ON" if checked else "OFF")
+            for w in (self.input_umin, self.input_umax, self.input_vmin_uv, self.input_vmax_uv,
+                      self._slider_u, self._slider_v):
+                w.setEnabled(checked)
+            self._emit_uv_limits()
+
         self.chk_uv_limit.toggled.connect(_on_uv_toggle)
-        for w in (self.input_umin, self.input_umax, self.input_vmin_uv, self.input_vmax_uv):
-            w.editingFinished.connect(_emit_uv_limits_checked)
 
         # ── Limite Radplot ─────────────────────────────────────────
         self._rad_limits_section = QWidget()
@@ -644,19 +796,48 @@ class ControlPanel(QDockWidget):
         for w in _rad_fields:
             w.editingFinished.connect(_emit_rad_limits_checked)
 
-        # ── Taille des marqueurs ───────────────────────────────────
+        # ── Marker box ────────────────────────────────────────────
         sep2 = QWidget()
         sep2.setFixedHeight(1)
         sep2.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 4px 0;")
         layout.addWidget(sep2)
 
-        h_size = QHBoxLayout()
-        self.lbl_slider_size = QLabel("Marker size  [.]:")
+        marker_frame = QFrame()
+        marker_frame.setStyleSheet(f"""
+            QFrame {{
+                background-color: {D.ASTRAL_DEEPEST};
+                border: 1px solid {D.ASTRAL_BORDER};
+                border-radius: 4px;
+            }}
+        """)
+        mbox = QVBoxLayout(marker_frame)
+        mbox.setContentsMargins(8, 6, 8, 8)
+        mbox.setSpacing(6)
+
+        lbl_marker_hdr = QLabel("Marker")
+        lbl_marker_hdr.setStyleSheet(f"""
+            color: {D.ASTRAL_TEXT};
+            font-size: {D.FONT_SIZE_XS};
+            font-weight: bold;
+            letter-spacing: 1px;
+            background: transparent;
+            border: none;
+        """)
+        mbox.addWidget(lbl_marker_hdr)
+
+        # Size
+        h_size = QHBoxLayout(); h_size.setSpacing(4)
+        lbl_size = QLabel("Size  [.]")
+        lbl_size.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
+        lbl_size.setFixedWidth(52)
+        self.lbl_slider_size = lbl_size
         self.lbl_slider_size_val = QLabel("5 %")
+        self.lbl_slider_size_val.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
         self.lbl_slider_size_val.setAlignment(Qt.AlignmentFlag.AlignRight)
-        h_size.addWidget(self.lbl_slider_size)
+        h_size.addWidget(lbl_size)
+        h_size.addStretch()
         h_size.addWidget(self.lbl_slider_size_val)
-        layout.addLayout(h_size)
+        mbox.addLayout(h_size)
         self.slider_size = QSlider(Qt.Orientation.Horizontal)
         self.slider_size.setMinimum(1)
         self.slider_size.setMaximum(100)
@@ -665,28 +846,45 @@ class ControlPanel(QDockWidget):
         self.slider_size.valueChanged.connect(
             lambda v: self.lbl_slider_size_val.setText(f"{v} %")
         )
-        layout.addWidget(self.slider_size)
+        mbox.addWidget(self.slider_size)
 
-        # ── Opacité ────────────────────────────────────────────────
-        layout.addWidget(QLabel("Opacity:"))
+        # Opacity
+        h_alpha_hdr = QHBoxLayout(); h_alpha_hdr.setSpacing(4)
+        lbl_alpha = QLabel("Opacity")
+        lbl_alpha.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
+        lbl_alpha.setFixedWidth(52)
+        self.lbl_slider_alpha_val = QLabel("50 %")
+        self.lbl_slider_alpha_val.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
+        self.lbl_slider_alpha_val.setAlignment(Qt.AlignmentFlag.AlignRight)
+        h_alpha_hdr.addWidget(lbl_alpha)
+        h_alpha_hdr.addStretch()
+        h_alpha_hdr.addWidget(self.lbl_slider_alpha_val)
+        mbox.addLayout(h_alpha_hdr)
         self.slider_alpha = QSlider(Qt.Orientation.Horizontal)
         self.slider_alpha.setMinimum(10)
         self.slider_alpha.setMaximum(100)
         self.slider_alpha.setValue(50)
         self.slider_alpha.setToolTip("Point opacity (10–100 %)")
-        layout.addWidget(self.slider_alpha)
+        self.slider_alpha.valueChanged.connect(
+            lambda v: self.lbl_slider_alpha_val.setText(f"{v} %")
+        )
+        mbox.addWidget(self.slider_alpha)
 
-        # ── Couleur des points ─────────────────────────────────────
-        h_color = QHBoxLayout()
-        h_color.addWidget(QLabel("Data color:"))
+        # Colour
+        h_color = QHBoxLayout(); h_color.setSpacing(6)
+        lbl_color = QLabel("Colour")
+        lbl_color.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
         self.btn_data_color = QPushButton()
         self.btn_data_color.setFixedHeight(22)
         self.btn_data_color.setToolTip("Pick data point color")
         self._current_data_color = "#1565C0"
         self.btn_data_color.setStyleSheet(
-            f"background-color: {self._current_data_color}; border: 1px solid #555;"
+            f"background-color: {self._current_data_color}; border: 1px solid #555; border-radius: 3px;"
         )
+        h_color.addWidget(lbl_color)
+        h_color.addStretch()
         h_color.addWidget(self.btn_data_color)
+        mbox.addLayout(h_color)
 
         def _pick_color():
             color = QColorDialog.getColor(
@@ -695,12 +893,12 @@ class ControlPanel(QDockWidget):
             if color.isValid():
                 self._current_data_color = color.name()
                 self.btn_data_color.setStyleSheet(
-                    f"background-color: {self._current_data_color}; border: 1px solid #555;"
+                    f"background-color: {self._current_data_color}; border: 1px solid #555; border-radius: 3px;"
                 )
                 self.data_color_changed.emit(self._current_data_color)
 
         self.btn_data_color.clicked.connect(_pick_color)
-        layout.addLayout(h_color)
+        layout.addWidget(marker_frame)
 
         self.main_layout.addWidget(self.group_display)
 
