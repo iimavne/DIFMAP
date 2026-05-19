@@ -136,19 +136,24 @@ class RangeSlider(QWidget):
 
 
 class _IFRangeBar(QWidget):
-    """Barre horizontale indiquant visuellement la plage d'IFs sélectionnée."""
+    """Barre horizontale indiquant visuellement les IFs sélectionnés (contigus ou non)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedHeight(10)
-        self._beg = 1
-        self._end = 1
         self._total = 1
+        self._selected: list[int] = []  # liste 1-indexed des IFs sélectionnés
 
     def update_range(self, beg: int, end: int, total: int):
-        self._beg   = beg
-        self._end   = end
+        """Mise à jour mode plage contigüe."""
         self._total = max(1, total)
+        self._selected = list(range(beg, end + 1))
+        self.update()
+
+    def update_list(self, if_list: list[int], total: int):
+        """Mise à jour mode liste non-contigüe."""
+        self._total = max(1, total)
+        self._selected = list(if_list)
         self.update()
 
     def paintEvent(self, event):
@@ -157,15 +162,15 @@ class _IFRangeBar(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
 
-        # Fond
         p.fillRect(0, 0, w, h, QColor(D.ASTRAL_DEEP))
 
-        # Zone sélectionnée
-        x1 = int((self._beg - 1) / self._total * w)
-        x2 = int(self._end        / self._total * w)
-        p.fillRect(x1, 1, max(2, x2 - x1), h - 2, QColor(D.ASTRAL_ACCENT))
+        cell_w = w / self._total
+        for cif in self._selected:
+            if 1 <= cif <= self._total:
+                x = int((cif - 1) * cell_w)
+                bw = max(1, int(cell_w) - 1)
+                p.fillRect(x, 1, bw, h - 2, QColor(D.ASTRAL_ACCENT))
 
-        # Bordure
         pen = QPen(QColor(D.ASTRAL_BORDER))
         pen.setWidth(1)
         p.setPen(pen)
@@ -289,6 +294,8 @@ class ControlPanel(QDockWidget):
 
     data_color_changed   = pyqtSignal(str)
     ifs_range_changed    = pyqtSignal(int, int)
+    if_select_syntax_changed = pyqtSignal(str)   # syntaxe difmap brute
+    chan_select_syntax_changed = pyqtSignal(str)  # syntaxe canaux brute
     uv_limits_changed    = pyqtSignal(object, object, object, object)
     rad_limits_changed   = pyqtSignal(object, object, object, object, object, object)
     colormap_changed     = pyqtSignal(str)
@@ -374,8 +381,7 @@ class ControlPanel(QDockWidget):
         sep.setStyleSheet(f"background-color: {D.ASTRAL_BORDER}; margin: 2px 0;")
         layout.addWidget(sep)
 
-        # --- Sélecteur de plage d'IFs ---
-        spin_style = _QSS
+        # --- Sélecteur d'IFs (syntaxe difmap) ---
         btn_all_style = f"""
             QPushButton {{
                 background-color: {D.ASTRAL_SURFACE};
@@ -388,32 +394,22 @@ class ControlPanel(QDockWidget):
             QPushButton:hover {{ background-color: {D.ASTRAL_HOVER}; color: {D.ASTRAL_TEXT}; }}
         """
 
-        # Ligne "IFs:   [1] → [4]   [All]"
         h_ifs = QHBoxLayout()
         h_ifs.setSpacing(4)
         h_ifs.addWidget(QLabel("IFs:"))
 
-        self.spin_if_start = QSpinBox()
-        self.spin_if_start.setMinimum(1)
-        self.spin_if_start.setMaximum(1)
-        self.spin_if_start.setValue(1)
-        self.spin_if_start.setEnabled(False)
-        self.spin_if_start.setStyleSheet(spin_style)
-        self.spin_if_start.setFixedWidth(46)
-        self.spin_if_start.setToolTip("Premier IF (1 = début)")
-
-        lbl_arrow = QLabel("→")
-        lbl_arrow.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_BASE};")
-        lbl_arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self.spin_if_end = QSpinBox()
-        self.spin_if_end.setMinimum(1)
-        self.spin_if_end.setMaximum(1)
-        self.spin_if_end.setValue(1)
-        self.spin_if_end.setEnabled(False)
-        self.spin_if_end.setStyleSheet(spin_style)
-        self.spin_if_end.setFixedWidth(46)
-        self.spin_if_end.setToolTip("Dernier IF")
+        self.input_if_select = QLineEdit()
+        self.input_if_select.setPlaceholderText("e.g. 1-3  or  1,3,5  or  2:5-10")
+        self.input_if_select.setEnabled(False)
+        self.input_if_select.setStyleSheet(_QSS)
+        self.input_if_select.setToolTip(
+            "Syntaxe difmap :\n"
+            "  1-3       → IFs 1 à 3\n"
+            "  1,3,5     → IFs 1, 3 et 5\n"
+            "  2:5-10    → IF 2, canaux locaux 5–10\n"
+            "  1,3:2-5   → IFs 1 et 3, canaux 2–5\n"
+            "  (vide)    → tous les IFs"
+        )
 
         self._btn_ifs_all = QPushButton("All")
         self._btn_ifs_all.setFixedWidth(36)
@@ -422,94 +418,189 @@ class ControlPanel(QDockWidget):
         self._btn_ifs_all.setStyleSheet(btn_all_style)
         self._btn_ifs_all.setToolTip("Sélectionner tous les IFs")
 
-        h_ifs.addWidget(self.spin_if_start)
-        h_ifs.addWidget(lbl_arrow)
-        h_ifs.addWidget(self.spin_if_end)
-        h_ifs.addStretch()
+        h_ifs.addWidget(self.input_if_select)
         h_ifs.addWidget(self._btn_ifs_all)
         layout.addLayout(h_ifs)
 
-        # Barre de progression visuelle indiquant la plage sélectionnée
+        # Label d'erreur de syntaxe (caché par défaut)
+        self._lbl_if_syntax_err = QLabel("")
+        self._lbl_if_syntax_err.setStyleSheet(
+            f"color: #FF6B6B; font-size: {D.FONT_SIZE_XS}; padding: 0px;"
+        )
+        self._lbl_if_syntax_err.setVisible(False)
+        layout.addWidget(self._lbl_if_syntax_err)
+
+        # Barre visuelle des IFs sélectionnés
         self._if_range_bar = _IFRangeBar()
         layout.addWidget(self._if_range_bar)
 
-        self._n_ifs_total = 1
+        # Label d'info : "N IFs · M ch/IF"
+        self._lbl_if_info = QLabel("—")
+        self._lbl_if_info.setStyleSheet(
+            f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; padding: 0px;"
+        )
+        layout.addWidget(self._lbl_if_info)
 
-        self.spin_if_start.valueChanged.connect(self._on_if_spin_changed)
-        self.spin_if_end  .valueChanged.connect(self._on_if_spin_changed)
-        self._btn_ifs_all .clicked.connect(self._select_all_ifs)
+        # --- Sélecteur de canaux (restriction) ---
+        h_ch = QHBoxLayout()
+        h_ch.setSpacing(4)
+        h_ch.addWidget(QLabel("Channels:"))
+
+        self.input_chan_select = QLineEdit()
+        self.input_chan_select.setPlaceholderText("e.g. 2:5-10  or  20-25,47-65  or  nif*nchan")
+        self.input_chan_select.setEnabled(False)
+        self.input_chan_select.setStyleSheet(_QSS)
+
+        self._btn_ch_all = QPushButton("All")
+        self._btn_ch_all.setFixedWidth(36)
+        self._btn_ch_all.setFixedHeight(22)
+        self._btn_ch_all.setEnabled(False)
+        self._btn_ch_all.setStyleSheet(btn_all_style)
+        self._btn_ch_all.setToolTip("Sélectionner tous les canaux")
+
+        h_ch.addWidget(self.input_chan_select)
+        h_ch.addWidget(self._btn_ch_all)
+        layout.addLayout(h_ch)
+
+        self._lbl_chan_syntax_err = QLabel("")
+        self._lbl_chan_syntax_err.setStyleSheet(
+            f"color: #FF6B6B; font-size: {D.FONT_SIZE_XS}; padding: 0px;"
+        )
+        self._lbl_chan_syntax_err.setVisible(False)
+        layout.addWidget(self._lbl_chan_syntax_err)
+
+        self._lbl_chan_info = QLabel("—")
+        self._lbl_chan_info.setStyleSheet(
+            f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; padding: 0px;"
+        )
+        layout.addWidget(self._lbl_chan_info)
+
+        self._n_ifs_total = 1
+        self._n_chan_total = 0
+        self._if_selecting = False   # garde anti-ré-entrant
+        self._chan_selecting = False
+
+        # Un seul signal — editingFinished couvre Entrée ET perte de focus.
+        # returnPressed est volontairement absent pour éviter le double déclenchement.
+        self.input_if_select.editingFinished.connect(self._on_if_syntax_entered)
+        self._btn_ifs_all.clicked.connect(self._select_all_ifs)
+
+        self.input_chan_select.editingFinished.connect(self._on_chan_syntax_entered)
+        self._btn_ch_all.clicked.connect(self._select_all_channels)
 
         self.main_layout.addWidget(self.group_data_selection)
         # NB : combo_pol est géré exclusivement par MainWindow._change_polarization
         # (pas de double connexion ici pour éviter les doubles appels obs.select)
 
-    def set_if_range(self, n_ifs: int) -> None:
-        """
-        Configure le sélecteur pour *n_ifs* IFs disponibles et remet à all.
-
-        Parameters
-        ----------
-        n_ifs : int
-            Nombre total d'IFs dans l'observation (≥ 1).
-        """
+    def set_if_range(self, n_ifs: int, nchan: int = 0) -> None:
+        """Configure le sélecteur pour *n_ifs* IFs et remet la sélection à tous."""
         self._n_ifs_total = max(1, n_ifs)
-        for spin in (self.spin_if_start, self.spin_if_end):
-            spin.blockSignals(True)
-            spin.setMinimum(1)
-            spin.setMaximum(self._n_ifs_total)
-            spin.blockSignals(False)
-        self.spin_if_start.blockSignals(True)
-        self.spin_if_start.setValue(1)
-        self.spin_if_start.blockSignals(False)
-        self.spin_if_end.blockSignals(True)
-        self.spin_if_end.setValue(self._n_ifs_total)
-        self.spin_if_end.blockSignals(False)
+        self._n_chan_total = max(0, nchan)
+        self.input_if_select.blockSignals(True)
+        self.input_if_select.clear()
+        self.input_if_select.blockSignals(False)
+        self.input_chan_select.blockSignals(True)
+        self.input_chan_select.clear()
+        self.input_chan_select.blockSignals(False)
 
-        for w in (self.spin_if_start, self.spin_if_end, self._btn_ifs_all):
+        for w in (self.input_if_select, self._btn_ifs_all, self.input_chan_select, self._btn_ch_all):
             w.setEnabled(True)
-
+        self._lbl_if_syntax_err.setVisible(False)
+        self._lbl_chan_syntax_err.setVisible(False)
         self._if_range_bar.update_range(1, self._n_ifs_total, self._n_ifs_total)
 
-    def get_if_range(self) -> tuple[int, int]:
-        """Retourne ``(if_beg, if_end)`` prêt pour ``obs.select(ifs=...)``.
+        # Mettre à jour le label d'info et le placeholder avec les vraies valeurs
+        nc = max(1, nchan)
+        total = n_ifs * nc
+        if nchan > 1:
+            self._lbl_if_info.setText(
+                f"{n_ifs} IFs  ·  {nchan} ch/IF  ·  {total} canaux total"
+            )
+            self._lbl_chan_info.setText(
+                f"Syntaxe locale: IF:canal1-canal2  |  Syntaxe globale: 1..{total}  |  nif*nchan={total}"
+            )
+            self.input_if_select.setPlaceholderText("e.g. 1-3  or  1,3,5  (empty = all IFs)")
+        else:
+            self._lbl_if_info.setText(f"{n_ifs} IFs  ·  {total} canaux total")
+            self._lbl_chan_info.setText(
+                f"Syntaxe globale: 1..{total}  |  nif*nchan={total}"
+            )
+            self.input_if_select.setPlaceholderText("e.g. 1-3  or  1,3,5  (empty = all IFs)")
 
-        Retourne ``(1, 0)`` si tout est sélectionné (convention difmap = all).
-        """
-        beg = self.spin_if_start.value()
-        end = self.spin_if_end.value()
-        if beg == 1 and end == self._n_ifs_total:
-            return (1, 0)
-        return (beg, end)
+        # Tooltip : mapping IF → plage de canaux globaux (info), et tooltip IFs = IFs only
+        lines = ["Channels per IF (global indices):", ""]
+        for cif in range(1, n_ifs + 1):
+            bch = (cif - 1) * nc + 1
+            ech = cif * nc
+            if nc == 1:
+                lines.append(f"  IF {cif:2d}  →  ch {bch}")
+            else:
+                lines.append(f"  IF {cif:2d}  →  ch {bch} – {ech}")
+        lines += ["", "Global channels range: 1..nif*nchan"]
+        self._lbl_if_info.setToolTip("\n".join(lines))
+        self.input_if_select.setToolTip(
+            "IF selection:\n"
+            "  1-3     → IFs 1 to 3\n"
+            "  1,3,5   → IFs 1, 3 and 5\n"
+            "  Empty   → all IFs"
+        )
+
+        self.input_chan_select.setToolTip(
+            "Channels restriction:\n"
+            "  Local:  2:5-10   or   1,3:2-5\n"
+            "  Global: 20-25,47-65   or   20,25,47,65\n"
+            "  Vars: nif, nchan, nif*nchan\n"
+            "  Empty = all channels"
+        )
 
     def _select_all_ifs(self):
-        self.spin_if_start.blockSignals(True)
-        self.spin_if_end  .blockSignals(True)
-        self.spin_if_start.setValue(1)
-        self.spin_if_end  .setValue(self._n_ifs_total)
-        self.spin_if_start.blockSignals(False)
-        self.spin_if_end  .blockSignals(False)
+        self.input_if_select.blockSignals(True)
+        self.input_if_select.clear()
+        self.input_if_select.blockSignals(False)
+        self._lbl_if_syntax_err.setVisible(False)
         self._if_range_bar.update_range(1, self._n_ifs_total, self._n_ifs_total)
-        self.ifs_range_changed.emit(1, 0)
+        self.if_select_syntax_changed.emit("")
 
-    def _on_if_spin_changed(self):
-        beg = self.spin_if_start.value()
-        end = self.spin_if_end.value()
-        # Contrainte : beg ≤ end
-        if beg > end:
-            sender = self.sender()
-            if sender is self.spin_if_start:
-                self.spin_if_end.blockSignals(True)
-                self.spin_if_end.setValue(beg)
-                self.spin_if_end.blockSignals(False)
-                end = beg
-            else:
-                self.spin_if_start.blockSignals(True)
-                self.spin_if_start.setValue(end)
-                self.spin_if_start.blockSignals(False)
-                beg = end
-        self._if_range_bar.update_range(beg, end, self._n_ifs_total)
-        if_beg, if_end = (1, 0) if (beg == 1 and end == self._n_ifs_total) else (beg, end)
-        self.ifs_range_changed.emit(if_beg, if_end)
+    def _select_all_channels(self):
+        self.input_chan_select.blockSignals(True)
+        self.input_chan_select.clear()
+        self.input_chan_select.blockSignals(False)
+        self._lbl_chan_syntax_err.setVisible(False)
+        self.chan_select_syntax_changed.emit("")
+
+    def _on_if_syntax_entered(self):
+        if self._if_selecting:
+            return
+        self._if_selecting = True
+        try:
+            text = self.input_if_select.text().strip()
+            self._lbl_if_syntax_err.setVisible(False)
+            self.if_select_syntax_changed.emit(text)
+        finally:
+            self._if_selecting = False
+
+    def _on_chan_syntax_entered(self):
+        if self._chan_selecting:
+            return
+        self._chan_selecting = True
+        try:
+            text = self.input_chan_select.text().strip()
+            self._lbl_chan_syntax_err.setVisible(False)
+            self.chan_select_syntax_changed.emit(text)
+        finally:
+            self._chan_selecting = False
+
+    def update_if_bar(self, selected_ifs: list[int]) -> None:
+        """Met à jour la barre visuelle avec la liste (1-indexed) des IFs sélectionnés."""
+        self._if_range_bar.update_list(selected_ifs, self._n_ifs_total)
+
+    def show_if_syntax_error(self, msg: str) -> None:
+        self._lbl_if_syntax_err.setText(msg)
+        self._lbl_if_syntax_err.setVisible(True)
+
+    def show_chan_syntax_error(self, msg: str) -> None:
+        self._lbl_chan_syntax_err.setText(msg)
+        self._lbl_chan_syntax_err.setVisible(True)
         
     def _build_telescope_focus(self):
         """

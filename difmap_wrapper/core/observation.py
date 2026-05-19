@@ -203,23 +203,21 @@ class Observation:
         logger.info("Nombre de sous-réseaux (Subarrays) : %d", res)
         return res
 
-    def select(self, pol: Polarization = "I", ifs: tuple = (1, 0), channels: tuple = (1, 0)) -> str:
+    def select(self, pol: Polarization = "I",
+               ifs: "tuple | list" = (1, 0),
+               channels: tuple = (1, 0)) -> str:
         """
-        Sélectionne la polarisation, les IFs et les canaux à analyser.
-
-        Cette commande doit être appelée après ``session.observe()`` et avant
-        tout accès aux données. Elle remet à zéro le masque de flagging.
+        Sélectionne la polarisation et les IFs à analyser.
 
         Parameters
         ----------
         pol : Polarization, optional
-            Polarisation souhaitée parmi ``"I"``, ``"Q"``, ``"U"``, ``"V"``,
-            ``"RR"``, ``"LL"``, ``"RL"``, ``"LR"``, ``"XX"``, ``"YY"``,
-            ``"XY"``, ``"YX"``, ``"PI"`` (pseudo-I = mains parallèles moyennées).
-            Si la polarisation demandée n'existe pas dans le fichier, le moteur
-            bascule sur la plus proche disponible. Par défaut ``"I"``.
-        ifs : tuple of int, optional
-            ``(premier_if, dernier_if)``. ``0`` signifie "jusqu'au dernier".
+            Polarisation souhaitée. Par défaut ``"I"``.
+        ifs : tuple or list of int, optional
+            - ``(premier_if, dernier_if)`` : range contigu (0 = dernier IF).
+              Ex : ``(1, 0)`` = tous, ``(2, 3)`` = IFs 2 et 3.
+            - ``[1, 3, 4]`` : liste d'IFs non-contigus (1-indexed).
+              Ex : ``[1, 3]`` = IF 1 et IF 3 seulement.
             Par défaut ``(1, 0)`` = tous les IFs.
         channels : tuple of int, optional
             ``(premier_canal, dernier_canal)``. Par défaut ``(1, 0)`` = tous.
@@ -227,29 +225,31 @@ class Observation:
         Returns
         -------
         str
-            La polarisation réellement sélectionnée par le moteur C
-            (peut différer de ``pol`` si elle n'était pas disponible).
-
-        Raises
-        ------
-        DifmapStateError
-            Si aucune observation n'est chargée.
-        DifmapError
-            Si la sélection échoue côté moteur C.
+            La polarisation réellement sélectionnée par le moteur C.
 
         Examples
         --------
         >>> session.obs.select(pol="RR")
-        'RR'
-        >>> session.obs.select(pol="I", ifs=(1, 2))
-        'I'
+        >>> session.obs.select(pol="I", ifs=(2, 3))   # IFs 2→3
+        >>> session.obs.select(pol="I", ifs=[1, 3])   # IFs 1 et 3
         """
         if not self._session.uv_loaded:
             raise DifmapStateError("Aucune observation chargée.")
-        
+
         pol = pol.upper()
-        if self._native.select(pol, ifs[0], ifs[1], channels[0], channels[1]) != 0:
-            raise DifmapError(f"Échec de la sélection (Pol: {pol})")
+        # Détection : liste non-contiguë vs tuple range
+        if isinstance(ifs, (list, tuple)) and len(ifs) >= 2 and isinstance(ifs[0], (list, tuple)):
+            # Format [(beg1,end1),(beg2,end2),...] non supporté ici — à aplatir
+            raise ValueError("Utilisez une liste plate d'IFs : [1, 3, 4]")
+
+        is_list = isinstance(ifs, list)
+
+        if is_list:
+            if self._native.select_ifs(pol, ifs) != 0:
+                raise DifmapError(f"Échec de la sélection IFs {ifs} (Pol: {pol})")
+        else:
+            if self._native.select(pol, ifs[0], ifs[1], channels[0], channels[1]) != 0:
+                raise DifmapError(f"Échec de la sélection (Pol: {pol})")
 
         # Réinitialisation du masque (comme on l'a corrigé tout à l'heure)
         self.masque_flagges = None
@@ -271,6 +271,118 @@ class Observation:
             )
             
         return pol_reelle # On retourne la vraie valeur à l'interface
+
+    def get_nchan(self) -> int:
+        """Retourne le nombre de canaux par IF."""
+        if not self._session.uv_loaded:
+            return 0
+        return self._native.get_nchan()
+
+    def select_channels(self, pol: str, pairs: list) -> None:
+        """
+        Sélectionne des canaux par paires (index global, 1-indexed).
+
+        Reproduit exactement ``uvsel_fn`` de difmap_src : construit un ``Chlist``
+        et appelle ``ob_select``.
+
+        Parameters
+        ----------
+        pol : str
+            Polarisation cible (ex: ``"I"``, ``"RR"``).
+        pairs : list of (int, int)
+            Paires ``(bchan, echan)`` en index global ``cif * nchan + lchan``.
+            Liste vide = tous les canaux / IFs.
+
+        Examples
+        --------
+        >>> # Sélectionner IF 1 entier (nchan=32) :
+        >>> session.obs.select_channels("I", [(1, 32)])
+        >>> # IF 1 et IF 3 (canaux 1–32 et 65–96) :
+        >>> session.obs.select_channels("I", [(1, 32), (65, 96)])
+        """
+        if not self._session.uv_loaded:
+            raise DifmapStateError("Aucune observation chargée.")
+        if self._native.select_channels(pol.upper(), pairs) != 0:
+            raise DifmapError(f"Échec de select_channels (Pol: {pol}, pairs: {pairs})")
+        self.masque_flagges = None
+        self.historique_coupes.clear()
+        self.invalidate_cache()
+
+    @staticmethod
+    def parse_select_syntax(text: str, nchan: int, nif: int) -> list:
+        """
+        Syntaxe originale difmap : indices de canaux globaux, 1-indexed, séparés
+        par des virgules et pris **deux par deux** comme paires (bchan, echan).
+
+        Un argument impair = canal unique (bchan == echan), comme difmap.
+        Chaîne vide = sélectionner tout (retourne []).
+
+        Exemples (nchan=64, nif=3 → total 192 canaux) :
+          "20, 25, 47, 65"  → [(20,25), (47,65)]
+          "50, 70"          → [(50,70)]  ← s'étend sur IF1 et IF2 automatiquement
+          "10"              → [(10,10)]  ← canal unique
+          ""                → []         ← tous les canaux
+
+        Expressions supportées dans les valeurs :
+          ``nif``           → nombre d'IFs
+          ``nchan``         → canaux par IF
+          ``nif*nchan``     → dernier canal global
+        """
+        text = text.strip()
+        if not text:
+            return []
+
+        total = max(1, nif) * max(1, nchan)
+
+        def _eval(tok: str) -> int:
+            tok = tok.strip()
+            # Variables simples supportées
+            tok = tok.replace("nif*nchan", str(total))
+            tok = tok.replace("nif",   str(nif))
+            tok = tok.replace("nchan", str(nchan))
+            try:
+                v = int(tok)
+            except ValueError:
+                raise ValueError(f"Valeur de canal invalide : '{tok}'")
+            return v
+
+        raw_tokens = [t.strip() for t in text.split(",") if t.strip()]
+        nums: list[int] = []
+        for tok in raw_tokens:
+            if "-" in tok:
+                a_s, b_s = [p.strip() for p in tok.split("-", 1)]
+                nums.append(_eval(a_s))
+                nums.append(_eval(b_s))
+            else:
+                nums.append(_eval(tok))
+        if not nums:
+            return []
+
+        pairs = []
+        i = 0
+        while i < len(nums):
+            bchan = nums[i]
+            echan = nums[i + 1] if i + 1 < len(nums) else bchan  # impair → canal unique
+            if bchan < 1 or echan < 1 or bchan > total or echan > total:
+                raise ValueError(
+                    f"Canal {bchan}..{echan} hors plage [1, {total}]"
+                )
+            pairs.append((bchan, echan))
+            i += 2
+
+        return pairs
+
+    @staticmethod
+    def ifs_from_pairs(pairs: list, nchan: int, nif: int) -> list[int]:
+        """Retourne la liste 1-indexed des IFs couverts par des paires globales."""
+        nchan = max(1, nchan)
+        ifs = set()
+        for bchan, echan in pairs:
+            cif_lo = (bchan - 1) // nchan + 1
+            cif_hi = (echan - 1) // nchan + 1
+            for cif in range(cif_lo, min(cif_hi, nif) + 1):
+                ifs.add(cif)
+        return sorted(ifs)
 
     def set_if_range(self, if_beg: int, if_end: int) -> None:
         """

@@ -40,6 +40,10 @@ int native_nsub(void);
 int native_select(const char* pol, int if_beg, int if_end, int ch_beg, int ch_end);
 int native_set_if_range(int if_beg, int if_end);
 int native_get_nif(void);
+int native_select_ifs(const char* pol, const int* if_list, int n);
+int native_set_if_mask(const int* if_list, int n);
+int native_get_nchan(void);
+int native_select_channels(const char* pol, const int* bchans, const int* echans, int n_pairs);
 const char *native_get_header_text(void);
 
  /* Paramètres d'imagerie complets*/

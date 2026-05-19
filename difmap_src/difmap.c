@@ -7806,9 +7806,34 @@ const char* get_native_telescope_name(int isub, int itel) {
     return sub->tel[itel].name;
 }
 
-/* Plage d'IFs sélectionnée (0-indexed, g_if_end=-1 = dernier IF disponible) */
-static int g_if_beg = 0;
-static int g_if_end = -1;
+/* ------------------------------------------------------------------ */
+/* Masque de sélection d'IFs (0-indexed).                             */
+/* g_if_mask[i] = 1 → IF i visible ; = 0 → exclu.                   */
+/* ------------------------------------------------------------------ */
+#define NATIVE_MAX_IF 64
+static int g_if_mask[NATIVE_MAX_IF];
+
+/* Remplit le masque pour un range contigu 1-indexed (0 = dernier IF). */
+static void _set_if_mask_range(int if_beg_1, int if_end_1) {
+    int i;
+    int nif = (vlbob != NULL) ? vlbob->nif : NATIVE_MAX_IF;
+    int lo = (if_beg_1 > 0) ? if_beg_1 - 1 : 0;
+    int hi = (if_end_1 > 0) ? if_end_1 - 1 : nif - 1;
+    if (hi >= NATIVE_MAX_IF) hi = NATIVE_MAX_IF - 1;
+    for (i = 0; i < NATIVE_MAX_IF; i++)
+        g_if_mask[i] = (i >= lo && i <= hi) ? 1 : 0;
+}
+
+/* Remplit le masque à partir d'une liste d'IFs 1-indexed. */
+static void _set_if_mask_list(const int* if_list, int n) {
+    int i;
+    for (i = 0; i < NATIVE_MAX_IF; i++) g_if_mask[i] = 0;
+    for (i = 0; i < n; i++) {
+        int idx = if_list[i] - 1;   /* 1-indexed → 0-indexed */
+        if (idx >= 0 && idx < NATIVE_MAX_IF)
+            g_if_mask[idx] = 1;
+    }
+}
 
 int native_observe(const char* filepath) {
     obs_end();
@@ -7817,7 +7842,7 @@ int native_observe(const char* filepath) {
     vlbspec = new_Specattr(vlbob);
     if(!vlbspec) { obs_end(); return -1; }
     invpar = invdef; respar = resdef; slfpar = slfdef;
-    g_if_beg = 0; g_if_end = -1;  /* reset : tous les IFs visibles */
+    _set_if_mask_range(1, 0);   /* reset : tous les IFs visibles */
     return 0;
 }
 
@@ -7831,26 +7856,42 @@ int native_select(const char* pol, int if_beg, int if_end, int ch_beg, int ch_en
     Stokes stokes = Stokes_id((char*)pol);
     if (stokes == NO_POL) return -1;
     if (vlbmap) vlbmap->domap = vlbmap->dobeam = MAP_IS_STALE;
-    /*
-     * Changement de polarisation = re-sélection complète.
-     * Les paramètres IF/channel sont acceptés mais on remet la plage IF
-     * aux valeurs demandées (1-indexed → 0-indexed, 0 = dernier).
-     */
-    g_if_beg = (if_beg > 0) ? if_beg - 1 : 0;
-    g_if_end = (if_end > 0) ? if_end - 1 : -1;
+    _set_if_mask_range(if_beg, if_end);
     if (ob_select(vlbob, 0, NULL, stokes)) return -1;
     return 0;
 }
 
 /*
- * Met à jour uniquement la plage d'IFs visible sans relire le fichier scratch.
- * À utiliser quand seul le filtre IF change (pas la polarisation).
- * Beaucoup plus rapide que native_select : pas d'ob_select(), pas d'I/O disque.
+ * Met à jour uniquement la plage d'IFs visible (range contigu) sans
+ * relire le fichier scratch.
  */
 int native_set_if_range(int if_beg, int if_end) {
     if (vlbob == NULL) return -1;
-    g_if_beg = (if_beg > 0) ? if_beg - 1 : 0;
-    g_if_end = (if_end > 0) ? if_end - 1 : -1;
+    _set_if_mask_range(if_beg, if_end);
+    return 0;
+}
+
+/*
+ * Sélectionne une liste d'IFs non-contiguë et change la polarisation.
+ * if_list : tableau d'indices IF 1-indexed, longueur n.
+ */
+int native_select_ifs(const char* pol, const int* if_list, int n) {
+    if (vlbob == NULL) return -1;
+    Stokes stokes = Stokes_id((char*)pol);
+    if (stokes == NO_POL) return -1;
+    if (vlbmap) vlbmap->domap = vlbmap->dobeam = MAP_IS_STALE;
+    _set_if_mask_list(if_list, n);
+    if (ob_select(vlbob, 0, NULL, stokes)) return -1;
+    return 0;
+}
+
+/*
+ * Met à jour le masque d'IFs sans changer la polarisation ni relire le scratch.
+ * if_list : tableau d'indices IF 1-indexed, longueur n.
+ */
+int native_set_if_mask(const int* if_list, int n) {
+    if (vlbob == NULL) return -1;
+    _set_if_mask_list(if_list, n);
     return 0;
 }
 
@@ -7858,6 +7899,86 @@ int native_set_if_range(int if_beg, int if_end) {
 int native_get_nif(void) {
     if (vlbob == NULL) return 0;
     return vlbob->nif;
+}
+
+/* Retourne le nombre de canaux par IF. */
+int native_get_nchan(void) {
+    if (vlbob == NULL) return 0;
+    return vlbob->nchan;
+}
+
+/*
+ * Reproduction exacte de uvsel_fn : sélectionne pol + paires de canaux globaux.
+ * bchans/echans : tableaux de bornes 0-indexed (après conversion 1→0).
+ * n_pairs       : nombre de paires.
+ *
+ * Synchronise aussi g_if_mask pour accélérer l_extract_uv.
+ */
+int native_select_channels(const char* pol,
+                            const int* bchans, const int* echans,
+                            int n_pairs) {
+    if (vlbob == NULL) return -1;
+    Stokes stokes = Stokes_id((char*)pol);
+    if (stokes == NO_POL) return -1;
+    if (vlbmap) vlbmap->domap = vlbmap->dobeam = MAP_IS_STALE;
+
+    int i, j;
+    int nchan = (vlbob->nchan > 0) ? vlbob->nchan : 1;
+
+    if (n_pairs == 0) {
+        /* Tout sélectionner : on construit un Chlist couvrant tous les canaux.
+         * ob_select(NULL) réutilise le stream.cl précédent (il ne remet pas à zéro),
+         * donc NULL ne suffit pas après une sélection partielle. */
+        _set_if_mask_range(1, 0);
+        int total_all = vlbob->nif * ((vlbob->nchan > 0) ? vlbob->nchan : 1);
+        Chlist *cl_all = new_Chlist();
+        if (cl_all == NULL) return -1;
+        if (add_crange(cl_all, 0, total_all - 1)) {
+            del_Chlist(cl_all);
+            return -1;
+        }
+        if (ob_select(vlbob, 0, cl_all, stokes)) {
+            del_Chlist(cl_all);
+            return -1;
+        }
+        return 0;
+    }
+
+    /* Construire la Chlist.
+     * bchans/echans sont 1-indexed (convention difmap côté utilisateur) ;
+     * add_crange attend du 0-indexed, comme uvsel_fn fait bchan-1 en interne. */
+    int total_chans = vlbob->nif * nchan;
+    Chlist *cl = new_Chlist();
+    if (cl == NULL) return -1;
+    for (i = 0; i < n_pairs; i++) {
+        int bc = bchans[i] - 1;
+        int ec = echans[i] - 1;
+        if (bc < 0 || ec >= total_chans || bc > ec) {
+            del_Chlist(cl);
+            return -1;
+        }
+        if (add_crange(cl, bc, ec)) {
+            del_Chlist(cl);
+            return -1;
+        }
+    }
+
+    /* Synchroniser g_if_mask d'après les IFs couverts (indices 0-based après -1) */
+    for (j = 0; j < NATIVE_MAX_IF; j++) g_if_mask[j] = 0;
+    for (i = 0; i < n_pairs; i++) {
+        int cif_lo = (bchans[i] - 1) / nchan;
+        int cif_hi = (echans[i] - 1) / nchan;
+        for (j = cif_lo; j <= cif_hi && j < NATIVE_MAX_IF; j++)
+            g_if_mask[j] = 1;
+    }
+
+    /* ob_select prend ownership du Chlist et le stocke dans vlbob->stream.cl.
+     * Ne pas appeler del_Chlist sur le chemin de succès (pattern original difmap). */
+    if (ob_select(vlbob, 0, cl, stokes)) {
+        del_Chlist(cl);
+        return -1;
+    }
+    return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -8396,11 +8517,8 @@ float* get_native_mod_phs(void) { return flat_modphs; }
 int l_extract_uv(void) {
     int isub, itime, ibase, cif;
     int count = 0;
-    int eff_if_end;  /* borne haute effective (0-indexed) */
 
     if(vlbob == NULL) return -1;
-
-    eff_if_end = (g_if_end >= 0) ? g_if_end : vlbob->nif - 1;
 
     /* Establish tentative model components into the UV plane (like native 'keep').
      * mergemod() calls fixmod() which writes vis->modamp/vis->modphs for every
@@ -8411,7 +8529,7 @@ int l_extract_uv(void) {
 
     /* 1. COMPTAGE */
     for(cif=0; (cif=nextIF(vlbob, cif, 1, 1)) >= 0; cif++) {
-        if(cif < g_if_beg || cif > eff_if_end) continue;
+        if(cif >= NATIVE_MAX_IF || !g_if_mask[cif]) continue;
         if(getIF(vlbob, cif)) continue;
         for(isub=0; isub < vlbob->nsub; isub++) {
             Subarray *sub = &vlbob->sub[isub];
@@ -8457,7 +8575,7 @@ int l_extract_uv(void) {
     /* 3. REMPLISSAGE */
     int index = 0;
     for(cif=0; (cif=nextIF(vlbob, cif, 1, 1)) >= 0; cif++) {
-        if(cif < g_if_beg || cif > eff_if_end) continue;
+        if(cif >= NATIVE_MAX_IF || !g_if_mask[cif]) continue;
         getIF(vlbob, cif);
         double if_freq = vlbob->ifs[cif].freq; 
 

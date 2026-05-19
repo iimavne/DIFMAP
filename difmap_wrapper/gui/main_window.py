@@ -191,6 +191,9 @@ class MainWindow(QMainWindow):
         self._last_mapsize_params = None   # (mapsize, cellsize) last sent to C
         self._last_uvtaper_params = None   # (taper_amp, taper_val) last sent to C
 
+        self._selected_ifs: list[int] | None = None
+        self._channels_text: str = ""
+
         # 4. Signaux
         self._connect_signals()
 
@@ -274,7 +277,8 @@ class MainWindow(QMainWindow):
             # Configurer le sélecteur d'IFs (obs.nif évite de scanner data['if_no'])
             n_ifs = self.session.obs.nif
             if n_ifs:
-                self.control_panel.set_if_range(n_ifs)
+                nchan = self.session.obs.get_nchan()
+                self.control_panel.set_if_range(n_ifs, nchan=nchan)
 
             # Caler les sliders UV et Radplot sur la plage exacte des données
             try:
@@ -515,6 +519,11 @@ class MainWindow(QMainWindow):
         self.control_panel.show_windows_changed.connect(self._on_show_windows_changed)
         self.control_panel.combo_pol.currentTextChanged.connect(self._change_polarization)
         self.control_panel.ifs_range_changed.connect(self._on_ifs_range_changed)
+        self.control_panel.if_select_syntax_changed.connect(self._on_if_select_syntax)
+        try:
+            self.control_panel.chan_select_syntax_changed.connect(self._on_chan_select_syntax)
+        except Exception:
+            pass
 
         # Auto-refresh des cartes quand les paramètres d'affichage changent.
         # Ne recalcul pas la carte (pas de CLEAN), seulement un re-render.
@@ -1712,8 +1721,9 @@ class MainWindow(QMainWindow):
                 self._log_event(f"No data for {actual_pol}", level='warning')
                 return
 
-            # ob_select remet g_if_beg=0/g_if_end=-1 → resync spinners
-            self.control_panel.set_if_range(self.session.obs.nif)
+            # ob_select remet g_if_beg=0/g_if_end=-1 → resync input
+            nchan = self.session.obs.get_nchan()
+            self.control_panel.set_if_range(self.session.obs.nif, nchan=nchan)
 
             base_title = self.windowTitle().split(" [")[0]
             self.setWindowTitle(f"{base_title} [{actual_pol}]")
@@ -1742,6 +1752,205 @@ class MainWindow(QMainWindow):
             )
         except Exception as e:
             self.log_console.log(f"IF selection error: {e}")
+
+    def _on_if_select_syntax(self, text: str) -> None:
+        """Parse la syntaxe IFs et applique (via intersection avec Channels)."""
+        if self.data is None or not self.plot_widget:
+            return
+        ctrl = self.control_panel
+        try:
+            nif = self.session.obs.nif
+            ifs = self._parse_ifs_syntax(text, nif=nif)
+            self._selected_ifs = ifs if ifs else None
+            ctrl.update_if_bar(ifs if ifs else list(range(1, nif + 1)))
+            self._apply_stream_selection()
+        except ValueError as e:
+            ctrl.show_if_syntax_error(str(e))
+            self.log_console.log(f"IF syntax error: {e}")
+        except Exception as e:
+            self.log_console.log(f"IF selection error: {e}")
+
+    def _on_chan_select_syntax(self, text: str) -> None:
+        """Parse la syntaxe Channels et applique (via intersection avec IFs)."""
+        if self.data is None or not self.plot_widget:
+            return
+        ctrl = self.control_panel
+        try:
+            self._channels_text = text.strip()
+            ctrl._lbl_chan_syntax_err.setVisible(False)
+            self._apply_stream_selection()
+        except ValueError as e:
+            ctrl.show_chan_syntax_error(str(e))
+            self.log_console.log(f"Channel syntax error: {e}")
+        except Exception as e:
+            self.log_console.log(f"Channel selection error: {e}")
+
+    @staticmethod
+    def _merge_pairs(pairs: list[tuple[int, int]]) -> list[tuple[int, int]]:
+        if not pairs:
+            return []
+        norm = []
+        for a, b in pairs:
+            a2, b2 = (a, b) if a <= b else (b, a)
+            norm.append((a2, b2))
+        norm.sort(key=lambda t: (t[0], t[1]))
+        out: list[tuple[int, int]] = [norm[0]]
+        for a, b in norm[1:]:
+            la, lb = out[-1]
+            if a <= lb + 1:
+                out[-1] = (la, max(lb, b))
+            else:
+                out.append((a, b))
+        return out
+
+    @staticmethod
+    def _intersect_pairs(a: list[tuple[int, int]], b: list[tuple[int, int]]) -> list[tuple[int, int]]:
+        if not a or not b:
+            return []
+        a = MainWindow._merge_pairs(a)
+        b = MainWindow._merge_pairs(b)
+        i = j = 0
+        out: list[tuple[int, int]] = []
+        while i < len(a) and j < len(b):
+            a1, a2 = a[i]
+            b1, b2 = b[j]
+            lo = max(a1, b1)
+            hi = min(a2, b2)
+            if lo <= hi:
+                out.append((lo, hi))
+            if a2 < b2:
+                i += 1
+            else:
+                j += 1
+        return MainWindow._merge_pairs(out)
+
+    @staticmethod
+    def _parse_ifs_syntax(text: str, nif: int) -> list[int]:
+        text = (text or "").strip()
+        if not text:
+            return []
+        items = [t.strip() for t in text.split(",") if t.strip()]
+        out: set[int] = set()
+        for it in items:
+            if "-" in it:
+                a_s, b_s = [p.strip() for p in it.split("-", 1)]
+                a = int(a_s)
+                b = int(b_s)
+                if a <= 0 or b <= 0:
+                    raise ValueError("IF invalide (doit être >= 1)")
+                lo, hi = (a, b) if a <= b else (b, a)
+                for cif in range(lo, hi + 1):
+                    if 1 <= cif <= nif:
+                        out.add(cif)
+            else:
+                v = int(it)
+                if v < 1 or v > nif:
+                    raise ValueError(f"IF {v} hors plage [1, {nif}]")
+                out.add(v)
+        return sorted(out)
+
+    @staticmethod
+    def _parse_local_channels(text: str, nchan: int, nif: int) -> list[tuple[int, int]]:
+        text = (text or "").strip()
+        if not text:
+            return []
+        nchan = max(1, nchan)
+        total = max(1, nif) * nchan
+
+        def _eval_local(tok: str) -> int:
+            tok = tok.strip().lower()
+            tok = tok.replace("nchan", str(nchan))
+            tok = tok.replace("nif*nchan", str(total))
+            tok = tok.replace("nif", str(nif))
+            try:
+                return int(tok)
+            except ValueError:
+                raise ValueError(f"Valeur de canal invalide : '{tok}'")
+
+        parts = [p.strip() for p in text.split() if p.strip()]
+        if not parts:
+            parts = [p.strip() for p in text.split(",") if p.strip()]
+
+        pairs: list[tuple[int, int]] = []
+        for part in parts:
+            if ":" not in part:
+                raise ValueError("Syntaxe locale attendue: IF:ca-cb (ex: 2:5-10)")
+            if_part, rng_part = [p.strip() for p in part.split(":", 1)]
+
+            ifs = MainWindow._parse_ifs_syntax(if_part, nif=nif)
+            if not ifs:
+                raise ValueError("Liste d'IFs vide avant ':'")
+
+            if "-" in rng_part:
+                a_s, b_s = [p.strip() for p in rng_part.split("-", 1)]
+                ca = _eval_local(a_s)
+                cb = _eval_local(b_s)
+            else:
+                ca = _eval_local(rng_part)
+                cb = ca
+
+            if ca < 1 or cb < 1 or ca > nchan or cb > nchan:
+                raise ValueError(f"Canal local {ca}..{cb} hors plage [1, {nchan}]")
+            lo, hi = (ca, cb) if ca <= cb else (cb, ca)
+
+            for cif in ifs:
+                bglob = (cif - 1) * nchan + lo
+                eglob = (cif - 1) * nchan + hi
+                if 1 <= bglob <= total and 1 <= eglob <= total:
+                    pairs.append((bglob, eglob))
+
+        return MainWindow._merge_pairs(pairs)
+
+    def _apply_stream_selection(self) -> None:
+        from ..core.observation import Observation
+
+        ctrl = self.control_panel
+        try:
+            nchan = self.session.obs.get_nchan()
+            nif = self.session.obs.nif
+            pol = ctrl.combo_pol.currentText()
+
+            ifs = self._selected_ifs or list(range(1, nif + 1))
+            nchan = max(1, nchan)
+            if_pairs = [( (cif - 1) * nchan + 1, cif * nchan ) for cif in ifs]
+
+            ch_text = (self._channels_text or "").strip()
+            if not ch_text:
+                final_pairs = self._merge_pairs(if_pairs)
+            else:
+                if ":" in ch_text:
+                    ch_pairs = self._parse_local_channels(ch_text, nchan=nchan, nif=nif)
+                else:
+                    ch_pairs = Observation.parse_select_syntax(ch_text, nchan=nchan, nif=nif)
+
+                if not ch_pairs:
+                    final_pairs = self._merge_pairs(if_pairs)
+                else:
+                    final_pairs = self._intersect_pairs(if_pairs, ch_pairs)
+
+                if ch_pairs and not final_pairs:
+                    raise ValueError(
+                        "Aucune donnée ne correspond à la combinaison IFs/Channels (intersection vide)."
+                    )
+
+            self.session.obs.select_channels(pol, final_pairs)
+
+            selected_ifs = Observation.ifs_from_pairs(final_pairs, nchan, nif) if final_pairs else list(range(1, nif + 1))
+            ctrl.update_if_bar(selected_ifs)
+
+            self.data = self.session.obs.get_data()
+            self._reload_all_plots()
+            n = len(self.data.get('u', []))
+            if_str = f"IFs {','.join(map(str, (self._selected_ifs or [])))}" if self._selected_ifs else f"all {nif} IFs"
+            ch_str = f"channels '{ch_text}'" if ch_text else "all channels"
+            self.log_console.log(f"select {pol} — {if_str}, {ch_str} → {len(selected_ifs)} IF(s), {n:,} vis.")
+        except ValueError as e:
+            if (self._channels_text or "").strip():
+                try:
+                    ctrl.show_chan_syntax_error(str(e))
+                except Exception:
+                    pass
+            raise
 
     def _toggle_terminal(self):
         """Bascule la visibilité du panneau de logs (console terminale droite)."""

@@ -27,6 +27,45 @@ def get_nif() -> int:
     """Retourne le nombre total d'IFs dans l'observation courante."""
     return cdifmap.native_get_nif()
 
+def select_ifs(pol: str, if_list: list) -> int:
+    """Sélectionne une liste d'IFs non-contigus (1-indexed) et change la polarisation."""
+    cdef bytes pol_bytes = pol.encode('utf-8')
+    cdef int n = len(if_list)
+    cdef int[64] buf
+    cdef int i
+    for i in range(n):
+        buf[i] = if_list[i]
+    return cdifmap.native_select_ifs(pol_bytes, buf, n)
+
+def set_if_mask(if_list: list) -> int:
+    """Met à jour le masque d'IFs sans changer la pol ni relire le scratch."""
+    cdef int n = len(if_list)
+    cdef int[64] buf
+    cdef int i
+    for i in range(n):
+        buf[i] = if_list[i]
+    return cdifmap.native_set_if_mask(buf, n)
+
+def get_nchan() -> int:
+    """Retourne le nombre de canaux par IF (vlbob->nchan)."""
+    return cdifmap.native_get_nchan()
+
+def select_channels(pol: str, pairs: list) -> int:
+    """Sélectionne des canaux par paires en index global (cif * nchan + lchan, 1-indexed).
+
+    pairs : [(bchan1, echan1), ...] — liste de paires (début, fin) en index global.
+            Liste vide = tous les canaux.
+    """
+    cdef bytes pol_bytes = pol.encode('utf-8')
+    cdef int n = len(pairs)
+    cdef int[64] bchans_buf
+    cdef int[64] echans_buf
+    cdef int i
+    for i in range(n):
+        bchans_buf[i] = pairs[i][0]
+        echans_buf[i] = pairs[i][1]
+    return cdifmap.native_select_channels(pol_bytes, bchans_buf, echans_buf, n)
+
 def get_header_text() -> str:
     """Retourne le header complet de l'observation (équivalent commande 'header')."""
     cdef const char *raw = cdifmap.native_get_header_text()
