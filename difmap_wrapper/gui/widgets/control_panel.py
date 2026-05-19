@@ -340,6 +340,12 @@ class ControlPanel(QDockWidget):
         self._slider_u.set_data_range(umin, umax)
         self._slider_v.set_data_range(vmin, vmax)
 
+    def set_rad_data_range(self, uv_max: float, amp_max: float) -> None:
+        """Cale les sliders Radplot sur la plage réelle des données."""
+        self._slider_rad_uv.set_data_range(0.0, uv_max)
+        self._slider_rad_amp.set_data_range(0.0, amp_max)
+        # Phase : toujours −180 / +180
+
     def set_available_polarizations(self, polarizations: list[str], current: str | None = None) -> None:
         """Met à jour le combo avec les seules polarisations proposées par le fichier."""
         values = [pol for pol in polarizations if pol]
@@ -728,52 +734,15 @@ class ControlPanel(QDockWidget):
         _rad_sec.addLayout(h_rad_hdr)
 
         self._rad_limit_box = QWidget()
-        grid_rad = QVBoxLayout(self._rad_limit_box)
-        grid_rad.setContentsMargins(0, 4, 0, 0)
-        grid_rad.setSpacing(4)
+        _rlb = QVBoxLayout(self._rad_limit_box)
+        _rlb.setContentsMargins(0, 4, 0, 0)
+        _rlb.setSpacing(6)
 
-        def _make_rad_row(lbl_a, lbl_b):
-            row = QHBoxLayout()
-            row.setSpacing(6)
-            la = QLabel(lbl_a); la.setFixedWidth(40)
-            ia = QLineEdit(); ia.setPlaceholderText("auto"); ia.setStyleSheet(field_style)
-            lb = QLabel(lbl_b); lb.setFixedWidth(40)
-            ib = QLineEdit(); ib.setPlaceholderText("auto"); ib.setStyleSheet(field_style)
-            row.addWidget(la); row.addWidget(ia)
-            row.addWidget(lb); row.addWidget(ib)
-            grid_rad.addLayout(row)
-            return ia, ib
+        _rad_sliders: list = []
+        _rad_fields_list: list = []
 
-        lbl_uvr = QLabel("UV Radius (Mλ)")
-        lbl_uvr.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
-        grid_rad.addWidget(lbl_uvr)
-        self.input_rad_uvmin, self.input_rad_uvmax = _make_rad_row("UV min", "UV max")
-
-        lbl_amp = QLabel("Amplitude (Jy)")
-        lbl_amp.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
-        grid_rad.addWidget(lbl_amp)
-        self.input_rad_ampmin, self.input_rad_ampmax = _make_rad_row("Amp min", "Amp max")
-
-        lbl_phs = QLabel("Phase (°)")
-        lbl_phs.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
-        grid_rad.addWidget(lbl_phs)
-        self.input_rad_phsmin, self.input_rad_phsmax = _make_rad_row("Phs min", "Phs max")
-
-        _rad_sec.addWidget(self._rad_limit_box)
-        layout.addWidget(self._rad_limits_section)
-
-        _rad_fields = (self.input_rad_uvmin, self.input_rad_uvmax,
-                       self.input_rad_ampmin, self.input_rad_ampmax,
-                       self.input_rad_phsmin, self.input_rad_phsmax)
-
-        for w in _rad_fields:
-            w.setEnabled(False)
-
-        def _on_rad_toggle(checked):
-            self.chk_rad_limit.setText("ON" if checked else "OFF")
-            for w in _rad_fields:
-                w.setEnabled(checked)
-            self._emit_rad_limits()
+        def _fmt_r(v: float) -> str:
+            return f"{v:.2f}" if v != int(v) else str(int(v))
 
         def _parse_rad(field):
             t = field.text().strip()
@@ -781,6 +750,67 @@ class ControlPanel(QDockWidget):
                 return float(t) if t and t.lower() != "auto" else None
             except ValueError:
                 return None
+
+        def _make_rad_block(parent_layout, title: str, sl_min: float, sl_max: float,
+                            tip_min: str, tip_max: str, invert: bool = False):
+            """Crée label + RangeSlider + champs min/max. Retourne (slider, inp_min, inp_max)."""
+            lbl = QLabel(title)
+            lbl.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; font-weight: bold;")
+            parent_layout.addWidget(lbl)
+
+            rs = RangeSlider(sl_min, sl_max, invert=invert)
+            rs.setEnabled(False)
+            parent_layout.addWidget(rs)
+            _rad_sliders.append(rs)
+
+            row = QHBoxLayout(); row.setSpacing(4)
+            la = QLabel("min"); la.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};"); la.setFixedWidth(24)
+            ia = QLineEdit(); ia.setPlaceholderText("auto"); ia.setStyleSheet(field_style); ia.setToolTip(tip_min); ia.setEnabled(False)
+            lb = QLabel("max"); lb.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};"); lb.setFixedWidth(24)
+            ib = QLineEdit(); ib.setPlaceholderText("auto"); ib.setStyleSheet(field_style); ib.setToolTip(tip_max); ib.setEnabled(False)
+            row.addWidget(la); row.addWidget(ia); row.addSpacing(4); row.addWidget(lb); row.addWidget(ib)
+            parent_layout.addLayout(row)
+            _rad_fields_list.extend([ia, ib])
+
+            def _on_slider(lo, hi, _ia=ia, _ib=ib):
+                _ia.blockSignals(True); _ib.blockSignals(True)
+                _ia.setText(_fmt_r(lo)); _ib.setText(_fmt_r(hi))
+                _ia.blockSignals(False); _ib.blockSignals(False)
+                if self.chk_rad_limit.isChecked():
+                    self._emit_rad_limits()
+
+            def _on_fields(_rs=rs, _ia=ia, _ib=ib):
+                lo = _parse_rad(_ia); hi = _parse_rad(_ib)
+                _rs.set_values(lo if lo is not None else _rs._min,
+                               hi if hi is not None else _rs._max)
+                if self.chk_rad_limit.isChecked():
+                    self._emit_rad_limits()
+
+            rs.range_changed.connect(_on_slider)
+            ia.editingFinished.connect(_on_fields)
+            ib.editingFinished.connect(_on_fields)
+            return rs, ia, ib
+
+        # ── UV Radius (toujours visible) ──────────────────────────
+        self._slider_rad_uv, self.input_rad_uvmin, self.input_rad_uvmax = _make_rad_block(
+            _rlb, "UV Radius (Mλ)", 0.0, 1000.0, "UV radius minimum (Mλ)", "UV radius maximum (Mλ)")
+
+        # ── Amplitude (mode 1 ou 3) ───────────────────────────────
+        self._rad_amp_box = QWidget()
+        _amp_l = QVBoxLayout(self._rad_amp_box); _amp_l.setContentsMargins(0, 0, 0, 0); _amp_l.setSpacing(4)
+        self._slider_rad_amp, self.input_rad_ampmin, self.input_rad_ampmax = _make_rad_block(
+            _amp_l, "Amplitude (Jy)", 0.0, 2.0, "Amplitude minimum (Jy)", "Amplitude maximum (Jy)")
+        _rlb.addWidget(self._rad_amp_box)
+
+        # ── Phase (mode 2 ou 3) ───────────────────────────────────
+        self._rad_phs_box = QWidget()
+        _phs_l = QVBoxLayout(self._rad_phs_box); _phs_l.setContentsMargins(0, 0, 0, 0); _phs_l.setSpacing(4)
+        self._slider_rad_phs, self.input_rad_phsmin, self.input_rad_phsmax = _make_rad_block(
+            _phs_l, "Phase (°)", -180.0, 180.0, "Phase minimum (°)", "Phase maximum (°)")
+        _rlb.addWidget(self._rad_phs_box)
+
+        _rad_sec.addWidget(self._rad_limit_box)
+        layout.addWidget(self._rad_limits_section)
 
         def _emit_rad_limits_checked():
             if self.chk_rad_limit.isChecked():
@@ -792,9 +822,26 @@ class ControlPanel(QDockWidget):
             _parse_rad(self.input_rad_phsmin), _parse_rad(self.input_rad_phsmax),
         )
 
+        def _sync_rad_boxes(mode_index: int = -1) -> None:
+            if mode_index < 0:
+                mode_index = self.combo_rad_mode.currentIndex()
+            show_amp = mode_index in (0, 2)
+            show_phs = mode_index in (1, 2)
+            self._rad_amp_box.setVisible(show_amp)
+            self._rad_phs_box.setVisible(show_phs)
+
+        self.combo_rad_mode.currentIndexChanged.connect(_sync_rad_boxes)
+        _sync_rad_boxes()
+
+        def _on_rad_toggle(checked):
+            self.chk_rad_limit.setText("ON" if checked else "OFF")
+            for w in _rad_fields_list:
+                w.setEnabled(checked)
+            for rs in _rad_sliders:
+                rs.setEnabled(checked)
+            self._emit_rad_limits()
+
         self.chk_rad_limit.toggled.connect(_on_rad_toggle)
-        for w in _rad_fields:
-            w.editingFinished.connect(_emit_rad_limits_checked)
 
         # ── Marker box ────────────────────────────────────────────
         sep2 = QWidget()

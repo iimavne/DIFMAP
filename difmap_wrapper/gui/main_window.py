@@ -276,17 +276,20 @@ class MainWindow(QMainWindow):
             if n_ifs:
                 self.control_panel.set_if_range(n_ifs)
 
-            # Caler les sliders UV sur la plage réelle des données (signée)
+            # Caler les sliders UV et Radplot sur la plage exacte des données
             try:
                 import numpy as np
                 u_ml = self.data['u'] / 1e6
                 v_ml = self.data['v'] / 1e6
-                margin = 0.05
-                u_span = float(np.max(u_ml) - np.min(u_ml)) * margin
-                v_span = float(np.max(v_ml) - np.min(v_ml)) * margin
                 self.control_panel.set_uv_data_range(
-                    float(np.min(u_ml)) - u_span, float(np.max(u_ml)) + u_span,
-                    float(np.min(v_ml)) - v_span, float(np.max(v_ml)) + v_span,
+                    float(np.min(u_ml)), float(np.max(u_ml)),
+                    float(np.min(v_ml)), float(np.max(v_ml)),
+                )
+                uv_radius = np.sqrt(u_ml**2 + v_ml**2)
+                amp = self.data.get('amp', np.zeros(len(u_ml)))
+                self.control_panel.set_rad_data_range(
+                    float(np.max(uv_radius)),
+                    float(np.max(np.abs(amp))) if len(amp) else 2.0,
                 )
             except Exception:
                 pass
