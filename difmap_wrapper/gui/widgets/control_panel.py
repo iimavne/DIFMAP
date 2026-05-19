@@ -446,6 +446,14 @@ class ControlPanel(QDockWidget):
         h_ch.setSpacing(4)
         h_ch.addWidget(QLabel("Channels:"))
 
+        self._btn_mapping_info = QPushButton("Info")
+        self._btn_mapping_info.setFixedWidth(44)
+        self._btn_mapping_info.setFixedHeight(22)
+        self._btn_mapping_info.setEnabled(False)
+        self._btn_mapping_info.setStyleSheet(btn_all_style)
+        self._btn_mapping_info.setToolTip("Afficher le mapping IF → canaux globaux")
+        h_ch.addWidget(self._btn_mapping_info)
+
         self.input_chan_select = QLineEdit()
         self.input_chan_select.setPlaceholderText("e.g. 2:5-10  or  20-25,47-65  or  nif*nchan")
         self.input_chan_select.setEnabled(False)
@@ -475,6 +483,8 @@ class ControlPanel(QDockWidget):
         )
         layout.addWidget(self._lbl_chan_info)
 
+        self._mapping_dialog_text = ""
+
         self._n_ifs_total = 1
         self._n_chan_total = 0
         self._if_selecting = False   # garde anti-ré-entrant
@@ -487,6 +497,7 @@ class ControlPanel(QDockWidget):
 
         self.input_chan_select.editingFinished.connect(self._on_chan_syntax_entered)
         self._btn_ch_all.clicked.connect(self._select_all_channels)
+        self._btn_mapping_info.clicked.connect(self._show_mapping_info)
 
         self.main_layout.addWidget(self.group_data_selection)
         # NB : combo_pol est géré exclusivement par MainWindow._change_polarization
@@ -503,7 +514,7 @@ class ControlPanel(QDockWidget):
         self.input_chan_select.clear()
         self.input_chan_select.blockSignals(False)
 
-        for w in (self.input_if_select, self._btn_ifs_all, self.input_chan_select, self._btn_ch_all):
+        for w in (self.input_if_select, self._btn_ifs_all, self.input_chan_select, self._btn_ch_all, self._btn_mapping_info):
             w.setEnabled(True)
         self._lbl_if_syntax_err.setVisible(False)
         self._lbl_chan_syntax_err.setVisible(False)
@@ -538,6 +549,10 @@ class ControlPanel(QDockWidget):
                 lines.append(f"  IF {cif:2d}  →  ch {bch} – {ech}")
         lines += ["", "Global channels range: 1..nif*nchan"]
         self._lbl_if_info.setToolTip("\n".join(lines))
+
+        self._mapping_dialog_text = "\n".join(lines)
+
+        self._lbl_chan_info.setToolTip("\n".join(lines))
         self.input_if_select.setToolTip(
             "IF selection:\n"
             "  1-3     → IFs 1 to 3\n"
@@ -601,6 +616,9 @@ class ControlPanel(QDockWidget):
     def show_chan_syntax_error(self, msg: str) -> None:
         self._lbl_chan_syntax_err.setText(msg)
         self._lbl_chan_syntax_err.setVisible(True)
+
+    def _show_mapping_info(self) -> None:
+        QMessageBox.information(self, "IF ↔ Channels mapping", self._mapping_dialog_text or "—")
         
     def _build_telescope_focus(self):
         """

@@ -405,6 +405,18 @@ class RadPlotWidget(BasePlotWidget):
         observation : Observation, optional
             Si fourni, instancie un :class:`RadPlotEditor` sur les données.
         """
+        saved_focus = None
+        if getattr(self, 'editor', None) is not None:
+            try:
+                saved_focus = (
+                    getattr(self.editor, 'index_subarray_actuel', 0),
+                    getattr(self.editor, 'index_antenne_actuelle', -1),
+                    getattr(self.editor, '_nom_antenne_courante', ""),
+                    getattr(self.editor, 'inspect_active', False),
+                )
+            except Exception:
+                saved_focus = None
+
         self.data = data
         self._setup_axes()
 
@@ -416,6 +428,17 @@ class RadPlotWidget(BasePlotWidget):
 
         if observation is not None:
             self._create_editor(observation, scats)
+
+        if saved_focus and getattr(self, 'editor', None) is not None:
+            try:
+                (sub_idx, ant_idx, ant_name, inspect_active) = saved_focus
+                self.editor.index_subarray_actuel = sub_idx
+                self.editor.index_antenne_actuelle = ant_idx
+                self.editor._nom_antenne_courante = ant_name
+                self.editor.inspect_active = inspect_active
+                self.editor._update_colors()
+            except Exception:
+                pass
 
         self.fig.canvas.draw_idle()
 

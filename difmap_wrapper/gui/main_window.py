@@ -1935,11 +1935,46 @@ class MainWindow(QMainWindow):
 
             self.session.obs.select_channels(pol, final_pairs)
 
+            # Les cartes (dirty/clean/residual) en mémoire C correspondent à l'ancienne sélection.
+            # On les invalide visuellement côté GUI pour éviter d'afficher une carte incohérente.
+            try:
+                self._last_dirty_package = None
+                self._last_clean_package = None
+                self._last_residual_package = None
+            except Exception:
+                pass
+            try:
+                if hasattr(self.session, 'imager') and self.session.imager:
+                    self.session.imager._last_residual_map = None
+            except Exception:
+                pass
+            try:
+                cellsize = self._get_valid_cellsize()
+            except Exception:
+                cellsize = 1.0
+            try:
+                for w in (
+                    getattr(self, 'map_widget', None),
+                    getattr(self, 'clean_map_widget', None),
+                    getattr(self, 'residual_map_widget', None),
+                    getattr(self, 'all_maps_dirty_widget', None),
+                    getattr(self, 'all_maps_clean_widget', None),
+                    getattr(self, 'all_maps_residual_widget', None),
+                ):
+                    if w is not None and hasattr(w, 'plot_map'):
+                        w.plot_map(map_data=None, cellsize=cellsize, extent=None)
+            except Exception:
+                pass
+
             selected_ifs = Observation.ifs_from_pairs(final_pairs, nchan, nif) if final_pairs else list(range(1, nif + 1))
             ctrl.update_if_bar(selected_ifs)
 
             self.data = self.session.obs.get_data()
             self._reload_all_plots()
+            try:
+                self._refresh_current_map_tab()
+            except Exception:
+                pass
             n = len(self.data.get('u', []))
             if_str = f"IFs {','.join(map(str, (self._selected_ifs or [])))}" if self._selected_ifs else f"all {nif} IFs"
             ch_str = f"channels '{ch_text}'" if ch_text else "all channels"
