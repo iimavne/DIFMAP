@@ -5,7 +5,7 @@ import numpy as np
 import difmap_native
 
 from ..utils.exceptions import DifmapStateError, DifmapError
-from ..types import Polarization
+from ..enums import Polarization
 
 logger = logging.getLogger("difmap.observation")
 

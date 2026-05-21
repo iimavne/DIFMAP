@@ -5,7 +5,7 @@ import numpy as np
 from matplotlib.widgets import MultiCursor, RectangleSelector, SpanSelector
 from PyQt6.QtCore import Qt
 
-from difmap_wrapper.types import EditorMode
+from difmap_wrapper.enums import EditorMode
 from difmap_wrapper.gui.styles import DesignSystem
 
 logger = logging.getLogger("difmap.editors")

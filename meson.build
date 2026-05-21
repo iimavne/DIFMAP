@@ -162,7 +162,7 @@ difmap_sources = [
 # Racine du package
 py3.install_sources(
     'difmap_wrapper/__init__.py',
-    'difmap_wrapper/types.py',
+    'difmap_wrapper/enums.py',
     'difmap_wrapper/app.py',
     subdir: 'difmap_wrapper'
 )

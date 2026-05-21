@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt
 import qtawesome as qta
 from .styled_buttons import PrimaryButton, SecondaryButton
 from difmap_wrapper.gui.styles import DesignSystem
-from difmap_wrapper.types import POLARIZATIONS
+from difmap_wrapper.enums import POLARIZATIONS
 
 D = DesignSystem
 

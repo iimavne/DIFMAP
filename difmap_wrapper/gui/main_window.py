@@ -5,11 +5,12 @@ import select as _select
 import numpy as np
 import difmap_native
 
-from PyQt6.QtWidgets import QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox, QGridLayout
+from PyQt6.QtWidgets import QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox, QGridLayout, QApplication
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
+from PyQt6.QtGui import QCursor
 
 from difmap_wrapper import DifmapSession
-from difmap_wrapper.types import TabIndex  
+from difmap_wrapper.enums import TabIndex  
 from difmap_wrapper.gui.styles import DesignSystem
 import logging
 from difmap_wrapper.gui.utils import DifmapLogHandler
@@ -87,6 +88,7 @@ class CleanWorker(QThread):
             self.error.emit(str(exc))
 
 
+
 class MainWindow(QMainWindow):
     """
     Fenêtre principale de DIFMAP Modern.
@@ -109,6 +111,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("DIFMAP Interface")
         self.resize(1400, 850)
         self.setStyleSheet(DesignSystem.get_full_app_style())
+        self.statusBar().setVisible(False)
 
         self._c_capture_fd = c_capture_fd
 
@@ -259,47 +262,41 @@ class MainWindow(QMainWindow):
     # =========================================================
 
     def _load_file_logic(self, filepath: str) -> None:
-        """Charge un fichier FITS dans le moteur et rafraîchit l'UI."""
+        """Charge un fichier UVFITS sur le thread principal (difmap/PGPLOT/X11 non thread-safe)."""
         try:
             filename = os.path.basename(filepath)
             self.log_console.clear_log()
             self.log_console.log_separator(filename)
             self.log_console.log(f"Loading: {filepath}...")
-            from PyQt6.QtWidgets import QApplication
-            QApplication.processEvents()  # force immediate log display before C operation
+            self.toolbar.action_load.setEnabled(False)
+            self.control_panel.setEnabled(False)
+            QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
+            QApplication.processEvents()  # afficher le message avant d'entrer dans le C
+
             self.session.observe(filepath)
-            # Remettre à zéro l'état UI qui appartient à la session précédente.
-            # reset_state() synchronise les miroirs Python avec le C qui vient de
-            # réinitialiser invpar=invdef, et efface les fenêtres CLEAN de la
-            # session précédente (active_windows + vlbwins via delwin()).
             self.session.imager.reset_state()
             try:
                 self.session.imager.delwin()
             except Exception:
                 pass
-            self._last_clean_package = None
+
+            self._last_clean_package  = None
             self._last_mapsize_params = None
             self._last_uvtaper_params = None
             self._set_selfcal_ready(False)
+
             available_pols = self.session.obs.available_polarizations()
-            preferred_pol = "I" if "I" in available_pols else (available_pols[0] if available_pols else "I")
-            self.control_panel.set_available_polarizations(available_pols, current=preferred_pol)
-
-            actual_pol = self.session.obs.select(pol=preferred_pol)
-
-            self.data = self.session.obs.get_data()
+            preferred_pol  = "I" if "I" in available_pols else (available_pols[0] if available_pols else "I")
+            actual_pol     = self.session.obs.select(pol=preferred_pol)
+            self.data      = self.session.obs.get_data()
+            n_ifs          = self.session.obs.nif
+            nchan          = self.session.obs.get_nchan()
 
             self.control_panel.set_available_polarizations(available_pols, current=actual_pol)
-
-            # Configurer le sélecteur d'IFs (obs.nif évite de scanner data['if_no'])
-            n_ifs = self.session.obs.nif
             if n_ifs:
-                nchan = self.session.obs.get_nchan()
                 self.control_panel.set_if_range(n_ifs, nchan=nchan)
 
-            # Caler les sliders UV et Radplot sur la plage exacte des données
             try:
-                import numpy as np
                 u_ml = self.data['u'] / 1e6
                 v_ml = self.data['v'] / 1e6
                 self.control_panel.set_uv_data_range(
@@ -315,7 +312,6 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-            # Remettre toutes les cartes dans un état vierge (nouveau fichier = nouvelle session)
             for w in (self.map_widget, self.residual_map_widget, self.clean_map_widget,
                       self.all_maps_dirty_widget, self.all_maps_clean_widget,
                       self.all_maps_residual_widget):
@@ -324,40 +320,31 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
 
-            self._last_dirty_package  = None
-            self._last_clean_package  = None
+            self._last_dirty_package = None
+            self._last_clean_package = None
 
             self._reload_all_plots()
             self.header_widget.refresh()
 
-            n = len(self.data['u'])
+            # Comptage des stations (IDs locaux par subarray → lecture du header pour cohérence)
+            n         = len(self.data['u'])
             subarrays = self.data.get('subarray', [])
-            tel_a = self.data.get('tel_a', [])
-            tel_b = self.data.get('tel_b', [])
-
-            # Les IDs tel_a/tel_b sont locaux a chaque subarray.
-            # Pour afficher un nombre coherent avec le tableau des stations
-            # du header UVFITS, on compte d'abord les stations physiques
-            # directement dans le texte du header.
-            station_names = set()
+            tel_a     = self.data.get('tel_a', [])
+            tel_b     = self.data.get('tel_b', [])
+            station_names    = set()
             station_fallback = set()
             station_line = re.compile(
                 r"^\s*\d+\s+([A-Za-z0-9_+\-]+)\s+[-+0-9.eE]+\s+[-+0-9.eE]+\s+[-+0-9.eE]+\s*$"
             )
-
             try:
                 header_text = self.session.obs.header()
             except Exception:
                 header_text = ""
-
             for line in header_text.splitlines():
                 match = station_line.match(line)
                 if match:
                     station_names.add(match.group(1))
-
             unique_subarrays = sorted({int(sub) for sub in subarrays})
-
-            # Fallback si le header ne fournit pas le tableau complet.
             if not station_names:
                 for sub in unique_subarrays:
                     mask = subarrays == sub
@@ -370,18 +357,22 @@ class MainWindow(QMainWindow):
                             name = ""
                         if name and name != "INCONNU":
                             station_names.add(name)
-
             n_sub = len(unique_subarrays)
             n_ant = len(station_names) if station_names else len(station_fallback)
             self.log_console.log(
                 f"Loaded {n:,} visibilities — {n_ant} antennas, {n_sub} subarray(s), "
                 f"{n_ifs} IF(s) — {actual_pol}."
             )
-            self.setWindowTitle(f"DIFMAP Modern - {filepath.split('/')[-1]}")
+            self.setWindowTitle(f"DIFMAP Modern - {filename}")
 
         except Exception as e:
             self.log_console.log(f"Error loading file: {e}")
             QMessageBox.critical(self, "Load Error", f"Could not load FITS file:\n{e}")
+        finally:
+            QApplication.restoreOverrideCursor()
+
+            self.toolbar.action_load.setEnabled(True)
+            self.control_panel.setEnabled(True)
 
     def _reload_all_plots(self) -> None:
         """
@@ -727,7 +718,7 @@ class MainWindow(QMainWindow):
             ctrl.chk_conjugate.setChecked(False)
             ctrl.chk_conjugate.blockSignals(False)
         elif is_uv and self.plot_widget and self.plot_widget.editor:
-            conj_visible = self.plot_widget.editor.scat_conj.get_visible()
+            conj_visible = self.plot_widget.editor._line_conj.get_visible()
             ctrl.chk_conjugate.blockSignals(True)
             ctrl.chk_conjugate.setChecked(conj_visible)
             ctrl.chk_conjugate.blockSignals(False)

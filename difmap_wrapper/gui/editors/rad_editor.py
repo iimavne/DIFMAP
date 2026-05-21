@@ -4,7 +4,7 @@ import numpy as np
 from matplotlib.widgets import RectangleSelector, SpanSelector
 
 from .base import BasePlotEditor
-from difmap_wrapper.types import EditorMode, DisplayMode
+from difmap_wrapper.enums import EditorMode, DisplayMode
 from difmap_wrapper.gui.styles import DesignSystem
 
 logger = logging.getLogger("difmap.rad_editor")

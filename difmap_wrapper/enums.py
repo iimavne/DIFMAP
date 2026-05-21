@@ -41,17 +41,16 @@ UV_UNIT_LABEL: str   = "Mλ"
 
 class EditorMode:
     """Modes d'interaction de l'éditeur graphique (souris/clavier)."""
-    INSPECT         = None           # Mode par défaut : inspecter au clic
-    ZOOM            = "ZOOM"
-    CUT             = "CUT"
-    PAN             = "PAN"
-    STATS           = "STATS"
-    STATS_V         = "STATS_V"
-    ZOOM_X          = "ZOOM_X"
-    INTERACTIVE_FLAG = "INTERACTIVE_FLAG"  # flagging souris (gauche=flag, droit=unflag)
-    ZOOM_Y           = "ZOOM_Y"            # zoom vertical axe Y (radplot)
+    INSPECT          = None
+    ZOOM             = "ZOOM"
+    CUT              = "CUT"
+    PAN              = "PAN"
+    STATS            = "STATS"
+    STATS_V          = "STATS_V"
+    ZOOM_X           = "ZOOM_X"
+    INTERACTIVE_FLAG = "INTERACTIVE_FLAG"
+    ZOOM_Y           = "ZOOM_Y"
 
-    # Ensemble des modes qui activent le RectangleSelector
     ALL_RECT = frozenset(["ZOOM", "CUT", "STATS", "STATS_V"])
 
 
@@ -85,13 +84,12 @@ class TabIndex:
     """
     UV       = 0
     RADPLOT  = 1
-    MAP      = 2   # Dirty Map
-    CLEAN    = 3   # Clean Map (restaurée)
-    RESIDUAL = 4   # Residual Map (après clean(), avant restore())
+    MAP      = 2
+    CLEAN    = 3
+    RESIDUAL = 4
     HEADER   = 5
-    ALL_MAPS = 6   # Vue combinée (placeholder)
+    ALL_MAPS = 6
 
-    # Outer tab indices
     OUTER_HEADER     = 0
     OUTER_GRAPHIQUES = 1
     OUTER_IMAGERIE   = 2

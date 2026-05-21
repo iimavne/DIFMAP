@@ -19,7 +19,7 @@ from .base_plot_widget import BasePlotWidget
 from difmap_wrapper.gui.editors.rad_editor import RadPlotEditor
 from difmap_wrapper.gui.utils import MatplotlibStyler
 from difmap_wrapper.gui.styles import DesignSystem
-from difmap_wrapper.types import DisplayMode
+from difmap_wrapper.enums import DisplayMode
 
 D = DesignSystem
 

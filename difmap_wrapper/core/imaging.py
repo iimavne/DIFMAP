@@ -3,7 +3,7 @@ import numpy as np
 from ctypes import Structure, c_char_p, c_int, c_float, c_double, POINTER, byref
 from typing import Optional, Tuple, List, Dict, Any, Union
 import difmap_native
-from ..types import Polarization
+from ..enums import Polarization
 
 from ..utils.map_geometry import DifmapMapGeometry
 from ..utils.exceptions import DifmapError, DifmapStateError
