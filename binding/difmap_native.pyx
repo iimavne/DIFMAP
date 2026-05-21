@@ -3,6 +3,7 @@
 import numpy as np
 cimport numpy as np
 cimport cdifmap  # Importe tes déclarations depuis cdifmap.pxd
+from libc.stdio cimport fflush, FILE, stdout as c_stdout, stderr as c_stderr
 
 # =====================================================================
 # COMMANDES D'OBSERVATION ET D'IMAGERIE
@@ -513,3 +514,9 @@ def selfcal_mintel(p_mintel: int = 3, a_mintel: int = 4) -> int:
 def selfcal_flags(doflag: int = 1, clip: int = 0) -> int:
     """Configure doflag/clip pour selfcal."""
     return cdifmap.native_set_selfcal_flags(doflag, clip)
+
+
+def flush_stdout() -> None:
+    """Force le flush des buffers C stdout et stderr vers le pipe de capture GUI."""
+    fflush(c_stdout)
+    fflush(c_stderr)

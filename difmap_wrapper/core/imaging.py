@@ -322,11 +322,71 @@ class DifmapImager:
         except Exception:
             self._last_residual_rms = None
 
+    def uvrange(
+        self,
+        uvmin_wav: float = None,
+        uvmax_wav: float = None,
+    ) -> None:
+        """
+        Définit la plage UV utilisée lors du prochain ``invert()``.
+
+        Équivalent à la commande ``uvrange`` de Difmap. Persistant : le filtre
+        reste actif jusqu'à ce qu'il soit explicitement réinitialisé.
+
+        Parameters
+        ----------
+        uvmin_wav : float, optional
+            Rayon UV minimum (en longueurs d'onde, unités courantes Mλ par défaut).
+            ``None`` ou ``0`` signifie aucune limite inférieure.
+        uvmax_wav : float, optional
+            Rayon UV maximum. ``None`` ou ``0`` signifie aucune limite supérieure.
+
+        Notes
+        -----
+        **Limite inférieure seule impossible** : le moteur C annule le filtre
+        si ``uvmin >= uvmax`` ou ``uvmax <= 0``. Pour filtrer uniquement en
+        dessous d'un rayon, utilisez ``uvmax`` avec ``uvmin=0``.
+
+        Appeler sans arguments réinitialise à la plage complète.
+
+        Examples
+        --------
+        >>> session.imager.uvrange(uvmax_wav=500)       # exclure baselines > 500 Mλ
+        >>> session.imager.uvrange(uvmin_wav=10, uvmax_wav=800)  # exclure courtes baselines
+        >>> session.imager.uvrange()                    # réinitialiser (plage complète)
+        >>> session.imager.invert()                     # utilise le filtre précédent
+        """
+        vmin = float(uvmin_wav) if uvmin_wav is not None else 0.0
+        vmax = float(uvmax_wav) if uvmax_wav is not None else 0.0
+        if self._native.uvrange(vmin, vmax) != 0:
+            raise DifmapError("Échec de la configuration uvrange().")
+
+    def uvhwhm(self, uvhwhm_pix: float) -> None:
+        """
+        Applique un taper gaussien à la grille UV (demi-largeur en pixels).
+
+        Équivalent à la commande ``uvhwhm`` de Difmap. Persistant entre
+        les appels à ``invert()``.
+
+        Parameters
+        ----------
+        uvhwhm_pix : float
+            Demi-largeur à mi-hauteur de la gaussienne, en pixels de grille.
+            ``0`` pour désactiver.
+
+        Examples
+        --------
+        >>> session.imager.uvhwhm(2.0)   # taper gaussien
+        >>> session.imager.invert()
+        """
+        if self._native.uvhwhm(float(uvhwhm_pix)) != 0:
+            raise DifmapError("Échec de la configuration uvhwhm().")
+
     def invert(
         self,
-        uvmin_wav: float = 0.0,
-        uvmax_wav: float = 0.0,
-        uvhwhm_pix: float = 0.0,
+        uvmin_wav: float = None,
+        uvmax_wav: float = None,
+        uvhwhm_pix: float = None,
     ) -> None:
         """
         Calcule la Dirty Map par transformée de Fourier inverse.
@@ -335,23 +395,51 @@ class DifmapImager:
         puis applique la FFT inverse. Le résultat est stocké en mémoire C
         et accessible via ``get_map()``.
 
-        Raises
-        ------
-        DifmapError
-            Si la FFT échoue (grille non définie ou données absentes).
+        Parameters
+        ----------
+        uvmin_wav : float, optional
+            Si fourni, configure ``uvrange`` avant d'inverter.
+            ``None`` (défaut) respecte le dernier ``uvrange()`` appelé.
+        uvmax_wav : float, optional
+            Idem. Passer ``uvmax_wav=0`` réinitialise la coupure maximale.
+        uvhwhm_pix : float, optional
+            Si fourni, configure ``uvhwhm`` avant d'inverter.
+
+        Notes
+        -----
+        ``uvrange`` et ``uvhwhm`` sont persistants dans le moteur C : les
+        appeler via ``invert()`` ou en standalone via ``session.imager.uvrange()``
+        est strictement équivalent. Préférez la forme standalone pour les
+        workflows pas-à-pas.
 
         Examples
         --------
-        >>> session.imager.mapsize(512, 0.1)
+        Workflow purist (séparé) :
+
+        >>> session.imager.uvrange(uvmax_wav=500)
         >>> session.imager.invert()
-        >>> img_array = session.imager.get_map()
+
+        Workflow compact (inline) :
+
+        >>> session.imager.invert(uvmax_wav=500)
+
+        Max seulement, sans min :
+
+        >>> session.imager.invert(uvmax_wav=500)          # uvmin=0 implicite
+        >>> session.imager.invert(uvmin_wav=0, uvmax_wav=500)  # identique
+
+        Réinitialiser le filtre et inverter :
+
+        >>> session.imager.invert(uvmin_wav=0, uvmax_wav=0)   # plage complète
         """
-        # Toujours appeler uvrange(), même quand uvmin=uvmax=0 (= pas de filtre).
-        # Ne pas guarden sur 0 : si le filtre était actif lors du dernier appel,
-        # l'ancien invpar.uvmin/uvmax persisterait en C et ne serait pas effacé.
-        if self._native.uvrange(float(uvmin_wav), float(uvmax_wav)) != 0:
-            raise DifmapError("Échec de la configuration uvrange().")
-        if uvhwhm_pix != 0.0:
+        # Appeler uvrange() seulement si au moins un paramètre est explicitement fourni.
+        # Quand None/None : respecter l'état C courant (uvrange préalablement fixé ou défaut).
+        if uvmin_wav is not None or uvmax_wav is not None:
+            vmin = float(uvmin_wav) if uvmin_wav is not None else 0.0
+            vmax = float(uvmax_wav) if uvmax_wav is not None else 0.0
+            if self._native.uvrange(vmin, vmax) != 0:
+                raise DifmapError("Échec de la configuration uvrange().")
+        if uvhwhm_pix is not None:
             if self._native.uvhwhm(float(uvhwhm_pix)) != 0:
                 raise DifmapError("Échec de la configuration uvhwhm().")
 
@@ -582,7 +670,8 @@ class DifmapImager:
         
         >>> session.imager.clean(niter=1000, gain=0.05, cutoff=0.003)  # arrêt à 3 mJy
         """
-        self._native.clean(niter, gain, cutoff)
+        if self._native.clean(niter, gain, cutoff) != 0:
+            raise DifmapError("Échec du CLEAN (carte ou observation absente).")
         self._current_map_type = "residual"
         # Rendre le résiduel disponible immédiatement (avant restore()).
         # Indispensable pour le CLEAN chunké en GUI (pause_after): on veut afficher

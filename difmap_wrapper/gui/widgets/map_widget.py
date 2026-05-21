@@ -431,6 +431,37 @@ class MapPlotWidget(BasePlotWidget):
         )
         # Note: L'inversion de l'axe RA est gérée automatiquement par imshow via l'extent
 
+    def clear_map(self) -> None:
+        """
+        Remet le widget dans un état vierge (placeholder).
+
+        Appelé au chargement d'un nouveau fichier pour signaler
+        à l'utilisateur qu'aucune carte n'est encore calculée.
+        """
+        if self.cbar is not None:
+            try:
+                self.cbar.remove()
+            except Exception:
+                pass
+            self.cbar = None
+        self.image = None
+        self.ax.clear()
+        self.ax.set_facecolor('#0d1117')
+        self.ax.get_figure().set_facecolor('#0d1117')
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
+        for spine in self.ax.spines.values():
+            spine.set_visible(False)
+        self.ax.text(
+            0.5, 0.5,
+            f"{self._map_title}\n\nAucune carte calculée\nCliquez « Compute » pour lancer l'imagerie",
+            transform=self.ax.transAxes,
+            ha='center', va='center',
+            color='#3A5060', fontsize=9,
+            multialignment='center',
+        )
+        self.canvas.draw_idle()
+
     def plot_map(self, map_data, cellsize, cellsize_y=None,
                 scale='linear', vmin=None, vmax=None, extent=None,
                 contour_mode='pct', contour_absmin=1.0, contour_absmax=100.0,

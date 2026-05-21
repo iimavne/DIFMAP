@@ -52,53 +52,10 @@ Notes
 """
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Callable, List, Any, Optional, Iterable, Sequence
+from typing import Callable, List, Any, Optional, Iterable
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Worker module-level pour run_command_batch (picklable par multiprocessing)
-# ---------------------------------------------------------------------------
-
-def _command_batch_worker(job: "tuple[list, Any]") -> dict:
-    """
-    Worker module-level pour run_command_batch.
-
-    Exécute une séquence de DifmapCommand dans un processus isolé et retourne
-    le résultat ainsi que l'historique sérialisé pour traçabilité.
-
-    Parameters
-    ----------
-    job : tuple
-        (commands, user_payload) où commands est une liste de DifmapCommand
-        et user_payload est une valeur quelconque renvoyée telle quelle.
-    """
-    from difmap_wrapper.core.session import DifmapSession
-    from difmap_wrapper.core.executor import DifmapExecutor
-    from difmap_wrapper.core.history import CommandHistory
-
-    commands, user_payload = job
-    history = CommandHistory()
-    executor = DifmapExecutor()
-    errors = []
-
-    with DifmapSession() as session:
-        for cmd in commands:
-            try:
-                executor.execute(session, cmd)
-                history.add(cmd)
-            except Exception as exc:
-                errors.append({"command": repr(cmd), "error": str(exc)})
-                break
-
-    return {
-        "payload": user_payload,
-        "history": history.to_dicts(),
-        "errors": errors,
-        "status": "ERROR" if errors else "OK",
-    }
 
 
 class DifmapBatchManager:
@@ -312,50 +269,3 @@ class DifmapBatchManager:
 
         logger.info(f"Batch terminé : {len(args_list)} tâche(s) complétée(s)")
         return results
-
-    def run_command_batch(
-        self,
-        jobs: Iterable[tuple[Sequence, Any]],
-        max_workers: Optional[int] = None,
-    ) -> List[dict]:
-        """
-        Exécute plusieurs pipelines de commandes en parallèle.
-
-        Chaque « job » est un couple ``(commands, payload)`` :
-        - ``commands`` : séquence de ``DifmapCommand`` picklables (voir ``commands.py``)
-        - ``payload``  : valeur libre retournée telle quelle dans le résultat
-          (typiquement un chemin de fichier ou un identifiant de tâche).
-
-        Parameters
-        ----------
-        jobs : Iterable[tuple[Sequence[DifmapCommand], Any]]
-            Itérable de couples (commands, payload).
-        max_workers : int, optional
-            Surcharge du nombre de workers (défaut : ``self.max_workers``).
-
-        Returns
-        -------
-        List[dict]
-            Une entrée par job :
-            - ``'payload'``  : le payload fourni
-            - ``'history'``  : liste de dicts des commandes exécutées
-            - ``'errors'``   : liste d'éventuelles erreurs (vide si OK)
-            - ``'status'``   : ``'OK'`` ou ``'ERROR'``
-
-        Examples
-        --------
-        >>> from difmap_wrapper import ObserveCommand, SelectCommand, MapsizeCommand, InvertCommand
-        >>> jobs = [
-        ...     ([ObserveCommand("a.fits"), SelectCommand(), MapsizeCommand(256, 0.5), InvertCommand()], "a.fits"),
-        ...     ([ObserveCommand("b.fits"), SelectCommand(), MapsizeCommand(256, 0.5), InvertCommand()], "b.fits"),
-        ... ]
-        >>> manager = DifmapBatchManager(max_workers=2)
-        >>> results = manager.run_command_batch(jobs)
-        >>> for r in results:
-        ...     print(r['payload'], r['status'], len(r['history']), 'cmds')
-        """
-        return self.run_batch(
-            _command_batch_worker,
-            list(jobs),
-            max_workers=max_workers,
-        )

@@ -1,5 +1,7 @@
 # difmap_wrapper/gui/main_window.py
 import re
+import os
+import select as _select
 import numpy as np
 import difmap_native
 
@@ -93,17 +95,22 @@ class MainWindow(QMainWindow):
     (UV, Radplot, Dirty Map), panneau de contrôle, console de logs et toolbar.
     """
 
-    def __init__(self, fichier_initial=None):
+    def __init__(self, fichier_initial=None, c_capture_fd=None):
         """
         Parameters
         ----------
         fichier_initial : str, optional
             Chemin vers un fichier FITS à charger automatiquement au démarrage.
+        c_capture_fd : int, optional
+            File descriptor de lecture du pipe OS capturant fd 1/2 du processus.
+            Fourni par app.py pour router la sortie C dans la console.
         """
         super().__init__()
         self.setWindowTitle("DIFMAP Interface")
         self.resize(1400, 850)
         self.setStyleSheet(DesignSystem.get_full_app_style())
+
+        self._c_capture_fd = c_capture_fd
 
         # 1. Moteur C
         self.session = DifmapSession()
@@ -197,7 +204,14 @@ class MainWindow(QMainWindow):
         # 4. Signaux
         self._connect_signals()
 
-        # 5. Chargement initial
+        # 5. Drain sortie C → console (100 ms)
+        if self._c_capture_fd is not None:
+            self._c_drain_timer = QTimer(self)
+            self._c_drain_timer.setInterval(100)
+            self._c_drain_timer.timeout.connect(self._drain_c_output)
+            self._c_drain_timer.start()
+
+        # 6. Chargement initial
         if fichier_initial:
             self._load_file_logic(fichier_initial)
 
@@ -247,6 +261,8 @@ class MainWindow(QMainWindow):
     def _load_file_logic(self, filepath: str) -> None:
         """Charge un fichier FITS dans le moteur et rafraîchit l'UI."""
         try:
+            filename = os.path.basename(filepath)
+            self.log_console.log_separator(filename)
             self.log_console.log(f"Loading: {filepath}...")
             from PyQt6.QtWidgets import QApplication
             QApplication.processEvents()  # force immediate log display before C operation
@@ -297,6 +313,18 @@ class MainWindow(QMainWindow):
                 )
             except Exception:
                 pass
+
+            # Remettre toutes les cartes dans un état vierge (nouveau fichier = nouvelle session)
+            for w in (self.map_widget, self.residual_map_widget, self.clean_map_widget,
+                      self.all_maps_dirty_widget, self.all_maps_clean_widget,
+                      self.all_maps_residual_widget):
+                try:
+                    w.clear_map()
+                except Exception:
+                    pass
+
+            self._last_dirty_package  = None
+            self._last_clean_package  = None
 
             self._reload_all_plots()
             self.header_widget.refresh()
@@ -742,8 +770,23 @@ class MainWindow(QMainWindow):
         Ouvre un dialogue de sélection de fichier FITS et charge l'observation.
 
         Accepte les extensions ``.fits``, ``.1`` et ``.SPLIT``.
+        Si un fichier est déjà chargé avec des flags non sauvegardés,
+        demande confirmation avant de continuer.
         Délègue le chargement effectif à :meth:`_load_file_logic`.
         """
+        if self.session.uv_loaded and self._has_unsaved_changes():
+            reply = QMessageBox.question(
+                self,
+                "Modifications non sauvegardées",
+                "Des flags ont été appliqués mais pas encore exportés en FITS.\n"
+                "Charger un nouveau fichier annulera ces modifications.\n\n"
+                "Continuer quand même ?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+
         filepath, _ = QFileDialog.getOpenFileName(
             self, "Open UV FITS Observation", "",
             "All files (*);;FITS files (*.fits *.1 *.SPLIT)"
@@ -781,84 +824,160 @@ class MainWindow(QMainWindow):
         self._help_dialog_open = True
 
         TBG = "#2a2a2a"
-        help_text = f"""
+
+        common_css = f"""
         <style>
-          body  {{ background:#1e1e1e; color:#d0d0d0; font-family:sans-serif; }}
-          h3    {{ color:#d4a835; }}
-          h4    {{ color:#d4a835; margin-top:12px; margin-bottom:4px; }}
+          body  {{ background:#1e1e1e; color:#d0d0d0; font-family:sans-serif; margin:0; padding:12px; }}
+          h2    {{ color:#d4a835; margin: 2px 0 10px 0; }}
+          h3    {{ color:#d4a835; margin: 14px 0 6px 0; }}
           b     {{ color:#e8e8e8; }}
-          table {{ background:{TBG}; border-radius:4px; width:100%; }}
-          td    {{ padding:3px 6px; color:#c0c0c0; }}
-          hr    {{ border-color:#3c3c3c; }}
-          i     {{ color:#606060; }}
+          code  {{ background:{TBG}; padding: 1px 5px; border-radius: 4px; color:#e8e8e8; }}
+          table {{ background:{TBG}; border-radius:6px; width:100%; border-collapse: collapse; }}
+          td    {{ padding:6px 8px; color:#c0c0c0; vertical-align: top; }}
+          tr + tr td {{ border-top: 1px solid #3c3c3c; }}
+          hr    {{ border: 0; border-top: 1px solid #3c3c3c; margin: 12px 0; }}
+          i     {{ color:#909090; }}
+          ul    {{ margin: 6px 0 6px 18px; }}
         </style>
-        <h3>DIFMAP Modern — Keyboard Shortcuts</h3>
-        <h4>Navigation & Display</h4>
+        """
+
+        overview_html = common_css + """
+        <h2>DIFMAP Modern — Aide</h2>
+        <i>Ouvrir cette aide : touche <b>H</b> ou bouton <b>Aide</b>.</i>
+
+        <h3>Organisation</h3>
         <table>
-          <tr><td width="90"><b>X / Q</b></td><td>Fermer le graphique</td></tr>
+          <tr><td width="140"><b>Header</b></td><td>Header texte Difmap (polarisations, IFs/channels, subarrays, stations...).</td></tr>
+          <tr><td><b>Graphiques</b></td><td><b>UV Plan</b> + <b>Radplot</b> (inspection, focus télescope, flagging).</td></tr>
+          <tr><td><b>Imagerie</b></td><td><b>Dirty</b>, <b>Residual</b>, <b>Clean</b>, <b>All Maps</b> (cartes du moteur).</td></tr>
+        </table>
+        """
+
+        selection_html = common_css + """
+        <h2>Sélection des données</h2>
+        <table>
+          <tr><td width="140"><b>Polarization</b></td><td>Choisir parmi celles présentes (ex : <code>RR</code>, <code>LL</code>...).</td></tr>
+          <tr><td><b>IFs</b></td><td>Vide = tous. Ex : <code>2</code>, <code>1-3</code>, <code>1,3,5</code>.</td></tr>
+          <tr><td><b>Channels</b></td><td>Restriction <b>à l'intérieur des IFs</b> (intersection).</td></tr>
+        </table>
+
+        <h3>Channels — syntaxes</h3>
+        <table>
+          <tr><td width="140"><b>Local</b></td><td><code>2:5-10</code> (IF2 canaux locaux 5..10), <code>1,3:2-5</code>.</td></tr>
+          <tr><td><b>Global</b></td><td><code>20-25,47-65</code> ou <code>20,25,47,65</code>.</td></tr>
+          <tr><td><b>Variables</b></td><td><code>nif</code>, <code>nchan</code>, <code>nif*nchan</code>.</td></tr>
+          <tr><td><b>Mapping</b></td><td>Bouton <b>Info</b> à côté de <b>Channels</b> pour voir IF → canaux globaux.</td></tr>
+        </table>
+        <br>
+        <i>Après un changement de sélection, les cartes doivent être recalculées (invert/clean/restore). L'app invalide l'affichage pour éviter une carte incohérente.</i>
+        """
+
+        focus_flag_html = common_css + """
+        <h2>Focus télescope & Flagging</h2>
+
+        <h3>Focus télescope</h3>
+        <ul>
+          <li>Le focus met en évidence les baselines impliquant une antenne.</li>
+          <li>Formats : <code>BR</code>, <code>1:BR</code>, <code>1BR</code>.</li>
+          <li><b>Attention :</b> <code>1:</code> est un <b>subarray</b>, pas un IF.</li>
+        </ul>
+
+        <h3>Flagging</h3>
+        <ul>
+          <li>Les points flaggués sont masqués (état conservé par l'Observation).</li>
+          <li>Annulation : <code>u</code> ou <code>Ctrl+Z</code>.</li>
+          <li>Sauvegarde : <code>Ctrl+S</code> exporte les visibilités.</li>
+        </ul>
+        """
+
+        imaging_html = common_css + """
+        <h2>Imagerie (maps)</h2>
+        <table>
+          <tr><td width="160"><b>Dirty Map</b></td><td>Calculée via <b>invert</b> (FFT inverse sur les visibilités).</td></tr>
+          <tr><td><b>Clean Map</b></td><td>Après CLEAN + RESTORE.</td></tr>
+          <tr><td><b>Residual Map</b></td><td>Résiduel (données − modèle) quand disponible.</td></tr>
+          <tr><td><b>All Maps</b></td><td>Vue combinée (Residual + Dirty/Clean).</td></tr>
+        </table>
+        """
+
+        shortcuts_html = common_css + """
+        <h2>Raccourcis clavier</h2>
+        <table>
+          <tr><td width="160"><b>H</b></td><td>Ouvrir l'aide</td></tr>
           <tr><td><b>R</b></td><td>Reset vue (tous les graphiques)</td></tr>
           <tr><td><b>L</b></td><td>Rafraîchir l'affichage</td></tr>
-          <tr><td><b>O</b></td><td>Dézoomer de 50 %</td></tr>
-          <tr><td><b>H</b></td><td>Cette fenêtre d'aide</td></tr>
+          <tr><td><b>O</b></td><td>Dézoomer (vue précédente)</td></tr>
         </table>
-        <h4>Focus Télescope</h4>
+
+        <h3>Focus télescope</h3>
         <table>
-          <tr><td width="90"><b>n / p</b></td><td>Antenne suivante / précédente</td></tr>
-          <tr><td><b>N / P</b></td><td>Sous-réseau suivant / précédent</td></tr>
-          <tr><td><b>T</b></td><td>Rechercher télescope par nom/ID</td></tr>
+          <tr><td width="160"><b>n / p</b></td><td>Antenne suivante / précédente</td></tr>
+          <tr><td><b>N / P</b></td><td>Subarray suivant / précédent</td></tr>
+          <tr><td><b>T</b></td><td>Recherche télescope</td></tr>
         </table>
-        <h4>Édition & Flagging</h4>
+
+        <h3>Flagging / édition</h3>
         <table>
-          <tr><td width="90"><b>A</b></td><td>Flagguer le point le plus proche</td></tr>
-          <tr><td><b>C</b></td><td>Flagguer zone rectangulaire</td></tr>
+          <tr><td width="160"><b>A</b></td><td>Flagger le point le plus proche</td></tr>
+          <tr><td><b>C</b></td><td>Flagger une zone rectangulaire</td></tr>
           <tr><td><b>F</b></td><td>Flagging interactif (gauche=flag, droit=unflag)</td></tr>
-          <tr><td><b>Z</b></td><td>Zoom sur zone</td></tr>
-          <tr><td><b>u / Ctrl+Z</b></td><td>Annuler le dernier flagging</td></tr>
-          <tr><td><b>Ctrl+S</b></td><td>Sauvegarder en FITS</td></tr>
+          <tr><td><b>Z</b></td><td>Zoom box</td></tr>
+          <tr><td><b>u / Ctrl+Z</b></td><td>Annuler</td></tr>
+          <tr><td><b>Ctrl+S</b></td><td>Sauvegarder (export FITS)</td></tr>
         </table>
-        <h4>Radplot</h4>
+
+        <h3>Radplot</h3>
         <table>
-          <tr><td width="90"><b>1 / 2 / 3</b></td><td>Amplitude / Phase / Les deux</td></tr>
-          <tr><td><b>M</b></td><td>Superposition du modèle</td></tr>
-          <tr><td><b>-</b></td><td>Résidus (Data − Modèle)</td></tr>
-          <tr><td><b>E</b></td><td>Graphe d'erreurs (1/√w)</td></tr>
-          <tr><td><b>U (Shift+U)</b></td><td>Zoom X — plage UV (horizontal)</td></tr>
-          <tr><td><b>Y (Shift+Y)</b></td><td>Zoom Y — axe vertical</td></tr>
-          <tr><td><b>S / V</b></td><td>Stats Amp/Phase / Réel/Imag</td></tr>
+          <tr><td width="160"><b>1 / 2 / 3</b></td><td>Amplitude / Phase / Les deux</td></tr>
+          <tr><td><b>M</b></td><td>Modèle on/off</td></tr>
+          <tr><td><b>-</b></td><td>Résidus on/off</td></tr>
+          <tr><td><b>E</b></td><td>Erreurs (1/√w) on/off</td></tr>
+          <tr><td><b>U</b></td><td>Zoom X (UV)</td></tr>
+          <tr><td><b>Y</b></td><td>Zoom Y</td></tr>
+          <tr><td><b>S / V</b></td><td>Stats</td></tr>
         </table>
-        <h4>Plan UV</h4>
+
+        <h3>Plan UV</h3>
         <table>
-          <tr><td width="90"><b>%</b></td><td>Afficher/masquer conjugués</td></tr>
-          <tr><td><b>s</b></td><td>Mode Inspect (clic = info point)</td></tr>
+          <tr><td width="160"><b>%</b></td><td>Conjugués on/off</td></tr>
+          <tr><td><b>s</b></td><td>Inspect (clic = info)</td></tr>
         </table>
-        <h4>Style</h4>
-        <table>
-          <tr><td width="90"><b>+</b></td><td>Crosshair plein écran</td></tr>
-          <tr><td><b>.</b></td><td>Taille des marqueurs</td></tr>
-          <tr><td><b>M</b></td><td>Mode Pan (déplacement vue)</td></tr>
-        </table>
-        <br><hr>
+        <br>
         <i>La plupart des actions sont aussi accessibles via la toolbar locale au-dessus de chaque graphique.</i>
         """
-        from PyQt6.QtWidgets import QTextBrowser, QDialog, QVBoxLayout
+
+        from PyQt6.QtWidgets import QTextBrowser, QDialog, QVBoxLayout, QTabWidget
         dialog = QDialog(self)
-        dialog.setWindowTitle("Keyboard Shortcuts")
-        dialog.resize(520, 650)
-        text_browser = QTextBrowser()
-        text_browser.setStyleSheet(f"""
-            QTextBrowser {
-                background-color: {DesignSystem.TERMINAL_BG};
-                color: {DesignSystem.TERMINAL_TEXT};
-                border: 1px solid {DesignSystem.TERMINAL_BORDER};
-                border-radius: {DesignSystem.RADIUS_MD};
-                font-size: {DesignSystem.FONT_SIZE_BASE};
-                padding: 10px;
-            }
-        """)
-        text_browser.setHtml(help_text)
+        dialog.setWindowTitle("Aide — DIFMAP Modern")
+        dialog.resize(720, 760)
+        tabs = QTabWidget(dialog)
+        tabs.setStyleSheet(DesignSystem.get_inner_tab_style())
+
+        def _make_browser(html: str) -> QTextBrowser:
+            b = QTextBrowser()
+            b.setOpenExternalLinks(True)
+            b.setStyleSheet(f"""
+                QTextBrowser {{
+                    background-color: {DesignSystem.TERMINAL_BG};
+                    color: {DesignSystem.TERMINAL_TEXT};
+                    border: 1px solid {DesignSystem.TERMINAL_BORDER};
+                    border-radius: {DesignSystem.RADIUS_MD};
+                    font-size: {DesignSystem.FONT_SIZE_BASE};
+                    padding: 10px;
+                }}
+            """)
+            b.setHtml(html)
+            return b
+
+        tabs.addTab(_make_browser(overview_html), "Aperçu")
+        tabs.addTab(_make_browser(selection_html), "Données")
+        tabs.addTab(_make_browser(focus_flag_html), "Focus & Flag")
+        tabs.addTab(_make_browser(imaging_html), "Maps")
+        tabs.addTab(_make_browser(shortcuts_html), "Raccourcis")
+
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(8, 8, 8, 8)
-        layout.addWidget(text_browser)
+        layout.addWidget(tabs)
         dialog.finished.connect(lambda _: setattr(self, '_help_dialog_open', False))
         dialog.exec()
 
@@ -1196,7 +1315,17 @@ class MainWindow(QMainWindow):
                 )
 
             # Lecture des paramètres
-            doamp = (ctrl.combo_sc_mode.currentText() == "Amp+Phase")
+            doamp_data = None
+            if hasattr(ctrl, 'combo_sc_mode'):
+                try:
+                    doamp_data = ctrl.combo_sc_mode.currentData()
+                except Exception:
+                    doamp_data = None
+            if isinstance(doamp_data, bool):
+                doamp = doamp_data
+            else:
+                sc_mode_text = ctrl.combo_sc_mode.currentText().strip()
+                doamp = sc_mode_text in {"Amplitude + Phase", "Amp+Phase"}
             dofloat = ctrl.chk_sc_float_amp.isChecked()
             doflag  = ctrl.chk_sc_doflag.isChecked()
             clip    = ctrl.chk_sc_clip.isChecked()
@@ -1235,7 +1364,7 @@ class MainWindow(QMainWindow):
             if sc_tap_rad > 0.0 and sc_tap_amp == 0.0:
                 raise ValueError("Selfcal taper : si Rayon > 0 alors Valeur doit être renseignée.")
 
-            mode_str = "Amp+Phase" if doamp else "Phase only"
+            mode_str = "Amplitude + Phase" if doamp else "Phase seule"
             self.log_console.log(
                 f"Selfcal — mode: {mode_str}, solint: {solint} min, "
                 f"maxphs: {maxphs}°, maxamp: {maxamp}, "
@@ -1986,6 +2115,30 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
             raise
+
+    def _drain_c_output(self) -> None:
+        """
+        Appelé toutes les 100 ms par _c_drain_timer.
+        Flush les buffers C, lit le pipe OS et affiche chaque ligne
+        dans la console avec log_raw() (style terminal difmap brut).
+        """
+        if self._c_capture_fd is None:
+            return
+        try:
+            difmap_native.flush_stdout()
+            ready, _, _ = _select.select([self._c_capture_fd], [], [], 0)
+            if not ready:
+                return
+            data = os.read(self._c_capture_fd, 65536)
+            if not data:
+                return
+            text = data.decode('utf-8', errors='replace')
+            for line in text.splitlines():
+                stripped = line.rstrip()
+                if stripped:
+                    self.log_console.log_raw(stripped)
+        except Exception:
+            pass
 
     def _toggle_terminal(self):
         """Bascule la visibilité du panneau de logs (console terminale droite)."""

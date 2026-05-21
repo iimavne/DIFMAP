@@ -1449,7 +1449,8 @@ class ControlPanel(QDockWidget):
         lbl_doamp = QLabel("doamp")
         lbl_doamp.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
         self.combo_sc_mode = QComboBox()
-        self.combo_sc_mode.addItems(["Phase seule", "Amplitude + Phase"])
+        self.combo_sc_mode.addItem("Phase seule", False)
+        self.combo_sc_mode.addItem("Amplitude + Phase", True)
         self.combo_sc_mode.setToolTip(
             "doamp=False : calibration de phase seule (plus sûr, à faire en premier)\n"
             "doamp=True  : calibration amplitude + phase (nécessite un bon modèle)"
@@ -1471,6 +1472,18 @@ class ControlPanel(QDockWidget):
             "Corrections d'amplitude non contraintes (flottantes)\n"
             "Disponible uniquement en mode Amplitude + Phase"
         )
+        self.chk_sc_float_amp.setEnabled(False)
+        def _update_float_enabled() -> None:
+            try:
+                doamp = bool(self.combo_sc_mode.currentData())
+            except Exception:
+                doamp = (self.combo_sc_mode.currentText().strip() == "Amplitude + Phase")
+            self.chk_sc_float_amp.setEnabled(doamp)
+            if not doamp:
+                self.chk_sc_float_amp.setChecked(False)
+
+        self.combo_sc_mode.currentIndexChanged.connect(_update_float_enabled)
+        _update_float_enabled()
         h_sol_float.addWidget(lbl_solint)
         h_sol_float.addWidget(self.input_sc_solint)
         h_sol_float.addWidget(lbl_solint_unit)

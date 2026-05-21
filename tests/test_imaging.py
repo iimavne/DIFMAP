@@ -282,15 +282,15 @@ class TestCleanAndRestore:
         session = DifmapSession()
         with patch.object(dn, 'clean', return_value=0) as mock_clean:
             session.imager.clean(niter=200, gain=0.1)
-        mock_clean.assert_called_once_with(200, 0.1)
+        mock_clean.assert_called_once_with(200, 0.1, 0.0)
 
     def test_clean_valeurs_par_defaut(self):
-        """clean() doit utiliser niter=100 et gain=0.05 par défaut."""
+        """clean() doit utiliser niter=100, gain=0.05 et cutoff=0.0 par défaut."""
         import difmap_native as dn
         session = DifmapSession()
         with patch.object(dn, 'clean', return_value=0) as mock_clean:
             session.imager.clean()
-        mock_clean.assert_called_once_with(100, 0.05)
+        mock_clean.assert_called_once_with(100, 0.05, 0.0)
 
     def test_clean_leve_difmaperror_si_moteur_echoue(self):
         """clean() doit lever DifmapError quand le moteur C retourne -1."""

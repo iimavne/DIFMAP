@@ -4,16 +4,6 @@ import importlib
 
 import difmap_native
 from .core.session import DifmapSession
-
-from .core.commands import (
-    ObserveCommand,
-    SelectCommand,
-    MapsizeCommand,
-    InvertCommand,
-    CleanCommand,
-    RestoreCommand,
-    SelfcalCommand,
-)
 from .core.observation import Observation
 from .core.imaging import DifmapImager
 from .core.visualizer import Visualizer
@@ -25,13 +15,6 @@ from . import utils
 
 __all__ = [
     "DifmapSession",
-    "ObserveCommand",
-    "SelectCommand",
-    "MapsizeCommand",
-    "InvertCommand",
-    "CleanCommand",
-    "RestoreCommand",
-    "SelfcalCommand",
     "Observation",
     "DifmapImager",
     "Visualizer",

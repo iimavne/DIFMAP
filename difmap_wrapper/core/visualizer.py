@@ -375,16 +375,24 @@ class Visualizer:
 
     @staticmethod
     def _vis_add_annotations(ax, data, map_type, info=None, session=None,
-                              drawn_levels=None, contour_mode='pct'):
+                              drawn_levels=None, contour_mode='pct',
+                              vmin=None, vmax=None):
         """
         Bloc d'annotations style PGPLOT — sous l'axe, contenu par type de carte.
+
+        Réplique fidèlement maplot.c::pllabel() de Difmap :
+        - Clean map  → "Map peak: %.3g Jy/beam"
+        - Dirty/Residual → "Displayed range: %.3g □ %.3g Jy/beam"  (plage colormap)
+        - Contours affichés en %.3g (3 chiffres significatifs), pas arrondis
+        - RMS/SNR : extensions Python non présentes dans Difmap original
         """
         if data is None or data.size == 0:
             return
 
-        dmin = float(np.nanmin(data))
-        dmax = float(np.nanmax(data))
-        peak_signed = float(Visualizer._vis_central_peak(data))
+        # Pic absolu (même logique que le C : fabs(immax) > fabs(immin) ? immax : immin)
+        immax = float(np.nanmax(data))
+        immin = float(np.nanmin(data))
+        abs_peak = immax if abs(immax) >= abs(immin) else immin
 
         # RMS natif DIFMAP : vlbmap->maprms = sqrt(mean((pixel-mean)²)) sur la zone CLEAN.
         # Fourni par get_map_package() / get_residual_package() via info['rms'].
@@ -455,16 +463,19 @@ class Visualizer:
             except Exception:
                 pass
 
-        # Centre de carte depuis le header
+        # Centre de carte depuis le header (format Difmap : OBSRA/OBSDEC sur lignes séparées)
+        # "  OBSRA  = 00 06 13.893 (2000.0)"
+        # "  OBSDEC = -06 23 35.335"
         ra, dec = "00 00 00.000", "+00 00 00.000"
         if header_text:
-            m = re.search(r"RA\s*[=:]\s*([0-9:.\s]+)\s*,?\s*Dec\s*[=:]\s*([+\-0-9:.\s]+)",
-                          header_text, flags=re.IGNORECASE)
-            if m:
-                ra  = " ".join(m.group(1).strip().replace(':', ' ').split())
-                dec = " ".join(m.group(2).strip().replace(':', ' ').split())
+            m_ra = re.search(r"OBSRA\s*=\s*([\d :.]+?)(?:\s*\(|\s*$)", header_text, re.MULTILINE)
+            m_dec = re.search(r"OBSDEC\s*=\s*([+-]?[\d :.]+)", header_text, re.MULTILINE)
+            if m_ra:
+                ra = m_ra.group(1).strip()
+            if m_dec:
+                dec = m_dec.group(1).strip()
 
-        # Ligne de tête
+        # Ligne de tête : "Clean/Residual/Dirty POL map.  Array: STATIONS"
         map_label = (map_type or 'dirty').capitalize()
         pol_txt = pol or "XX"
         formatted_lines.append(
@@ -483,32 +494,44 @@ class Visualizer:
             formatted_lines.append(src)
 
         formatted_lines.append(f"Map center:  RA: {ra},  Dec: {dec} (2000.0)")
-        formatted_lines.append(f"Displayed range: {dmin:.4g} to {dmax:.4g} Jy/beam")
 
+        # Peak / range — logique identique au C (maplot.c:1664-1668) :
+        #   clean (ncmp > 0) → "Map peak: %.3g"    (pic absolu)
+        #   dirty / residual → "Displayed range: %.3g □ %.3g"  (plage colormap)
         if map_type == 'clean':
-            formatted_lines.append(f"Map peak: {dmax:.4g} Jy/beam")
-            if drawn_levels:
-                cpeak = Visualizer._vis_central_peak(data)
-                if cpeak != 0:
-                    pct_levels = [float(lvl) / cpeak * 100.0
-                                  for lvl in drawn_levels if np.isfinite(lvl)]
-                    shown = pct_levels[:8]
-                    suffix = " ..." if len(pct_levels) > 8 else ""
-                    formatted_lines.append(
-                        "Contours %: " + " ".join(f"{p:.0g}" for p in shown) + suffix
-                    )
-            if isinstance(info, dict):
-                bmaj = float(info.get('bmaj', 0.0) or 0.0)
-                bmin = float(info.get('bmin', 0.0) or 0.0)
-                bpa  = float(info.get('bpa',  0.0) or 0.0)
-                if bmaj > 0 and bmin > 0:
-                    formatted_lines.append(
-                        f"Beam FWHM: {bmaj:.3g} × {bmin:.3g} (mas) at {bpa:.2f}°"
-                    )
+            formatted_lines.append(f"Map peak: {abs_peak:.3g} Jy/beam")
+        else:
+            # Plage affichée = vmin/vmax utilisateur si fournis, sinon étendue des données
+            cmin = float(vmin) if vmin is not None else immin
+            cmax = float(vmax) if vmax is not None else immax
+            formatted_lines.append(f"Displayed range: {cmin:.3g} □ {cmax:.3g} Jy/beam")
 
+        # Contours — format %.3g (3 chiffres sig.) identique au C (maplot.c:1280)
+        if map_type == 'clean' and drawn_levels:
+            cpeak = abs_peak
+            if cpeak != 0:
+                pct_levels = [float(lvl) / cpeak * 100.0
+                              for lvl in drawn_levels if np.isfinite(lvl)]
+                shown = pct_levels[:8]
+                suffix = " ..." if len(pct_levels) > 8 else ""
+                formatted_lines.append(
+                    "Contours %:" + "".join(f"  {p:.3g}" for p in shown) + suffix
+                )
+
+        # Faisceau — seulement pour clean (maplot.c:1688 : if(mb->ncmp))
+        if map_type == 'clean' and isinstance(info, dict):
+            bmaj = float(info.get('bmaj', 0.0) or 0.0)
+            bmin = float(info.get('bmin', 0.0) or 0.0)
+            bpa  = float(info.get('bpa',  0.0) or 0.0)
+            if bmaj > 0 and bmin > 0:
+                formatted_lines.append(
+                    f"Beam FWHM: {bmaj:.3g} x {bmin:.3g} (mas) at {bpa:.3g}\\u00b0"
+                )
+
+        # RMS et SNR — extensions Python (non présentes dans Difmap original)
         if map_type in {'residual', 'clean'} and rms > 0:
-            formatted_lines.append(f"RMS: {rms:.4g} Jy/beam")
-            formatted_lines.append(f"{abs(peak_signed) / rms:.1f}σ")
+            formatted_lines.append(f"RMS: {rms:.3g} Jy/beam")
+            formatted_lines.append(f"{abs(abs_peak) / rms:.1f}σ")
 
         ax.text(
             0.5, -0.12, "\n".join(formatted_lines),
@@ -713,7 +736,8 @@ class Visualizer:
 
         # 6. Annotations texte (en bas, en dehors de la grille)
         Visualizer._vis_add_annotations(ax, data, map_type, info=info, session=session,
-                                         drawn_levels=drawn, contour_mode=contour_mode)
+                                         drawn_levels=drawn, contour_mode=contour_mode,
+                                         vmin=vmin, vmax=vmax)
 
         ax.set_xlabel("Décalage RA (mas)")
         ax.set_ylabel("Décalage Dec (mas)")
@@ -832,7 +856,8 @@ class Visualizer:
         # Dirty et Residual maps n'ont JAMAIS de contours
         Visualizer._vis_add_annotations(ax, data, map_type, info=img_dict.get('info'),
                                          session=session,
-                                         drawn_levels=None, contour_mode='none')
+                                         drawn_levels=None, contour_mode='none',
+                                         vmin=vmin, vmax=vmax)
 
         ax.set_title(title)
         ax.set_xlabel("Décalage RA (mas)")

@@ -171,9 +171,6 @@ py3.install_sources(
 py3.install_sources(
     'difmap_wrapper/core/__init__.py',
     'difmap_wrapper/core/session.py',
-    'difmap_wrapper/core/commands.py',
-    'difmap_wrapper/core/executor.py',
-    'difmap_wrapper/core/history.py',
     'difmap_wrapper/core/observation.py',
     'difmap_wrapper/core/imaging.py',
     'difmap_wrapper/core/visualizer.py',
@@ -188,7 +185,6 @@ py3.install_sources(
     'difmap_wrapper/utils/map_geometry.py',
     'difmap_wrapper/utils/map_annotations.py',
     'difmap_wrapper/utils/standardizer.py',
-    'difmap_wrapper/utils/command_parser.py',
     subdir: 'difmap_wrapper/utils'
 )
 

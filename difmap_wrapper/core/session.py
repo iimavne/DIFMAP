@@ -4,8 +4,6 @@ import difmap_native
 
 from .imaging import DifmapImager
 from .observation import Observation
-from .executor import DifmapExecutor
-from .history import CommandHistory
 from ..utils.exceptions import DifmapStateError, DifmapError
 
 
@@ -89,19 +87,8 @@ class DifmapSession(metaclass=_SingletonMeta):
         self.obs = Observation(self)
         self.imager = DifmapImager(self)
 
-        self.history = CommandHistory()
-        self._executor = DifmapExecutor()
-
         from .visualizer import Visualizer
         self.vis = Visualizer(self)
-
-    def execute(self, cmd) -> None:
-        self._executor.execute(self, cmd)
-        self.history.add(cmd)
-
-    def replay(self, commands) -> None:
-        for cmd in commands:
-            self._executor.execute(self, cmd)
 
     def __enter__(self):
         return self
