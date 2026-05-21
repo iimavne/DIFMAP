@@ -6,8 +6,9 @@ from typing import Optional
 
 import numpy as np
 from matplotlib.collections import PathCollection
-from PyQt6.QtCore import QSize
-from PyQt6.QtWidgets import QLabel, QComboBox, QPushButton
+from PyQt6.QtCore import Qt as _Qt
+from PyQt6.QtGui import QAction
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QToolButton, QWidget
 try:
     import qtawesome as qta
     _HAS_QTA = True
@@ -18,59 +19,14 @@ from .base_plot_widget import BasePlotWidget
 from difmap_wrapper.gui.editors.rad_editor import RadPlotEditor
 from difmap_wrapper.gui.utils import MatplotlibStyler
 from difmap_wrapper.gui.styles import DesignSystem
-from difmap_wrapper.types import DisplayMode
+from difmap_wrapper.enums import DisplayMode
 
-_TOOLBAR_QSS = f"""
-QWidget#PlotToolbar {{
-    background-color: {DesignSystem.SURFACE_ALT};
-    border-bottom: 1px solid {DesignSystem.BORDER};
-    padding: 4px 0;
-    height: 32px;
-}}
-QPushButton {{
-    background-color: {DesignSystem.SURFACE};
-    color: {DesignSystem.TEXT};
-    border: 1px solid {DesignSystem.BORDER};
-    border-radius: 5px;
-    padding: 4px 10px;
-    font-size: 10px;
-    min-height: 26px;
-    min-width: 70px;
-}}
-QPushButton:hover  {{
-    background-color: {DesignSystem.SURFACE_ALT};
-    border-color: {DesignSystem.PRIMARY};
-    color: {DesignSystem.TEXT};
-}}
-QPushButton:pressed {{
-    background-color: {DesignSystem.BORDER_LIGHT};
-    border-color: {DesignSystem.PRIMARY_ACTIVE};
-    color: {DesignSystem.TEXT};
-}}
-QLabel {{
-    color: {DesignSystem.TEXT_MUTED};
-    font-size: 10px;
-    font-weight: bold;
-    background: transparent;
-    padding-left: 4px;
-}}
-QComboBox {{
-    background-color: {DesignSystem.SURFACE};
-    color: {DesignSystem.TEXT};
-    border: 1px solid {DesignSystem.BORDER};
-    border-radius: 5px;
-    padding: 3px 8px;
-    font-size: 10px;
-    min-width: 180px;
-    min-height: 26px;
-}}
-QComboBox:hover {{ border-color: {DesignSystem.PRIMARY}; }}
-QComboBox::drop-down {{ border: none; width: 18px; }}
-QComboBox::down-arrow {{ width: 10px; height: 10px; }}
-"""
+D = DesignSystem
+
+_TOOLBAR_QSS = D.get_plot_toolbar_qss("PlotToolbar", with_menu=True)
 
 
-def _icon(name: str, color: str = "#C8DCF0"):
+def _icon(name: str, color: str = "#4A6A8A"):
     if not _HAS_QTA:
         return None
     try:
@@ -79,14 +35,58 @@ def _icon(name: str, color: str = "#C8DCF0"):
         return None
 
 
-def _make_button(text: str, icon_name: str = None) -> QPushButton:
-    btn = QPushButton(text)
-    if icon_name:
-        ico = _icon(icon_name)
-        if ico:
-            btn.setIcon(ico)
-            btn.setIconSize(QSize(14, 14))
+def _make_separator() -> QWidget:
+    sep = QWidget()
+    sep.setFixedWidth(1)
+    sep.setFixedHeight(20)
+    sep.setStyleSheet(f"background-color: {D.BORDER};")
+    return sep
+
+
+def _make_dropdown(group_label: str, items: list,
+                   tool_buttons: dict, on_mode_click) -> QToolButton:
+    """
+    Crée un QToolButton avec menu déroulant pour sélection de mode.
+    items: [(label, mode, icon_name, shortcut, tooltip), ...]
+    """
+    btn = QToolButton()
+    btn.setCheckable(True)
+    btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+    btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+
+    menu = QMenu(btn)
+    first_item = items[0]
+
+    for label, mode, icon_name, shortcut, tip in items:
+        display = f"{label}    {shortcut}" if shortcut else label
+        act = QAction(display, btn)
+        act.setCheckable(True)
+        act.setData(mode)
+        act.setToolTip(tip)
+        act.triggered.connect(
+            lambda checked, m=mode, l=label, b=btn: _dropdown_select(b, l, m, on_mode_click))
+        menu.addAction(act)
+        tool_buttons[mode] = btn
+
+    btn.setMenu(menu)
+    _dropdown_label(btn, first_item[0], first_item[1])
     return btn
+
+
+def _dropdown_label(btn: QToolButton, label: str, mode: str) -> None:
+    """Met à jour le label et la coche du menu sans déclencher l'éditeur."""
+    btn.setText(f"{label}  ▾")
+    btn.setProperty("activeMode", mode)
+    if btn.menu():
+        for act in btn.menu().actions():
+            act.setChecked(act.data() == mode)
+
+
+def _dropdown_select(btn: QToolButton, label: str, mode: str, on_mode_click) -> None:
+    """Met à jour le label ET déclenche le changement de mode dans l'éditeur."""
+    _dropdown_label(btn, label, mode)
+    if on_mode_click:
+        on_mode_click(mode, btn)
 
 
 @dataclass
@@ -134,65 +134,120 @@ class RadPlotWidget(BasePlotWidget):
     # TOOLBAR LOCALE
     # =========================================================
 
-    _RAD_TOOLS = [
-        ("Inspect  [s]",            "INSPECT"),
-        ("Pan  [M]",                "PAN"),
-        ("Zoom Box  [Z]",           "ZOOM"),
-        ("Flag Box  [C]",           "CUT"),
-        ("Zoom X (UV range)  [U]",  "ZOOM_X"),
-        ("Zoom Y (vertical)  [Y]",  "ZOOM_Y"),
-        ("Stats Amp/Phase  [S]",    "STATS"),
-        ("Stats Re/Im  [V]",        "STATS_V"),
+    # (label, mode, icon_name, shortcut_display, tooltip)
+    # Note : dans RadPlot, m/M est overridé par "toggle model" → Pan n'a pas de raccourci clavier
+    _RAD_NAVIGATE = [
+        ("Pan",     "PAN",     "fa5s.arrows-alt",  "G", "Naviguer / déplacer la vue"),
+        ("Inspect", "INSPECT", "fa5s.info-circle", "s", "Inspecter le point le plus proche"),
+    ]
+    # Z=zoom libre (base), U (Shift+u)=Zoom Radius, Y=Zoom amp/phs
+    _RAD_ZOOM = [
+        ("Zoom Box",     "ZOOM",   "fa5s.search-plus",  "Z",       "Zoom rectangle (libre)"),
+        ("Zoom Radius",  "ZOOM_X", "fa5s.arrows-alt-h", "Shift+u", "Zoom plage UV radius (axe X)"),
+        ("Zoom Amp/Phs", "ZOOM_Y", "fa5s.arrows-alt-v", "Y",       "Zoom axe Amplitude / Phase"),
+    ]
+    _RAD_FLAG = [
+        ("Flag Box", "CUT", "fa5s.ban", "C", "Flaguer un rectangle"),
+    ]
+    _RAD_STATS = [
+        ("Amp / Phase", "STATS",   "fa5s.chart-bar",  "S", "Statistiques scalaires (Amp, Phase)"),
+        ("Re / Im",     "STATS_V", "fa5s.chart-line", "V", "Statistiques vectorielles (Re, Im)"),
     ]
 
     def _build_local_toolbar(self) -> None:
-        """Crée la mini-toolbar au-dessus du canvas Radplot."""
+        """
+        Toolbar compacte homogène : groupes déroulants Tool / Zoom / Stats / View.
+        """
+        self._tool_buttons: dict[str, QToolButton] = {}
+
         row = self.plot_toolbar_row
         row.setObjectName("PlotToolbar")
         row.setStyleSheet(_TOOLBAR_QSS)
-        row.setFixedHeight(32)
         row.setVisible(True)
         lay = self.plot_toolbar_layout
+        lay.setContentsMargins(8, 5, 8, 5)
+        lay.setSpacing(6)
 
-        lay.addWidget(QLabel("  Tools:"))
-        self._tool_combo = QComboBox()
-        self._tool_combo.setToolTip("Tool active (Keyboard shortcut)")
-        for label, data in self._RAD_TOOLS:
-            self._tool_combo.addItem(label, data)
-        lay.addWidget(self._tool_combo)
+        lay.addWidget(QLabel("Tool:"))
+        dd_tool = _make_dropdown("Tool", self._RAD_NAVIGATE + self._RAD_FLAG,
+                                 self._tool_buttons, self._on_tool_btn)
+        lay.addWidget(dd_tool)
+        lay.addWidget(_make_separator())
 
-        lay.addSpacing(10)
+        lay.addWidget(QLabel("Zoom:"))
+        dd_zoom = _make_dropdown("Zoom", self._RAD_ZOOM,
+                                 self._tool_buttons, self._on_tool_btn)
+        lay.addWidget(dd_zoom)
+        lay.addWidget(_make_separator())
 
-        self._btn_undo    = _make_button("Undo Flag [U]",    "fa5s.undo")
-        self._btn_reset   = _make_button("Reset [R]",   "fa5s.expand-arrows-alt")
-        self._btn_dezoom  = _make_button("Dézoom [O]",  "fa5s.search-minus")
-        self._btn_refresh = _make_button("Refresh [L]", "fa5s.sync-alt")
-        for btn, tip in [
-            (self._btn_undo,    "Annuler le dernier flagging"),
-            (self._btn_reset,   "Réinitialiser la vue (tous les graphiques)"),
-            (self._btn_dezoom,  "Dézoomer de 50 %"),
-            (self._btn_refresh, "Rafraîchir l'affichage"),
-        ]:
-            btn.setToolTip(tip)
-            lay.addWidget(btn)
+        lay.addWidget(QLabel("Stats:"))
+        dd_stats = _make_dropdown("Stats", self._RAD_STATS,
+                                  self._tool_buttons, self._on_tool_btn)
+        lay.addWidget(dd_stats)
+        lay.addWidget(_make_separator())
 
+        lay.addWidget(QLabel("View:"))
+        view_btn = QToolButton()
+        view_btn.setText("View ▾")
+        view_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        view_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        view_menu = QMenu(view_btn)
+        view_actions = [
+            ("Dezoom [O]", "Dézoomer de 50 %", lambda: self._on_button_click(self.editor.action_dezoom, None) if self.editor else None),
+            ("Reset [R]", "Réinitialiser la vue", lambda: self._on_button_click(self.editor.action_home, None) if self.editor else None),
+            ("Undo Flag [u]", "Annuler le dernier flagging", lambda: self._on_button_click(self.editor.action_undo, None) if self.editor else None),
+        ]
+        for text, tip, callback in view_actions:
+            act = QAction(text, view_btn)
+            act.setToolTip(tip)
+            act.triggered.connect(lambda checked=False, cb=callback: cb())
+            view_menu.addAction(act)
+        cross = QAction("Crosshair [+]", view_btn)
+        cross.setCheckable(True)
+        cross.setToolTip("Crosshair plein écran")
+        cross.triggered.connect(lambda checked: self._on_crosshair_btn(cross, checked))
+        view_menu.addAction(cross)
+        self._tool_buttons["XHAIR"] = cross
+        view_btn.setMenu(view_menu)
+        lay.addWidget(view_btn)
         lay.addStretch()
 
-        self._tool_combo.currentIndexChanged.connect(self._on_tool_changed)
-        self._btn_undo.clicked.connect(
-            lambda: self._on_button_click(self.editor.action_undo, None) if self.editor else None)
-        self._btn_reset.clicked.connect(
-            lambda: self._on_button_click(self.editor.action_home, None) if self.editor else None)
-        self._btn_dezoom.clicked.connect(
-            lambda: self._on_button_click(self.editor.action_dezoom, None) if self.editor else None)
-        self._btn_refresh.clicked.connect(
-            lambda: self._on_button_click(self.editor.action_redisplay, None) if self.editor else None)
+    # ── Gestion des boutons ──────────────────────────────────────
 
-    def _on_tool_changed(self, index: int) -> None:
-        """Applique le mode sélectionné dans le combo à l'éditeur actif."""
-        if index < 0 or not self.editor:
+    def _update_btn_visuals(self, mode: str) -> None:
+        """
+        Met à jour UNIQUEMENT l'état visuel des boutons (checked + label dropdown).
+        N'appelle PAS l'éditeur — évite toute récursion depuis sync_*.
+        """
+        if not hasattr(self, '_tool_buttons'):
             return
-        mode = self._tool_combo.itemData(index)
+        seen_dropdowns: set = set()
+        for m, b in self._tool_buttons.items():
+            if m == "XHAIR":
+                continue
+            if isinstance(b, QToolButton) and b.menu() and id(b) not in seen_dropdowns:
+                seen_dropdowns.add(id(b))
+                owns = any(a.data() == mode for a in b.menu().actions())
+                b.blockSignals(True)
+                b.setChecked(owns)
+                if owns:
+                    for a in b.menu().actions():
+                        a.setChecked(a.data() == mode)
+                        if a.data() == mode:
+                            raw = a.text().split("   ")[0].strip()
+                            b.setText(f"{raw}  ▾")
+                            b.setProperty("activeMode", mode)
+                b.blockSignals(False)
+            elif not isinstance(b, QToolButton):
+                b.blockSignals(True)
+                b.setChecked(m == mode)
+                b.blockSignals(False)
+
+    def _on_tool_btn(self, mode: str, btn) -> None:
+        """Appelé par interaction utilisateur : met à jour l'UI puis l'éditeur."""
+        self._update_btn_visuals(mode)
+        if not self.editor:
+            return
         if mode == "INSPECT":
             self.editor.inspect_active = True
             self.editor._set_mode(None)
@@ -201,35 +256,47 @@ class RadPlotWidget(BasePlotWidget):
             self.editor._set_mode(mode)
         self.canvas.setFocus()
 
+    def _on_crosshair_btn(self, btn, checked: bool | None = None) -> None:
+        if self.editor:
+            visible = btn.isChecked() if checked is None else bool(checked)
+            self.editor.set_crosshair_visible(visible)
+        self.canvas.setFocus()
+
     def _on_button_click(self, func, arg=None):
-        """Exécute l'action du bouton et remet le focus sur le canvas pour les raccourcis clavier."""
         if func:
             func(arg)
         self.canvas.setFocus()
 
+    # ── Synchronisation UI ← éditeur / clavier (pas d'appel éditeur) ──
+
     def sync_inspect_state(self, active: bool) -> None:
-        """Synchronise le combo quand l'état inspect change via raccourci clavier."""
-        if not hasattr(self, '_tool_combo'):
-            return
+        """Met à jour l'UI uniquement — PAS l'éditeur (évite récursion)."""
         if active:
-            self._tool_combo.blockSignals(True)
-            self._tool_combo.setCurrentIndex(0)
-            self._tool_combo.blockSignals(False)
+            self._update_btn_visuals("INSPECT")
+        else:
+            if not hasattr(self, '_tool_buttons'):
+                return
+            seen: set = set()
+            for m, b in self._tool_buttons.items():
+                if m == "XHAIR" or id(b) in seen:
+                    continue
+                seen.add(id(b))
+                b.blockSignals(True)
+                b.setChecked(False)
+                b.blockSignals(False)
 
     def sync_tool_state(self, tool: str) -> None:
-        """Synchronise le combo de la toolbar locale avec le mode actif de l'éditeur."""
-        if not hasattr(self, '_tool_combo') or tool is None:
+        """Met à jour l'UI uniquement — PAS l'éditeur (évite récursion)."""
+        if not hasattr(self, '_tool_buttons') or not tool:
             return
-        if tool == "INSPECT":
-            target_index = 0
-        else:
-            target_index = next((i for i in range(self._tool_combo.count())
-                                 if self._tool_combo.itemData(i) == tool), -1)
-        if target_index < 0:
-            return
-        self._tool_combo.blockSignals(True)
-        self._tool_combo.setCurrentIndex(target_index)
-        self._tool_combo.blockSignals(False)
+        self._update_btn_visuals(tool)
+
+    def sync_crosshair_btn(self, active: bool) -> None:
+        btn = self._tool_buttons.get("XHAIR")
+        if btn:
+            btn.blockSignals(True)
+            btn.setChecked(active)
+            btn.blockSignals(False)
 
     # =========================================================
     # API publique
@@ -264,6 +331,41 @@ class RadPlotWidget(BasePlotWidget):
         if self.data is not None:
             self._refresh_layout()
 
+    def set_rad_limits(self, uvmin, uvmax, ampmin, ampmax, phsmin, phsmax) -> None:
+        """Applique les limites d'affichage Radplot (équivalent uvradplt r_setrange)."""
+        try:
+            all_none = all(v is None for v in (uvmin, uvmax, ampmin, ampmax, phsmin, phsmax))
+            if self.ax:
+                if uvmin is None and uvmax is None:
+                    if not all_none and self.editor and self.editor.original_limits:
+                        self.ax.set_xlim(self.editor.original_limits[0])
+                else:
+                    xl = self.ax.get_xlim()
+                    self.ax.set_xlim(
+                        uvmin if uvmin is not None else xl[0],
+                        uvmax if uvmax is not None else xl[1],
+                    )
+                if ampmin is None and ampmax is None:
+                    pass
+                else:
+                    yl = self.ax.get_ylim()
+                    self.ax.set_ylim(
+                        ampmin if ampmin is not None else yl[0],
+                        ampmax if ampmax is not None else yl[1],
+                    )
+            if self.ax_phase:
+                if phsmin is None and phsmax is None:
+                    pass
+                else:
+                    yl = self.ax_phase.get_ylim()
+                    self.ax_phase.set_ylim(
+                        phsmin if phsmin is not None else yl[0],
+                        phsmax if phsmax is not None else yl[1],
+                    )
+            self.fig.canvas.draw_idle()
+        except Exception:
+            pass
+
     def _refresh_layout(self) -> None:
         """
         Recrée les axes et l'éditeur en préservant le masque de l'Observation (C3).
@@ -282,8 +384,7 @@ class RadPlotWidget(BasePlotWidget):
 
             # Restaurer le crosshair
             if crosshair_was_active and self.editor and hasattr(self.editor, 'cursor_active'):
-                if not self.editor.cursor_active:
-                    self.editor.action_toggle_crosshair(None)
+                self.editor.set_crosshair_visible(True)
 
     # =========================================================
     # M4 : plot_data() décomposé en sous-méthodes
@@ -304,6 +405,18 @@ class RadPlotWidget(BasePlotWidget):
         observation : Observation, optional
             Si fourni, instancie un :class:`RadPlotEditor` sur les données.
         """
+        saved_focus = None
+        if getattr(self, 'editor', None) is not None:
+            try:
+                saved_focus = (
+                    getattr(self.editor, 'index_subarray_actuel', 0),
+                    getattr(self.editor, 'index_antenne_actuelle', -1),
+                    getattr(self.editor, '_nom_antenne_courante', ""),
+                    getattr(self.editor, 'inspect_active', False),
+                )
+            except Exception:
+                saved_focus = None
+
         self.data = data
         self._setup_axes()
 
@@ -316,8 +429,18 @@ class RadPlotWidget(BasePlotWidget):
         if observation is not None:
             self._create_editor(observation, scats)
 
-        self.fig.canvas.draw()
-        self.refresh()
+        if saved_focus and getattr(self, 'editor', None) is not None:
+            try:
+                (sub_idx, ant_idx, ant_name, inspect_active) = saved_focus
+                self.editor.index_subarray_actuel = sub_idx
+                self.editor.index_antenne_actuelle = ant_idx
+                self.editor._nom_antenne_courante = ant_name
+                self.editor.inspect_active = inspect_active
+                self.editor._update_colors()
+            except Exception:
+                pass
+
+        self.fig.canvas.draw_idle()
 
     def _setup_axes(self) -> None:
         """
@@ -448,8 +571,14 @@ class RadPlotWidget(BasePlotWidget):
             base_color=DesignSystem.PLOT_DATA,
             sync_callback=self._sync_callback,
         )
-        self.editor.show_errors = self.show_errors
+        self.editor.show_errors  = self.show_errors
+        self.editor.display_mode = self.display_mode
         self.editor._update_colors()
-        # Appliquer le mode courant du combo au nouvel éditeur
-        if hasattr(self, '_tool_combo'):
-            self._on_tool_changed(self._tool_combo.currentIndex())
+        # Appliquer le mode courant des boutons au nouvel éditeur
+        if hasattr(self, '_tool_buttons'):
+            for mode, btn in self._tool_buttons.items():
+                if mode == "XHAIR":
+                    continue
+                if isinstance(btn, QToolButton) and btn.property("activeMode") == mode:
+                    self._on_tool_btn(mode, btn)
+                    break

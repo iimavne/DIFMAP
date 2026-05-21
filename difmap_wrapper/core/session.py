@@ -1,4 +1,5 @@
 # difmap_wrapper/session.py
+import threading
 import difmap_native
 
 from .imaging import DifmapImager
@@ -9,19 +10,36 @@ from ..utils.exceptions import DifmapStateError, DifmapError
 class _SingletonMeta(type):
     """Empêche la création de deux sessions simultanées (le moteur C est global)."""
     _instance = None
+    _lock = threading.Lock()
 
     def __call__(cls, *args, **kwargs):
-        if cls._instance is not None:
-            raise DifmapStateError(
-                "Une instance DifmapSession est déjà active dans ce processus. "
-                "Le moteur C utilise des variables globales : deux sessions "
-                "simultanées causeraient une corruption mémoire (segfault).\n"
-                "→ Réutilisez l'instance existante, ou appelez session.cleanup() "
-                "avant d'en créer une nouvelle."
-            )
-        instance = super().__call__(*args, **kwargs)
-        cls._instance = instance
+        with cls._lock:
+            if cls._instance is not None:
+                raise DifmapStateError(
+                    "Une instance DifmapSession est déjà active dans ce processus. "
+                    "Le moteur C utilise des variables globales : deux sessions "
+                    "simultanées causeraient une corruption mémoire (segfault).\n"
+                    "→ Réutilisez l'instance existante, ou appelez session.cleanup() "
+                    "avant d'en créer une nouvelle."
+                )
+            instance = super().__call__(*args, **kwargs)
+            cls._instance = instance
         return instance
+
+    def force_reset(cls) -> None:
+        """
+        Libère le verrou singleton sans passer par l'instance.
+
+        À utiliser uniquement dans un notebook Jupyter quand le kernel a planté
+        et que l'instance précédente est inaccessible. N'appelle aucun destructeur
+        C — les ressources natives sont perdues (acceptable après un crash kernel).
+
+        Examples
+        --------
+        >>> DifmapSession.force_reset()
+        >>> session = DifmapSession()   # OK
+        """
+        cls._instance = None
 
 
 class DifmapSession(metaclass=_SingletonMeta):
@@ -109,16 +127,50 @@ class DifmapSession(metaclass=_SingletonMeta):
             raise DifmapError(f"Fichier introuvable : {filepath}")
         if self.uv_loaded:
             self._native_cleanup()
-            self.imager.uvtaper(0, 0)
-        ret = self._native.observe(filepath)
-        if ret != 0:
-            raise DifmapError(f"Échec du chargement : {filepath} (format non reconnu ou fichier corrompu)")
-        self.uv_loaded = True
+        # Certains échecs d'observe() peuvent être intermittents (état natif/IO).
+        # On tente plusieurs fois en forçant un cleanup entre les essais.
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            ret = self._native.observe(filepath)
+            if ret == 0:
+                self.uv_loaded = True
+                return
+
+            try:
+                self._native.cleanup()
+            finally:
+                self.uv_loaded = False
+
+            if attempt == max_attempts:
+                raise DifmapError(f"Échec du chargement : {filepath} (format non reconnu ou fichier corrompu)")
 
     def _native_cleanup(self) -> None:
-        """Remet à zéro l'état interne sans libérer le slot singleton."""
+        """Libère les buffers C et remet à zéro l'état Python avant un rechargement."""
         self.uv_loaded = False
-        # native_observe (appelé juste après) réinitialise l'état C via obs_end() + invpar = invdef
+        # Déconnecter les éditeurs AVANT de libérer les buffers C pour éviter
+        # tout accès C depuis un callback résiduel pendant la transition
+        for editor in list(self.obs._editors):
+            try:
+                editor.cleanup()
+            except Exception:
+                pass
+        self.obs._editors.clear()
+        self._native.cleanup()
+        # Réinitialiser l'état Python pour ne pas garder en RAM les données de l'ancien fichier
+        self.imager._last_residual_map = None
+        self.imager._last_residual_rms = None
+        self.imager._last_mapsize = None
+        self.imager._last_cellsize = None
+        self.imager._last_ny = None
+        self.imager._last_cellsize_y = None
+        self.imager._current_map_type = None
+        self.imager._current_uvtaper = None
+        self.imager._current_uvweight = None
+        self.imager._current_selfcal_taper = None
+        self.imager.active_windows = []
+        self.obs.masque_flagges = None
+        self.obs.historique_coupes.clear()
+        self.obs.invalidate_cache()
 
     def cleanup(self) -> None:
         """
@@ -132,5 +184,7 @@ class DifmapSession(metaclass=_SingletonMeta):
         >>> session.cleanup()
         >>> session2 = DifmapSession()   # OK, le slot est libéré
         """
-        self.uv_loaded = False
-        type(self)._instance = None
+        if self.uv_loaded:
+            self._native_cleanup()
+        with type(self)._lock:
+            type(self)._instance = None

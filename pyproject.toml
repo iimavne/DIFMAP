@@ -1,19 +1,71 @@
 [build-system]
-# On force pip à télécharger le Cython moderne et le NumPy moderne
-# pour son dossier de compilation isolé
 requires = ["meson-python", "cython>=3.0.0", "numpy>=2.0.0"]
 build-backend = "mesonpy"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Métadonnées du projet
+# ─────────────────────────────────────────────────────────────────────────────
 [project]
-name = "difmap_smartedit"
-version = "2.5.0"
-description = "Python binding for Difmap"
+name            = "difmap_smartedit"
+version         = "2.5.0"
+description     = "Python wrapper for Difmap — VLBI imaging via Python API, PyQt6 GUI and parallel batch processing"
 requires-python = ">=3.8"
+license         = {text = "Caltech non-commercial — see README"}
+
+authors = [
+    {name = "MAHSSINI Imane", email = "mahssiniimane@gmail.com"},
+]
+
+keywords = [
+    "vlbi", "radio-astronomy", "interferometry",
+    "difmap", "imaging", "clean", "self-calibration",
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: POSIX :: Linux",
+]
+
+# Runtime dependencies only — Cython est un outil de build, pas une dépendance runtime
 dependencies = [
     "numpy>=2.0",
-    "cython>=3.0",
     "astropy",
     "matplotlib",
     "PyQt6",
-    "qtawesome"
+    "qtawesome",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "pytest-cov",
+    "quartodoc",
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Point d'entrée CLI
+# ─────────────────────────────────────────────────────────────────────────────
+[project.scripts]
+difmap-gui = "difmap_wrapper.app:main"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# URLs du projet
+# ─────────────────────────────────────────────────────────────────────────────
+[project.urls]
+Homepage      = "https://github.com/iimavne/DIFMAP"
+Documentation = "https://iimavne.github.io/DIFMAP"
+"Bug Tracker" = "https://github.com/iimavne/DIFMAP/issues"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Configuration pytest
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,182 +1,32 @@
 import numpy as np
+import matplotlib as mpl
 from matplotlib.patches import Ellipse, Rectangle
 from matplotlib.colors import Normalize, LogNorm, PowerNorm
 from matplotlib.offsetbox import AnchoredOffsetbox, AuxTransformBox
 from matplotlib.widgets import RectangleSelector
 from matplotlib.backend_bases import cursors
-from PyQt6.QtWidgets import QLabel, QComboBox, QPushButton, QHBoxLayout, QWidget
+from PyQt6.QtWidgets import QLabel, QHBoxLayout, QWidget, QMenu, QToolButton
 from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt as _Qt
+from PyQt6.QtGui import QAction
 from .base_plot_widget import BasePlotWidget
 from difmap_wrapper.gui.utils import MatplotlibStyler
 from difmap_wrapper.gui.styles import DesignSystem
-from difmap_wrapper.utils.map_geometry import DifmapMapGeometry, get_difmap_contour_levels
-from difmap_wrapper.utils.map_annotations import create_pgplot_style_annotations, DifmapMapAnnotations
+from difmap_wrapper.utils.map_geometry import DifmapMapGeometry
+from difmap_wrapper.core.visualizer import Visualizer
+import difmap_native
+import re
 
-# Style pour la toolbar des cartes
-_MAP_TOOLBAR_QSS = f"""
-QWidget#MapToolbar {{
-    background-color: {DesignSystem.SURFACE_ALT};
-    border-bottom: 1px solid {DesignSystem.BORDER};
-    padding: 4px 0;
-    height: 32px;
-}}
-QPushButton {{
-    background-color: {DesignSystem.SURFACE};
-    color: {DesignSystem.TEXT};
-    border: 1px solid {DesignSystem.BORDER};
-    border-radius: 5px;
-    padding: 4px 10px;
-    font-size: 10px;
-    min-height: 26px;
-    min-width: 70px;
-}}
-QPushButton:hover  {{
-    background-color: {DesignSystem.SURFACE_ALT};
-    border-color: {DesignSystem.PRIMARY};
-    color: {DesignSystem.TEXT};
-}}
-QPushButton:pressed {{
-    background-color: {DesignSystem.BORDER_LIGHT};
-    border-color: {DesignSystem.PRIMARY_ACTIVE};
-    color: {DesignSystem.TEXT};
-}}
-QLabel {{
-    color: {DesignSystem.TEXT_MUTED};
-    font-size: 10px;
-    font-weight: bold;
-    background: transparent;
-    padding-left: 4px;
-}}
-QComboBox {{
-    background-color: {DesignSystem.SURFACE};
-    color: {DesignSystem.TEXT};
-    border: 1px solid {DesignSystem.BORDER};
-    border-radius: 5px;
-    padding: 2px 6px;
-    font-size: 10px;
-    min-height: 26px;
-}}
-QComboBox:hover {{
-    border-color: {DesignSystem.PRIMARY};
-}}
-QComboBox::drop-down {{
-    border: none;
-    width: 20px;
-}}
-QComboBox::down-arrow {{
-    image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 4px solid {DesignSystem.TEXT_MUTED};
-}}
-"""
+D = DesignSystem
 
-
-def _central_peak(data: np.ndarray) -> float:
-    """Pic signé sur la région d'affichage complète.
-
-    Difmap garde le signe de l'extrême dominant dans maplot.c:setcont().
-    """
-    dmin = float(np.nanmin(data))
-    dmax = float(np.nanmax(data))
-    return dmax if abs(dmax) > abs(dmin) else dmin
-
-
-def _imageable_zone_peak(full_data: np.ndarray) -> float:
-    """Pic signé sur la zone imageable (centre 1/4 à 3/4 de la carte).
-    
-    Difmap calcule les niveaux de contours sur la zone imageable complète,
-    pas sur la zone zoomée. La zone imageable est typiquement le centre
-    de la carte (nx/4..3nx/4, ny/4..3ny/4).
-    """
-    ny, nx = full_data.shape
-    # Zone imageable: centre 1/4 à 3/4 de la carte
-    y_start, y_end = ny // 4, 3 * ny // 4
-    x_start, x_end = nx // 4, 3 * nx // 4
-    
-    # S'assurer que les indices sont valides
-    y_start = max(0, y_start)
-    y_end = min(ny, y_end)
-    x_start = max(0, x_start)
-    x_end = min(nx, x_end)
-    
-    imageable_data = full_data[y_start:y_end, x_start:x_end]
-    return _central_peak(imageable_data)
-
-
-def _make_norm(scale: str, vmin, vmax, data: np.ndarray):
-    """Normalisation matplotlib équivalente à mapfunc de difmap (linear/log/sqrt)."""
-    dmin = float(np.nanmin(data))
-    dmax = float(np.nanmax(data))
-    v_lo = vmin if vmin is not None else dmin
-    v_hi = vmax if vmax is not None else dmax
-    if scale == 'log':
-        safe_lo = max(v_lo, v_hi * 1e-4, 1e-12) if v_hi > 0 else 1e-6
-        return LogNorm(vmin=safe_lo, vmax=v_hi)
-    if scale == 'sqrt':
-        return PowerNorm(gamma=0.5, vmin=max(v_lo, 0.0), vmax=v_hi)
-    return Normalize(vmin=v_lo, vmax=v_hi)
-
-
-def _compute_contour_levels(peak, mode='pct', absmin=1.0, absmax=100.0,
-                             factor=2.0, custom=None):
-    """
-    Calcule les niveaux de contours selon Difmap en utilisant map_geometry.py.
-    """
-    return get_difmap_contour_levels(peak, mode, absmin, absmax, factor, custom)
-
-
-def _draw_contours(ax, map_data, x_coords, y_coords, peak, lw=0.6,
-                   mode='pct', absmin=1.0, absmax=100.0, factor=2.0, custom=None):
-    """
-    Trace les contours isophotes en suivant la convention PGPLOT de DIFMAP :
-    - négatifs : rouge (color index 2), traits pleins
-    - positifs : blanc (color index 1), traits pleins
-    - Utilise les niveaux exacts de DIFMAP
-    - Coordonnées précises des pixels pour correspondre à PGPLOT
-    Retourne la liste des niveaux tracés (Jy/beam, pour annotation).
-    """
-    levels = _compute_contour_levels(peak, mode, absmin, absmax, factor, custom)
-    if not levels:
-        return []
-    
-    cmin = float(np.nanmin(map_data))
-    cmax = float(np.nanmax(map_data))
-    visible = [l for l in levels if cmin < l < cmax]
-    drawn = []
-    
-    # Tracer tous les contours d'un coup pour optimisation
-    if visible:
-        # Séparer niveaux positifs et négatifs pour couleurs différentes
-        pos_levels = [l for l in visible if l >= 0]
-        neg_levels = [l for l in visible if l < 0]
-        
-        # Contours positifs en blanc - approche haute résolution
-        if pos_levels:
-            cs_pos = ax.contour(
-                x_coords, y_coords, map_data, levels=pos_levels,
-                colors='white', linewidths=lw*0.5, linestyles='solid',
-                alpha=1.0
-            )
-            drawn.extend(pos_levels)
-        
-        # Contours négatifs en rouge - approche haute résolution
-        if neg_levels:
-            cs_neg = ax.contour(
-                x_coords, y_coords, map_data, levels=neg_levels,
-                colors='red', linewidths=lw*0.5, linestyles='solid',
-                alpha=1.0
-            )
-            drawn.extend(neg_levels)
-    
-    return drawn
+_TOOLBAR_QSS = D.get_plot_toolbar_qss("MapToolbar", with_menu=True)
 
 
 def _add_map_annotations(ax, fig, map_data, map_type, beam_info=None,
                           contour_levels=None, contour_mode='pct',
                           observation_data=None, map_info=None):
     """
-    Ajoute les annotations texte style PGPLOT propre et moderne.
+    Ajoute les annotations texte en bas de l'axe (en dehors de la grille).
     """
     # Préparer les informations pour map_annotations.py
     if map_info is None:
@@ -186,31 +36,155 @@ def _add_map_annotations(ax, fig, map_data, map_type, beam_info=None,
     if beam_info:
         map_info.update(beam_info)
     
-    # Créer les annotations style PGPLOT
-    annotations_dict = create_pgplot_style_annotations(
-        map_data, map_info, observation_data, contour_levels
-    )
+    # Calculer les stats locales
+    dmin = float(np.nanmin(map_data))
+    dmax = float(np.nanmax(map_data))
+    peak_signed = float(Visualizer._vis_central_peak(map_data))
+    peak_abs = abs(peak_signed)
+
+    # RMS sur toute la zone imageable (map_data est déjà croppée).
+    # On privilégie map_info['rms'] si fourni par l'imager, sinon fallback calculé.
+    if isinstance(map_info, dict) and map_info.get('rms', None) is not None:
+        rms = float(map_info.get('rms') or 0.0)
+    else:
+        rms = float(np.sqrt(np.nanmean(map_data ** 2))) if map_data.size > 0 else 0.0
     
-    main_text = annotations_dict['main_text']
-    
-    if main_text:
-        # Solution minimaliste : annotation petite et discrète
-        # Réduire le texte pour ne pas cacher l'image
-        lines = main_text.split('\n')
-        essential_lines = []
-        
-        for line in lines:
-            line = line.strip()
-            # Garder seulement les infos critiques
-            if any(keyword in line for keyword in ['Peak:', 'Beam:', 'Map:']):
-                essential_lines.append(line)
-        
-        if essential_lines:
-            compact_text = '\n'.join(essential_lines[:3])  # Max 3 lignes
-            ax.text(0.02, 0.98, compact_text, transform=ax.transAxes,
-                    fontsize=6, color=DesignSystem.ASTRAL_ACCENT, va='top', ha='left',
-                    bbox=dict(boxstyle='round,pad=0.2', facecolor=DesignSystem.SURFACE_ALT, 
-                              edgecolor=DesignSystem.ASTRAL_ACCENT, alpha=0.8, linewidth=1))
+    formatted_lines: list[str] = []
+
+    header_text = ""
+    try:
+        header_text = difmap_native.get_header_text() or ""
+    except Exception:
+        header_text = ""
+
+    freq_ghz = 0.0
+    if header_text:
+        freqs = []
+        for m in re.finditer(r"^\s*\d+\s+\d+\s+([0-9.]+e[+-]\d+)", header_text, flags=re.MULTILINE):
+            try:
+                freqs.append(float(m.group(1)))
+            except Exception:
+                continue
+        if freqs:
+            freq_ghz = float(np.mean(freqs)) / 1e9
+
+    date_str = ""
+    if header_text:
+        m = re.search(r"\b(19|20)\d{2}\s+[A-Za-z]{3}\s+\d{1,2}\b", header_text)
+        if m:
+            date_str = m.group(0)
+
+    stations_str = ""
+    try:
+        uv = difmap_native.get_uv_data() or {}
+        tel_a = uv.get('tel_a')
+        tel_b = uv.get('tel_b')
+        sub = uv.get('subarray')
+        if tel_a is not None and tel_b is not None and len(tel_a) and len(tel_b):
+            n_tel = int(max(int(np.max(tel_a)), int(np.max(tel_b)))) + 1
+            isub = int(sub[0]) if sub is not None and len(sub) else 0
+            codes = []
+            for itel in range(n_tel):
+                name = difmap_native.get_telescope_name(isub, itel)
+                if not name:
+                    continue
+                code = name.strip().upper()[:2]
+                codes.append(code)
+            if codes:
+                stations_str = "".join(sorted(set(codes)))
+    except Exception:
+        stations_str = ""
+
+    # Source/Pol (fallback robust)
+    try:
+        source = difmap_native.get_source()
+    except Exception:
+        source = "UNKNOWN"
+    try:
+        pol = difmap_native.get_polarization()
+    except Exception:
+        pol = "XX"
+
+    ra = "00 00 00.000"
+    dec = "+00 00 00.000"
+    if header_text:
+        m = re.search(
+            r"^\s*OBSRA\s*=\s*\"?([^\"\n]+)\"?\s*$", header_text,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        n = re.search(
+            r"^\s*OBSDEC\s*=\s*\"?([^\"\n]+)\"?\s*$", header_text,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        if m and n:
+            ra = " ".join(m.group(1).strip().replace(':', ' ').split())
+            dec = " ".join(n.group(1).strip().replace(':', ' ').split())
+        else:
+            m = re.search(
+                r"RA\s*[=:]\s*([0-9hms:.\s]+)\s*[,;]?\s*Dec\s*[=:]\s*([+\-0-9dms:.\s]+)",
+                header_text,
+                flags=re.IGNORECASE,
+            )
+            if m:
+                ra = " ".join(m.group(1).strip().replace(':', ' ').split())
+                dec = " ".join(m.group(2).strip().replace(':', ' ').split())
+
+    map_label = (map_type or 'dirty').capitalize()
+    if stations_str:
+        formatted_lines.append(f"{map_label} {pol} map.  Array: {stations_str}")
+    else:
+        formatted_lines.append(f"{map_label} {pol} map.")
+
+    if freq_ghz > 0 and date_str:
+        formatted_lines.append(f"{source}  at {freq_ghz:.3f} GHz  {date_str}")
+    elif freq_ghz > 0:
+        formatted_lines.append(f"{source}  at {freq_ghz:.3f} GHz")
+    elif date_str:
+        formatted_lines.append(f"{source}  {date_str}")
+    else:
+        formatted_lines.append(f"{source}")
+
+    formatted_lines.append(f"Map center:  RA: {ra},  Dec: {dec} (2000.0)")
+    formatted_lines.append(f"Displayed range: {dmin:.4g} to {dmax:.4g} Jy/beam")
+
+    if map_type == "clean":
+        formatted_lines.append(f"Map peak: {dmax:.4g} Jy/beam")
+        if contour_levels:
+            cpeak = Visualizer._vis_central_peak(map_data)
+            if cpeak != 0:
+                pct_levels = [float(lvl) / cpeak * 100.0 for lvl in contour_levels if np.isfinite(lvl)]
+                show = pct_levels[:8]
+                suffix = " ..." if len(pct_levels) > 8 else ""
+                formatted_lines.append(
+                    "Contours %: " + " ".join(f"{p:.0g}" for p in show) + suffix
+                )
+
+        bmaj = float(map_info.get('bmaj', 0.0) or 0.0)
+        bmin = float(map_info.get('bmin', 0.0) or 0.0)
+        bpa = float(map_info.get('bpa', 0.0) or 0.0)
+        if bmaj > 0 and bmin > 0:
+            formatted_lines.append(f"Beam FWHM: {bmaj:.3g} × {bmin:.3g} (mas) at {bpa:.2f}°")
+
+    if map_type in {"residual", "clean"} and rms > 0:
+        formatted_lines.append(f"RMS: {rms:.4g} Jy/beam")
+        formatted_lines.append(f"{peak_abs / rms:.1f}σ")
+
+    if formatted_lines:
+        text_content = "\n".join(formatted_lines)
+        ax.text(
+            0.5, -0.12, text_content,
+            transform=ax.transAxes,
+            ha='center', va='top',
+            fontsize=7.5,
+            fontfamily='monospace',
+            color=DesignSystem.TEXT,
+            clip_on=False,
+            zorder=10,
+        )
+
+    # Les labels scientifiques restent des labels d'axes
+    ax.set_xlabel("Décalage RA (mas)", fontsize=9)
+    ax.set_ylabel("Décalage Dec (mas)", fontsize=9)
 
 
 class MapPlotWidget(BasePlotWidget):
@@ -225,116 +199,203 @@ class MapPlotWidget(BasePlotWidget):
     _cmap: str = "inferno"
     _map_type: str = "dirty"  # "dirty" | "clean" | "residual"
 
-    def __init__(self, parent=None):
-        super().__init__(parent=parent, figsize=(6, 6), include_toolbar=True, layout_type='constrained')
-        self.toolbar.setMinimumHeight(32)
-        self.toolbar.setMaximumHeight(32)
-        self.toolbar.setStyleSheet(
-            f"background-color: {DesignSystem.SURFACE_ALT}; "
-            f"border-bottom: 1px solid {DesignSystem.BORDER};"
-        )
+    _NAV_TOOLS = [
+        ("Navigate [R]", "NAVIGATE"),
+        ("Zoom Box [Z]", "ZOOM"),
+    ]
+    _WINDOW_TOOLS = [
+        ("Add Window [W]", "ADD_WINDOW"),
+    ]
+
+    def __init__(self, parent=None, show_tools: bool = True, show_annotations: bool = True):
+        super().__init__(parent=parent, figsize=(6, 6), include_toolbar=True, layout_type=None)
+        # Hide matplotlib NavigationToolbar — we use our own combo-based toolbar
+        self.toolbar.setVisible(False)
+
+        self._show_tools = bool(show_tools)
+        self._show_annotations = bool(show_annotations)
+
         self.image = None
         self.cbar = None
-        
-        # Sélection de fenêtres CLEAN avec la souris
+        self._instance_cmap = self.__class__._cmap
+
+        # CLEAN window selection
         self.window_selector = None
         self.window_selection_mode = False
         self.selected_window = None
-        
-        # Connecter les événements de souris
+
         self.canvas.mpl_connect('button_press_event', self._on_mouse_press)
         self.canvas.mpl_connect('key_press_event', self._on_key_press)
-        
-        # Créer la toolbar locale pour les fenêtres CLEAN
-        self._build_map_toolbar()
 
-    # Outils disponibles pour les cartes
-    _MAP_TOOLS = [
-        ("Navigate  [R]",         "NAVIGATE"),
-        ("Zoom Box  [Z]",         "ZOOM"),
-        ("Add Window  [W]",       "ADD_WINDOW"),
-        ("Peak Window  [P]",      "PEAK_WINDOW"),
-        ("Delete Windows  [D]",   "DELETE_WINDOWS"),
-    ]
+        if self._show_tools:
+            self._build_map_toolbar()
 
     def _build_map_toolbar(self) -> None:
-        """Crée la mini-toolbar pour les opérations sur les cartes."""
-        # Créer une toolbar locale au-dessus du canvas
-        toolbar_widget = QWidget()
-        toolbar_widget.setObjectName("MapToolbar")
-        toolbar_widget.setStyleSheet(_MAP_TOOLBAR_QSS)
-        toolbar_widget.setFixedHeight(32)
-        
-        layout = QHBoxLayout(toolbar_widget)
-        layout.setContentsMargins(4, 2, 4, 2)
-        layout.setSpacing(4)
-        
-        # Label Tools
-        layout.addWidget(QLabel("  Tools:"))
-        
-        # Combo pour les outils
-        self._tool_combo = QComboBox()
-        self._tool_combo.setToolTip("Outil actif (raccourci clavier)")
-        for label, data in self._MAP_TOOLS:
-            self._tool_combo.addItem(label, data)
-        layout.addWidget(self._tool_combo)
-        
-        # Boutons d'action rapide
-        self._btn_add_window = QPushButton("Add Window")
-        self._btn_add_window.setToolTip("Ajouter une fenêtre (W) — cliquer pour activer/désactiver")
-        self._btn_add_window.setCheckable(True)
-        self._btn_add_window.clicked.connect(self._on_add_window_btn_clicked)
-        layout.addWidget(self._btn_add_window)
-        
-        self._btn_peak_window = QPushButton("Peak Window")
-        self._btn_peak_window.setToolTip("Fenêtre autour du pic (P)")
-        self._btn_peak_window.clicked.connect(self._add_peak_window)
-        layout.addWidget(self._btn_peak_window)
-        
-        self._btn_delete_windows = QPushButton("Delete All")
-        self._btn_delete_windows.setToolTip("Supprimer toutes les fenêtres (D)")
-        self._btn_delete_windows.clicked.connect(self._delete_all_windows)
-        layout.addWidget(self._btn_delete_windows)
-        
-        layout.addStretch()
-        
-        # Insérer la toolbar avant le canvas dans le layout
-        main_layout = self.layout
-        main_layout.insertWidget(0, toolbar_widget)
-        
-        # Connecter le changement d'outil
-        self._tool_combo.currentIndexChanged.connect(self._on_tool_changed)
+        """Toolbar compacte, adaptée au type de carte affichée."""
+        row = self.plot_toolbar_row
+        row.setObjectName("MapToolbar")
+        row.setStyleSheet(_TOOLBAR_QSS)
+        row.setMinimumHeight(28)
+        row.setVisible(True)
+        lay = self.plot_toolbar_layout
+        lay.setContentsMargins(8, 5, 8, 5)
+        lay.setSpacing(6)
 
-    def _on_add_window_btn_clicked(self, checked: bool) -> None:
-        """Gère le clic sur le bouton Add Window (checkable)."""
-        if checked:
-            self._activate_window_selection_mode()
+        has_window_tools = self._supports_windows()
+        self._window_tool_action = None
+
+        lay.addWidget(QLabel("Tool:"))
+
+        self._tool_button = self._make_tool_dropdown(self._NAV_TOOLS)
+        lay.addWidget(self._tool_button)
+
+        lay.addWidget(self._make_separator())
+
+        lay.addWidget(QLabel("View:"))
+        view_btn = QToolButton()
+        view_btn.setText("View ▾")
+        view_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        view_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        view_menu = QMenu(view_btn)
+        reset_action = QAction("Reset [R]", view_btn)
+        reset_action.setToolTip("Revenir à la vue complète")
+        reset_action.triggered.connect(lambda checked=False: self._reset_view())
+        view_menu.addAction(reset_action)
+        dezoom_action = QAction("Dezoom [O]", view_btn)
+        dezoom_action.setToolTip("Dézoomer (vue précédente)")
+        dezoom_action.triggered.connect(lambda checked=False: self._dezoom())
+        view_menu.addAction(dezoom_action)
+        view_btn.setMenu(view_menu)
+        lay.addWidget(view_btn)
+
+        if has_window_tools:
+            lay.addWidget(self._make_separator())
+            lay.addWidget(QLabel("Windows:"))
+            windows_btn = QToolButton()
+            windows_btn.setText("Windows ▾")
+            windows_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+            windows_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+            windows_menu = QMenu(windows_btn)
+            add_action = QAction("Add Window [W]", windows_btn)
+            add_action.setCheckable(True)
+            add_action.setData("ADD_WINDOW")
+            add_action.setToolTip("Dessiner une fenêtre CLEAN")
+            add_action.triggered.connect(lambda checked: self._on_tool_changed_data("ADD_WINDOW"))
+            windows_menu.addAction(add_action)
+            self._window_tool_action = add_action
+            peak_action = QAction("Peak [P]", windows_btn)
+            peak_action.setToolTip("Ajouter une fenêtre autour du pic de flux")
+            peak_action.triggered.connect(lambda checked=False: self._add_peak_window())
+            windows_menu.addAction(peak_action)
+            delete_action = QAction("Delete All [D]", windows_btn)
+            delete_action.setToolTip("Supprimer toutes les fenêtres CLEAN")
+            delete_action.triggered.connect(lambda checked=False: self._delete_all_windows())
+            windows_menu.addAction(delete_action)
+            windows_btn.setMenu(windows_menu)
+            lay.addWidget(windows_btn)
         else:
+            self._window_tool_action = None
+
+        lay.addStretch()
+
+    def _make_tool_dropdown(self, items: list[tuple[str, str]]) -> QToolButton:
+        btn = QToolButton()
+        btn.setCheckable(True)
+        btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        menu = QMenu(btn)
+        for label, data in items:
+            act = QAction(label, btn)
+            act.setCheckable(True)
+            act.setData(data)
+            act.triggered.connect(lambda checked, d=data, l=label, b=btn: self._select_tool(b, l, d))
+            menu.addAction(act)
+        btn.setMenu(menu)
+        self._select_tool(btn, items[0][0], items[0][1], trigger=False)
+        return btn
+
+    def _select_tool(self, btn: QToolButton, label: str, data: str, trigger: bool = True) -> None:
+        btn.setText(label.split("[")[0].strip() + " ▾")
+        btn.setProperty("activeMode", data)
+        for act in btn.menu().actions():
+            act.setChecked(act.data() == data)
+        if self._window_tool_action is not None and data != "ADD_WINDOW":
+            self._window_tool_action.setChecked(False)
+        if trigger:
+            self._on_tool_changed_data(data)
+
+    def _on_tool_changed_data(self, mode: str) -> None:
+        if mode == "ADD_WINDOW" and self._window_tool_action is not None:
+            self._window_tool_action.setChecked(True)
+        self._handle_tool_mode(mode)
+
+    def _make_separator(self) -> QWidget:
+        sep = QWidget()
+        sep.setFixedWidth(1)
+        sep.setFixedHeight(22)
+        sep.setStyleSheet(f"background-color: {D.BORDER};")
+        return sep
+
+    def _supports_windows(self) -> bool:
+        return self._map_type in {"clean", "residual"}
+
+    def _handle_tool_mode(self, mode: str) -> None:
+        if mode == "NAVIGATE":
             self._exit_window_selection_mode()
-
-    def _on_tool_changed(self, index: int) -> None:
-        """Gère le changement d'outil sélectionné."""
-        tool = self._tool_combo.currentData()
-
-        if tool == "ADD_WINDOW":
+            self._deactivate_mpl_tools()
+        elif mode == "ZOOM":
+            self._exit_window_selection_mode()
+            self._activate_mpl_zoom()
+        elif mode == "ADD_WINDOW" and self._supports_windows():
+            self._deactivate_mpl_tools()
             self._activate_window_selection_mode()
-        elif tool == "PEAK_WINDOW":
-            self._add_peak_window()
-            # Revenir à Navigate après l'action one-shot
-            self._tool_combo.blockSignals(True)
-            self._tool_combo.setCurrentIndex(0)
-            self._tool_combo.blockSignals(False)
-        elif tool == "DELETE_WINDOWS":
-            self._delete_all_windows()
-            # Revenir à Navigate après l'action one-shot
-            self._tool_combo.blockSignals(True)
-            self._tool_combo.setCurrentIndex(0)
-            self._tool_combo.blockSignals(False)
-        elif tool in ("NAVIGATE", "ZOOM"):
-            self._exit_window_selection_mode()
+        self.canvas.setFocus()
+
+    def _deactivate_mpl_tools(self) -> None:
+        if self.toolbar is None:
+            return
+        mode_str = str(getattr(self.toolbar, 'mode', '')).lower()
+        if 'zoom' in mode_str:
+            self.toolbar.zoom()
+        elif 'pan' in mode_str:
+            self.toolbar.pan()
+
+    def _activate_mpl_zoom(self) -> None:
+        if self.toolbar is None:
+            return
+        mode_str = str(getattr(self.toolbar, 'mode', '')).lower()
+        if 'pan' in mode_str:
+            self.toolbar.pan()
+        if 'zoom' not in mode_str:
+            self.toolbar.zoom()
+
+    def _reset_view(self) -> None:
+        if self.toolbar:
+            self.toolbar.home()
+        self.canvas.setFocus()
+
+    def _dezoom(self) -> None:
+        if self.toolbar:
+            self.toolbar.back()
+        self.canvas.setFocus()
+
+    def _sync_combo_to(self, tool_data: str) -> None:
+        """Synchronise le menu d'outil sans déclencher de changement de mode."""
+        if not hasattr(self, "_tool_button"):
+            return
+        if tool_data == "ADD_WINDOW":
+            if self._window_tool_action is not None:
+                self._window_tool_action.setChecked(True)
+            return
+        for act in self._tool_button.menu().actions():
+            if act.data() == tool_data:
+                self._select_tool(self._tool_button, act.text(), tool_data, trigger=False)
+                break
 
     def _add_peak_window(self):
         """Ajoute une fenêtre autour du pic depuis la toolbar."""
+        if not self._supports_windows():
+            return
         try:
             # Trouver le parent MainWindow
             parent = self.parent()
@@ -348,6 +409,8 @@ class MapPlotWidget(BasePlotWidget):
 
     def _delete_all_windows(self):
         """Supprime toutes les fenêtres depuis la toolbar."""
+        if not self._supports_windows():
+            return
         try:
             # Trouver le parent MainWindow
             parent = self.parent()
@@ -368,10 +431,42 @@ class MapPlotWidget(BasePlotWidget):
         )
         # Note: L'inversion de l'axe RA est gérée automatiquement par imshow via l'extent
 
+    def clear_map(self) -> None:
+        """
+        Remet le widget dans un état vierge (placeholder).
+
+        Appelé au chargement d'un nouveau fichier pour signaler
+        à l'utilisateur qu'aucune carte n'est encore calculée.
+        """
+        if self.cbar is not None:
+            try:
+                self.cbar.remove()
+            except Exception:
+                pass
+            self.cbar = None
+        self.image = None
+        self.ax.clear()
+        self.ax.set_facecolor('#0d1117')
+        self.ax.get_figure().set_facecolor('#0d1117')
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
+        for spine in self.ax.spines.values():
+            spine.set_visible(False)
+        self.ax.text(
+            0.5, 0.5,
+            f"{self._map_title}\n\nAucune carte calculée\nCliquez « Compute » pour lancer l'imagerie",
+            transform=self.ax.transAxes,
+            ha='center', va='center',
+            color='#3A5060', fontsize=9,
+            multialignment='center',
+        )
+        self.canvas.draw_idle()
+
     def plot_map(self, map_data, cellsize, cellsize_y=None,
                 scale='linear', vmin=None, vmax=None, extent=None,
                 contour_mode='pct', contour_absmin=1.0, contour_absmax=100.0,
-                contour_factor=2.0, contour_custom=None, windows=None):
+                contour_factor=2.0, contour_custom=None, windows=None,
+                show_model=False, model_components=None):
         """
         Affiche la carte (Dirty ou Residual) avec orientation radio-astronomique
         en utilisant la géométrie exacte de DIFMAP.
@@ -414,55 +509,38 @@ class MapPlotWidget(BasePlotWidget):
 
         # Utiliser la géométrie DIFMAP exacte
         if extent is not None:
-            # Utiliser l'extent fourni (déjà calculé)
+            # Utiliser l'extent fourni (déjà calculé) sans recadrage
             cropped_data = map_data
             astrometric_extent = extent
             nx_crop, ny_crop = cropped_data.shape[1], cropped_data.shape[0]
         else:
-            # Récupérer les limites personnalisées depuis le ControlPanel si disponibles
-            xmin = xmax = ymin = ymax = None
-            try:
-                # Tenter de récupérer les paramètres depuis le ControlPanel
-                parent = self.parent()
-                while parent and hasattr(parent, 'parent'):
-                    if hasattr(parent, 'control_panel'):
-                        xmin, xmax, ymin, ymax = parent.control_panel.get_display_area_params()
-                        break
-                    parent = parent.parent()
-            except:
-                pass  # Ignorer les erreurs, utiliser les valeurs par défaut
-            
-            # Appliquer le crop DIFMAP avec limites personnalisées ou par défaut
+            # Appliquer le crop DIFMAP par défaut
             cropped_data, astrometric_extent, nx_crop, ny_crop = DifmapMapGeometry.crop_map_data(
                 map_data, cellsize, cellsize_y,
-                xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax
+                xmin=None, xmax=None, ymin=None, ymax=None
             )
 
-        norm = _make_norm(scale, vmin, vmax, cropped_data)
+        scale_l = (scale or 'linear').lower()
+        data_show = np.ma.masked_less_equal(cropped_data, 0.0) if scale_l == 'log' else cropped_data
+        norm = Visualizer._make_norm(scale, vmin, vmax, cropped_data)
         self.image = self.ax.imshow(
-            cropped_data, cmap=self._cmap, origin='lower', extent=astrometric_extent, norm=norm
+            data_show, cmap=self._instance_cmap, origin='lower', extent=astrometric_extent, norm=norm
         )
         self.ax.set_aspect('equal', adjustable='box')
 
         self.cbar = self.fig.colorbar(
             self.image, ax=self.ax,
             label="Flux (Jy/beam)",
-            fraction=0.046, pad=0.04
+            fraction=0.040, pad=0.02
         )
-
-        # Ajouter les contours si demandé
-        if contour_mode != 'none':
-            peak = _imageable_zone_peak(map_data)
-            contour_levels = _compute_contour_levels(
-                peak, mode=contour_mode, absmin=contour_absmin, 
-                absmax=contour_absmax, factor=contour_factor, custom=contour_custom
-            )
-            x_coords = np.linspace(astrometric_extent[0], astrometric_extent[1], cropped_data.shape[1] + 1)[:-1]
-            y_coords = np.linspace(astrometric_extent[2], astrometric_extent[3], cropped_data.shape[0] + 1)[:-1]
-            _draw_contours(self.ax, cropped_data, x_coords, y_coords, peak, mode=contour_mode,
-                          absmin=contour_absmin, absmax=contour_absmax, factor=contour_factor, custom=contour_custom)
-        else:
-            contour_levels = []
+        # Marges minimales : bottom=0.22 réserve la place pour les annotations
+        # (y=-0.12 en coords axes → y_fig ≈ 0.13, soit ~4 lignes de texte).
+        self.ax.set_anchor('C')
+        _bot = 0.22 if self._show_annotations else 0.08
+        self.fig.subplots_adjust(left=0.08, right=0.88, top=0.95, bottom=_bot)
+        # DIFMAP: pas de contours sur Dirty/Residual maps.
+        # Les contours sont uniquement tracés sur la Clean Map restaurée.
+        contour_levels = []
 
         if windows:
             for (xa, xb, ya, yb) in windows:
@@ -474,7 +552,37 @@ class MapPlotWidget(BasePlotWidget):
                     linestyle='--', alpha=0.85, zorder=4
                 ))
 
-        _add_map_annotations(self.ax, self.fig, cropped_data, self._map_type, contour_levels=contour_levels)
+        if show_model and model_components:
+            import math
+            xa, xb = astrometric_extent[0], astrometric_extent[1]
+            ya, yb = astrometric_extent[2], astrometric_extent[3]
+            if xa > xb:
+                xa, xb = xb, xa
+            if ya > yb:
+                ya, yb = yb, ya
+            for cmp in model_components:
+                cx, cy = cmp['x'], cmp['y']
+                if not (xa <= cx <= xb and ya <= cy <= yb):
+                    continue
+                flux = cmp.get('flux', 0.0)
+                major = cmp.get('major', 0.0)
+                color = 'lime' if flux >= 0 else 'red'
+                if cmp.get('type', 'delta') == 'delta' or major <= 0:
+                    self.ax.plot(cx, cy, '+', color=color, markersize=6,
+                                 markeredgewidth=1.0, alpha=0.9, zorder=6)
+                else:
+                    phi_deg = 90.0 - math.degrees(cmp.get('phi', 0.0))
+                    ratio = max(cmp.get('ratio', 1.0), 1e-6)
+                    minor = major * ratio
+                    ell = Ellipse(
+                        (cx, cy), width=minor, height=major,
+                        angle=phi_deg, linewidth=1.0,
+                        edgecolor=color, facecolor='none', alpha=0.85, zorder=6
+                    )
+                    self.ax.add_patch(ell)
+
+        if self._show_annotations:
+            _add_map_annotations(self.ax, self.fig, cropped_data, self._map_type, contour_levels=contour_levels)
         self.draw()
 
     def _on_mouse_press(self, event):
@@ -484,22 +592,44 @@ class MapPlotWidget(BasePlotWidget):
             
         if event.button == 1 and self.window_selection_mode:  # Clic gauche en mode sélection
             self._start_window_selection()
-        elif event.button == 3:  # Clic droit pour basculer le mode sélection
+        elif event.button == 3 and self._supports_windows():  # Clic droit pour basculer le mode sélection
             self._toggle_window_selection_mode()
 
     def _on_key_press(self, event):
-        """Gère les touches clavier pour la sélection de fenêtres."""
-        if event.key == 'w':
-            self._toggle_window_selection_mode()
-        elif event.key == 'p':
-            self._add_peak_window()
-        elif event.key == 'd':
-            self._delete_all_windows()
-        elif event.key == 'escape':
+        if event.key in ('r', 'home'):
+            self._sync_combo_to("NAVIGATE")
             self._exit_window_selection_mode()
+            self._deactivate_mpl_tools()
+        elif event.key == 'z':
+            self._sync_combo_to("ZOOM")
+            self._exit_window_selection_mode()
+            self._activate_mpl_zoom()
+        elif event.key == 'w' and self._supports_windows():
+            self._toggle_window_selection_mode()
+        elif event.key == 'p' and self._supports_windows():
+            self._add_peak_window()
+        elif event.key == 'd' and self._supports_windows():
+            self._delete_all_windows()
+        elif event.key == 'm':
+            self._toggle_show_model()
+        elif event.key == 'escape':
+            self._sync_combo_to("NAVIGATE")
+            self._exit_window_selection_mode()
+            self._deactivate_mpl_tools()
+
+    def _toggle_show_model(self):
+        """Toggle l'affichage des composantes du modèle (comme PGPLOT 'M')."""
+        parent = self.parent()
+        while parent and hasattr(parent, 'parent'):
+            if hasattr(parent, 'control_panel'):
+                chk = parent.control_panel.chk_show_model_map
+                chk.setChecked(not chk.isChecked())
+                break
+            parent = parent.parent()
 
     def _activate_window_selection_mode(self):
-        """Active le mode de sélection de fenêtres."""
+        if not self._supports_windows():
+            return
         self.window_selection_mode = True
         if self.window_selector is None:
             self.window_selector = RectangleSelector(
@@ -515,39 +645,22 @@ class MapPlotWidget(BasePlotWidget):
             )
         else:
             self.window_selector.set_active(True)
-        self.ax.set_title(
-            f"{self._map_title} [Mode Fenêtre — Clic gauche: dessiner, Clic droit/W: quitter]"
-        )
         self.canvas.set_cursor(cursors.SELECT_REGION)
-        self._btn_add_window.blockSignals(True)
-        self._btn_add_window.setChecked(True)
-        self._btn_add_window.blockSignals(False)
-        self._tool_combo.blockSignals(True)
-        self._tool_combo.setCurrentIndex(2)  # "Add Window"
-        self._tool_combo.blockSignals(False)
+        self._sync_combo_to("ADD_WINDOW")
 
     def _toggle_window_selection_mode(self):
-        """Bascule le mode de sélection de fenêtres (raccourci clavier W)."""
         if self.window_selection_mode:
             self._exit_window_selection_mode()
         else:
             self._activate_window_selection_mode()
 
     def _exit_window_selection_mode(self):
-        """Quitte le mode de sélection de fenêtres."""
         self.window_selection_mode = False
         if self.window_selector:
             self.window_selector.set_active(False)
             self.window_selector = None
-        self.ax.set_title(self._map_title)
         self.canvas.set_cursor(cursors.POINTER)
-        # Remettre le combo et le bouton en état "Navigate"
-        self._btn_add_window.blockSignals(True)
-        self._btn_add_window.setChecked(False)
-        self._btn_add_window.blockSignals(False)
-        self._tool_combo.blockSignals(True)
-        self._tool_combo.setCurrentIndex(0)  # "Navigate"
-        self._tool_combo.blockSignals(False)
+        self._sync_combo_to("NAVIGATE")
         self.draw()
 
     def _start_window_selection(self):
@@ -584,8 +697,15 @@ class MapPlotWidget(BasePlotWidget):
         self._exit_window_selection_mode()
 
     def enable_window_selection(self):
-        """Active manuellement le mode de sélection de fenêtres."""
+        if not self._supports_windows():
+            return
         self._activate_window_selection_mode()
+
+    def update_colormap(self, cmap_name: str) -> None:
+        self._instance_cmap = cmap_name
+        if self.image is not None:
+            self.image.set_cmap(cmap_name)
+            self.draw()
 
 class DirtyMapPlotWidget(MapPlotWidget):
     """Widget d'affichage de la Dirty Map (résidu après inversion FFT, avant CLEAN)."""
@@ -594,18 +714,27 @@ class DirtyMapPlotWidget(MapPlotWidget):
     _cmap = "inferno"
     _map_type = "dirty"
 
+    def __init__(self, parent=None, show_annotations: bool = True, show_tools: bool = True):
+        super().__init__(
+            parent=parent,
+            show_tools=show_tools,
+            show_annotations=show_annotations,
+        )
+
     def plot_map(self, map_data, cellsize, cellsize_y=None,
                 scale='linear', vmin=None, vmax=None, extent=None,
                 contour_mode='pct', contour_absmin=1.0, contour_absmax=100.0,
-                contour_factor=2.0, contour_custom=None, windows=None):
+                contour_factor=2.0, contour_custom=None, windows=None,
+                show_model=False, model_components=None):
         """Override to force contour_mode='none' for dirty maps."""
         return super().plot_map(
             map_data=map_data, cellsize=cellsize, cellsize_y=cellsize_y,
             scale=scale, vmin=vmin, vmax=vmax, extent=extent,
-            contour_mode='none',  # Force no contours for dirty maps
+            contour_mode='none',
             contour_absmin=contour_absmin, contour_absmax=contour_absmax,
             contour_factor=contour_factor, contour_custom=contour_custom,
             windows=windows,
+            show_model=show_model, model_components=model_components,
         )
 
 
@@ -623,18 +752,27 @@ class ResidualMapPlotWidget(MapPlotWidget):
     _cmap = "inferno"
     _map_type = "residual"
 
+    def __init__(self, parent=None, show_annotations: bool = True, show_tools: bool = True):
+        super().__init__(
+            parent=parent,
+            show_tools=show_tools,
+            show_annotations=show_annotations,
+        )
+
     def plot_map(self, map_data, cellsize, cellsize_y=None,
                 scale='linear', vmin=None, vmax=None, extent=None,
                 contour_mode='pct', contour_absmin=1.0, contour_absmax=100.0,
-                contour_factor=2.0, contour_custom=None, windows=None):
+                contour_factor=2.0, contour_custom=None, windows=None,
+                show_model=False, model_components=None):
         """Override to force contour_mode='none' for residual maps."""
         return super().plot_map(
             map_data=map_data, cellsize=cellsize, cellsize_y=cellsize_y,
             scale=scale, vmin=vmin, vmax=vmax, extent=extent,
-            contour_mode='none',  # Force no contours for residual maps
+            contour_mode='none',
             contour_absmin=contour_absmin, contour_absmax=contour_absmax,
             contour_factor=contour_factor, contour_custom=contour_custom,
             windows=windows,
+            show_model=show_model, model_components=model_components,
         )
 
 
@@ -653,11 +791,19 @@ class CleanMapPlotWidget(MapPlotWidget):
     _cmap = "inferno"
     _map_type = "clean"
 
+    def __init__(self, parent=None, show_annotations: bool = True, show_tools: bool = True):
+        super().__init__(
+            parent=parent,
+            show_tools=show_tools,
+            show_annotations=show_annotations,
+        )
+
     def plot_map(self, map_data, cellsize, cellsize_y=None,
                  beam_info=None, windows=None,
                  scale='linear', vmin=None, vmax=None,
                  contour_mode='pct', contour_absmin=1.0, contour_absmax=100.0,
-                 contour_factor=2.0, contour_custom=None, extent=None):
+                 contour_factor=2.0, contour_custom=None, extent=None,
+                 show_model=False, model_components=None):
         """
         Affiche la Clean Map avec contours, ellipse de faisceau et fenêtres CLEAN.
 
@@ -706,54 +852,42 @@ class CleanMapPlotWidget(MapPlotWidget):
 
         # Utiliser la géométrie DIFMAP exacte
         if extent is not None:
-            # Utiliser l'extent fourni (déjà calculé)
+            # Utiliser l'extent fourni (déjà calculé) sans recadrage
             cropped_data = map_data
             astrometric_extent = extent
             nx_crop, ny_crop = cropped_data.shape[1], cropped_data.shape[0]
         else:
-            # Récupérer les limites personnalisées depuis le ControlPanel si disponibles
-            xmin = xmax = ymin = ymax = None
-            try:
-                # Tenter de récupérer les paramètres depuis le ControlPanel
-                parent = self.parent()
-                while parent and hasattr(parent, 'parent'):
-                    if hasattr(parent, 'control_panel'):
-                        xmin, xmax, ymin, ymax = parent.control_panel.get_display_area_params()
-                        break
-                    parent = parent.parent()
-            except:
-                pass  # Ignorer les erreurs, utiliser les valeurs par défaut
-            
-            # Appliquer le crop DIFMAP avec limites personnalisées ou par défaut
+            # Appliquer le crop DIFMAP par défaut
             cropped_data, astrometric_extent, nx_crop, ny_crop = DifmapMapGeometry.crop_map_data(
                 map_data, cellsize, cellsize_y,
-                xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax
+                xmin=None, xmax=None, ymin=None, ymax=None
             )
 
         # 1. Image de fond
-        norm = _make_norm(scale, vmin, vmax, cropped_data)
+        scale_l = (scale or 'linear').lower()
+        data_show = np.ma.masked_less_equal(cropped_data, 0.0) if scale_l == 'log' else cropped_data
+        norm = Visualizer._make_norm(scale, vmin, vmax, cropped_data)
         self.image = self.ax.imshow(
-            cropped_data, cmap=self._cmap, origin='lower', extent=astrometric_extent, norm=norm
+            data_show, cmap=self._instance_cmap, origin='lower', extent=astrometric_extent, norm=norm
         )
         self.ax.set_aspect('equal', adjustable='box')
 
         self.cbar = self.fig.colorbar(
             self.image, ax=self.ax,
             label="Flux (Jy/beam)",
-            fraction=0.046, pad=0.04
+            fraction=0.040, pad=0.02
         )
-
+        # Clean map = jusqu'à 9 lignes d'annotations → bottom=0.32 nécessaire.
+        self.ax.set_anchor('C')
+        _bot = 0.32 if self._show_annotations else 0.08
+        self.fig.subplots_adjust(left=0.08, right=0.88, top=0.95, bottom=_bot)
         # 2. Contours isophotes - SEULEMENT sur la clean map (comme difmap.c:3855)
-        # Les contours ne sont tracés que sur les cartes restaurées (clean map)
-        # selon difmap.c:3855: docont = mappar.docont && ((vlbmap->ncmp && domap) || ...)
+        # Ici on est dans le widget CleanMap, donc on trace les contours si demandés.
         drawn = []
-        # Vérifier si c'est une clean map via map_type ou ncmp dans beam_info
-        map_type = beam_info.get('map_type', 'dirty') if beam_info else 'dirty'
-        ncmp = beam_info.get('ncmp', 0) if beam_info else 0
-        is_clean_map = (map_type == 'clean') or (ncmp > 0)
-        
-        if is_clean_map:
-            peak = _imageable_zone_peak(map_data)
+        if contour_mode != 'none':
+            # Peak sur la totalité de cropped_data (= zone imageable, déjà croppée).
+            # Correspond au comportement de maplot.c:setcont() sur la zone imageable.
+            peak = Visualizer._vis_central_peak(cropped_data)
             # Coordonnées des CENTRES des pixels (comme PGPLOT tr[] matrix)
             # extent = [xmax, xmin, ymin, ymax] selon convention Difmap
             # Les centres des pixels sont au milieu de chaque cellule
@@ -767,10 +901,12 @@ class CleanMapPlotWidget(MapPlotWidget):
             
             # Créer la grille 2D pour les contours
             x_grid, y_grid = np.meshgrid(x_coords, y_coords)
-            drawn = _draw_contours(self.ax, cropped_data, x_grid, y_grid, peak, lw=0.7,
-                                   mode=contour_mode, absmin=contour_absmin,
-                                   absmax=contour_absmax, factor=contour_factor,
-                                   custom=contour_custom)
+            drawn = Visualizer._vis_draw_contours(
+                self.ax, cropped_data, x_grid, y_grid, peak, lw=0.3,
+                mode=contour_mode, absmin=contour_absmin,
+                absmax=contour_absmax, factor=contour_factor,
+                custom=contour_custom
+            )
 
         # 3. Fenêtres CLEAN (rectangles cyan pointillés)
         if windows:
@@ -837,8 +973,78 @@ class CleanMapPlotWidget(MapPlotWidget):
         if beam_info:
             map_info.update(beam_info)
             
-        _add_map_annotations(self.ax, self.fig, cropped_data, "clean",
-                              beam_info=beam_info, contour_levels=drawn,
-                              contour_mode=contour_mode, map_info=map_info)
+        # 6. Composantes du modèle CLEAN (si show_model=True)
+        # Logique exacte de DIFMAP modplot.c:cmpplot():
+        # - type == delta → affiche '+' (symbole 2 PGPLOT)
+        # - type != delta → affiche ellipse (major, ratio, phi)
+        # Couleurs selon DIFMAP modplot.c:31-70:
+        # - freepar=0 (fixed) + flux>0 → color 10 (lime/green)
+        # - freepar=0 (fixed) + flux<0 → color 2 (red)
+        # Les composantes CLEAN sont toujours freepar=0 (fixed)
+        # Vérification des limites comme DIFMAP modplot.c:74
+        if show_model and model_components:
+            import math
+            # Récupérer les limites d'affichage (xa < xb, ya < yb)
+            xa, xb = astrometric_extent[0], astrometric_extent[1]
+            ya, yb = astrometric_extent[2], astrometric_extent[3]
+            if xa > xb:
+                xa, xb = xb, xa
+            if ya > yb:
+                ya, yb = yb, ya
+            
+            nhidden = 0  # Compteur de composantes hors limites
+            for cmp in model_components:
+                cx, cy = cmp['x'], cmp['y']
+                cmp_type = cmp.get('type', 'delta')
+                major = cmp.get('major', 0.0)
+                flux = cmp.get('flux', 0.0)
+                
+                # Vérifier si le centre est visible (comme DIFMAP cmpplot:74)
+                visible = (cx >= xa and cx <= xb and cy >= ya and cy <= yb)
+                if not visible:
+                    nhidden += 1
+                    continue  # Ne pas afficher les composantes hors limites
+                
+                # Couleur selon le signe du flux (comme DIFMAP)
+                # Les composantes CLEAN sont fixed (freepar=0)
+                if flux >= 0:
+                    color = 'lime'      # PGPLOT color 10 (green/yellow)
+                else:
+                    color = 'red'        # PGPLOT color 2 (red)
+                
+                # Delta components: afficher '+'
+                if cmp_type == 'delta' or major <= 0:
+                    self.ax.plot(cx, cy, '+', color=color, markersize=6,
+                                markeredgewidth=1.0, alpha=0.9, zorder=6)
+                else:
+                    # Composantes étendues (gaussian, disk, ellipsoid, ring, etc.)
+                    # DIFMAP: phi = angle du grand axe depuis Nord vers Est (radians)
+                    # Matplotlib: angle antihoraire depuis l'axe X (Est)
+                    # Conversion: angle_mpl = 90° - phi_deg
+                    phi_rad = cmp.get('phi', 0.0)
+                    ratio = cmp.get('ratio', 1.0)
+                    angle_deg = 90.0 - math.degrees(phi_rad)
+                    
+                    # el_define() en DIFMAP: minor = major * ratio
+                    # Matplotlib: width = minor, height = major
+                    minor = major * ratio
+                    self.ax.add_patch(Ellipse(
+                        (cx, cy),
+                        width=major,
+                        height=minor,
+                        angle=angle_deg,
+                        facecolor='none', edgecolor=color,
+                        linewidth=0.8, alpha=0.9, zorder=6
+                    ))
+            
+            # Signaler les composantes hors limites (comme DIFMAP maplot.c:2215-2218)
+            if nhidden > 0:
+                import logging
+                logging.info(f"[MODEL] {nhidden} composante(s) hors de la zone d'affichage")
+
+        if self._show_annotations:
+            _add_map_annotations(self.ax, self.fig, cropped_data, "clean",
+                                  beam_info=beam_info, contour_levels=drawn,
+                                  contour_mode=contour_mode, map_info=map_info)
 
         self.draw()

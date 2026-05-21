@@ -16,23 +16,23 @@ class DesignSystem:
     ASTRAL_SURFACE = "#1C3A5E"
     ASTRAL_HOVER   = "#254F7A"
     ASTRAL_BORDER  = "#2A4D72"
-    ASTRAL_TEXT    = "#B8CFE8"
-    ASTRAL_DIM     = "#6080A0"
+    ASTRAL_TEXT    = "#D8E7F7"
+    ASTRAL_DIM     = "#A8BCD2"
     ASTRAL_MUTED   = "#2D4862"
     ASTRAL_ACCENT  = "#4A98D4"
 
-    BACKGROUND   = "#F0F2F5"
+    BACKGROUND   = "#F4F7FA"
     SURFACE      = "#FFFFFF"
     SURFACE_ALT  = "#E8ECF2"
     BORDER       = "#C8D4E0"
     BORDER_LIGHT = "#DDE4EC"
 
     TEXT           = "#1C2B3A"
-    TEXT_SECONDARY = "#4A607A"
-    TEXT_MUTED     = "#90A8C0"
+    TEXT_SECONDARY = "#40566F"
+    TEXT_MUTED     = "#6F849B"
 
     TERMINAL_BG     = "#0D1117"
-    TERMINAL_TEXT   = "#A0B4C8"
+    TERMINAL_TEXT   = "#C1D1E2"
     TERMINAL_BORDER = "#1C2535"
 
     PRIMARY        = ASTRAL_ACCENT
@@ -52,17 +52,18 @@ class DesignSystem:
 
     FONT_FAMILY = "'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif"
     FONT_MONO   = "'Source Code Pro', 'Menlo', 'Monaco', monospace"
-    FONT_SIZE_XS   = "9px"
-    FONT_SIZE_SM   = "10px"
-    FONT_SIZE_BASE = "11px"
-    FONT_SIZE_LG   = "13px"
+    FONT_SIZE_XS   = "11px"
+    FONT_SIZE_SM   = "12px"
+    FONT_SIZE_BASE = "13px"
+    FONT_SIZE_LG   = "15px"
+    FONT_SIZE_XL   = "17px"
     FONT_WEIGHT_MEDIUM   = "500"
     FONT_WEIGHT_SEMIBOLD = "600"
     FONT_WEIGHT_BOLD     = "700"
 
     SPACING_XS = "4px"; SPACING_SM = "8px"; SPACING_MD = "12px"
     SPACING_LG = "16px"; SPACING_XL = "24px"
-    RADIUS_SM = "3px"; RADIUS_MD = "5px"; RADIUS_LG = "8px"
+    RADIUS_SM = "4px"; RADIUS_MD = "6px"; RADIUS_LG = "8px"
 
     @staticmethod
     def get_button_primary():
@@ -73,7 +74,7 @@ class DesignSystem:
                 color: #FFFFFF;
                 border: none;
                 border-radius: {D.RADIUS_MD};
-                padding: 6px 14px;
+                padding: 7px 14px;
                 font-family: {D.FONT_FAMILY};
                 font-size: {D.FONT_SIZE_BASE};
                 font-weight: {D.FONT_WEIGHT_SEMIBOLD};
@@ -95,7 +96,7 @@ class DesignSystem:
                 color: {D.TEXT};
                 border: 1px solid {D.BORDER};
                 border-radius: {D.RADIUS_MD};
-                padding: 5px 10px;
+                padding: 7px 12px;
                 font-family: {D.FONT_FAMILY};
                 font-size: {D.FONT_SIZE_BASE};
             }}
@@ -112,8 +113,9 @@ class DesignSystem:
     def get_button_danger():
         return """
             QPushButton {
-                background-color: #FDECEA; color: #C62828;
-                border: 1px solid #F5C6C6; border-radius: 5px; padding: 6px 14px;
+                background-color: #FDECEA; color: #A51E1E;
+                border: 1px solid #F0B7B7; border-radius: 6px; padding: 7px 14px;
+                font-weight: 600;
             }
             QPushButton:hover { background-color: #F5C6C6; }
         """
@@ -122,8 +124,9 @@ class DesignSystem:
     def get_button_success():
         return """
             QPushButton {
-                background-color: #E8F5E9; color: #2E7D32;
-                border: 1px solid #C8E6C9; border-radius: 5px; padding: 6px 14px;
+                background-color: #E8F5E9; color: #236628;
+                border: 1px solid #B8DDBA; border-radius: 6px; padding: 7px 14px;
+                font-weight: 600;
             }
             QPushButton:hover { background-color: #C8E6C9; }
         """
@@ -135,7 +138,7 @@ class DesignSystem:
             QTabBar::tab {{
                 background-color: {D.SURFACE_ALT};
                 color: {D.TEXT_SECONDARY};
-                padding: 7px 20px;
+                padding: 8px 20px;
                 border: 1px solid {D.BORDER_LIGHT};
                 border-bottom: none;
                 margin-right: 2px;
@@ -159,6 +162,142 @@ class DesignSystem:
         """
 
     @staticmethod
+    def get_outer_tab_style():
+        """Super-onglets style navigation bar : fond clair, underline accent sur l'actif."""
+        D = DesignSystem
+        return f"""
+            QTabWidget {{
+                background-color: {D.SURFACE_ALT};
+            }}
+            QTabBar {{
+                background-color: {D.SURFACE_ALT};
+            }}
+            QTabBar::tab {{
+                background-color: {D.SURFACE_ALT};
+                color: {D.TEXT_SECONDARY};
+                padding: 10px 18px;
+                border: 1px solid {D.BORDER_LIGHT};
+                border-bottom: none;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                margin-right: 6px;
+                margin-top: 4px;
+                margin-bottom: -1px;
+                font-family: {D.FONT_FAMILY};
+                font-weight: {D.FONT_WEIGHT_MEDIUM};
+                font-size: {D.FONT_SIZE_LG};
+                min-width: 90px;
+            }}
+            QTabBar::tab:selected {{
+                background-color: {D.SURFACE};
+                color: {D.ASTRAL_BG};
+                font-weight: {D.FONT_WEIGHT_BOLD};
+                border: 2px solid {D.ASTRAL_ACCENT};
+                border-bottom: none;
+                margin-top: 0px;
+                margin-bottom: -1px;
+            }}
+            QTabBar::tab:hover:!selected {{
+                background-color: {D.SURFACE};
+                color: {D.TEXT};
+                border-color: {D.BORDER};
+            }}
+            QTabWidget::pane {{
+                border: 1px solid {D.BORDER};
+                background-color: {D.SURFACE};
+            }}
+        """
+
+    @staticmethod
+    def get_inner_tab_style():
+        """Sous-onglets style pills/chips : petits boutons arrondis compacts."""
+        D = DesignSystem
+        return f"""
+            QTabWidget {{
+                background-color: {D.SURFACE_ALT};
+            }}
+            QTabBar {{
+                background-color: {D.SURFACE_ALT};
+            }}
+            QTabBar::tab {{
+                background-color: {D.SURFACE_ALT};
+                color: {D.TEXT_SECONDARY};
+                padding: 7px 16px;
+                border: 1px solid {D.BORDER_LIGHT};
+                border-radius: 8px;
+                margin-right: 6px;
+                margin-top: 6px;
+                margin-bottom: 6px;
+                font-family: {D.FONT_FAMILY};
+                font-weight: {D.FONT_WEIGHT_MEDIUM};
+                font-size: {D.FONT_SIZE_BASE};
+            }}
+            QTabBar::tab:selected {{
+                background-color: rgba(74, 152, 212, 0.12);
+                color: {D.ASTRAL_BG};
+                border: 1px solid {D.ASTRAL_ACCENT};
+                font-weight: {D.FONT_WEIGHT_SEMIBOLD};
+            }}
+            QTabBar::tab:hover:!selected {{
+                background-color: {D.SURFACE};
+                border-color: {D.ASTRAL_ACCENT};
+                color: {D.TEXT};
+            }}
+            QTabWidget::pane {{
+                border: none;
+                background-color: {D.SURFACE};
+            }}
+        """
+
+    @staticmethod
+    def get_unified_toolbar_style():
+        """Barre unique fusionnée : Load · Save · | · Help · Exit · → Terminal."""
+        D = DesignSystem
+        return f"""
+            QToolBar {{
+                background-color: {D.ASTRAL_DEEPEST};
+                border: none;
+                border-bottom: 1px solid {D.ASTRAL_BORDER};
+                padding: 2px 8px;
+                spacing: 2px;
+                min-height: 34px;
+            }}
+            QToolBar::separator {{
+                background-color: {D.ASTRAL_BORDER};
+                width: 1px;
+                margin: 6px 8px;
+            }}
+            QToolBar QWidget {{
+                background-color: {D.ASTRAL_DEEPEST};
+            }}
+            QToolButton {{
+                padding: 6px 14px;
+                border-radius: {D.RADIUS_MD};
+                color: #FFFFFF;
+                font-family: {D.FONT_FAMILY};
+                font-size: {D.FONT_SIZE_BASE};
+                font-weight: {D.FONT_WEIGHT_SEMIBOLD};
+                border: 1px solid transparent;
+                min-height: 28px;
+                background-color: {D.ASTRAL_DEEPEST};
+            }}
+            QToolButton:hover {{
+                background-color: {D.ASTRAL_SURFACE};
+                color: #FFFFFF;
+                border: 1px solid {D.ASTRAL_BORDER};
+            }}
+            QToolButton:pressed {{
+                background-color: {D.ASTRAL_HOVER};
+                color: #FFFFFF;
+                border: 1px solid {D.ASTRAL_ACCENT};
+            }}
+            QToolButton:disabled {{
+                color: {D.ASTRAL_MUTED};
+                background-color: {D.ASTRAL_DEEPEST};
+            }}
+        """
+
+    @staticmethod
     def get_toolbar_style():
         D = DesignSystem
         return f"""
@@ -174,12 +313,12 @@ class DesignSystem:
                 margin: 4px 4px;
             }}
             QToolButton {{
-                padding: 4px 10px;
+                padding: 6px 10px;
                 border-radius: {D.RADIUS_SM};
                 color: {D.TEXT};
                 font-size: {D.FONT_SIZE_BASE};
                 border: 1px solid transparent;
-                min-height: 24px;
+                min-height: 28px;
             }}
             QToolButton:hover {{
                 background-color: {D.SURFACE_ALT};
@@ -205,6 +344,254 @@ class DesignSystem:
                 color: {D.TEXT_SECONDARY};
                 font-size: {D.FONT_SIZE_SM};
             }}
+        """
+
+    @staticmethod
+    def get_panel_qss():
+        D = DesignSystem
+        return f"""
+            QWidget {{
+                background-color: {D.ASTRAL_BG};
+                color: {D.ASTRAL_TEXT};
+                font-family: {D.FONT_FAMILY};
+                font-size: {D.FONT_SIZE_BASE};
+            }}
+            QDockWidget::title {{
+                background-color: {D.ASTRAL_DEEPEST};
+                color: {D.ASTRAL_TEXT};
+                padding: 7px 10px;
+                font-weight: {D.FONT_WEIGHT_BOLD};
+                font-size: {D.FONT_SIZE_SM};
+                text-transform: uppercase;
+            }}
+            QLabel {{
+                color: {D.ASTRAL_DIM};
+                font-size: {D.FONT_SIZE_SM};
+                qproperty-wordWrap: 1;
+            }}
+            QLabel:disabled {{ color: {D.ASTRAL_MUTED}; }}
+            QCheckBox {{
+                color: {D.ASTRAL_TEXT};
+                spacing: 8px;
+                padding: 3px 0;
+                min-height: 22px;
+            }}
+            QCheckBox:disabled {{ color: {D.ASTRAL_MUTED}; }}
+            QCheckBox::indicator {{
+                width: 16px; height: 16px;
+                border-radius: 4px;
+                border: 1px solid {D.ASTRAL_BORDER};
+                background-color: {D.ASTRAL_DEEP};
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: {D.ASTRAL_ACCENT};
+                border-color: {D.PRIMARY_HOVER};
+            }}
+            QComboBox, QLineEdit, QSpinBox {{
+                background-color: {D.ASTRAL_SURFACE};
+                border: 1px solid {D.ASTRAL_BORDER};
+                border-radius: {D.RADIUS_MD};
+                padding: 6px 8px;
+                color: {D.ASTRAL_TEXT};
+                font-size: {D.FONT_SIZE_BASE};
+                min-height: 26px;
+                selection-background-color: {D.ASTRAL_ACCENT};
+            }}
+            QComboBox:hover, QLineEdit:hover, QSpinBox:hover {{
+                border-color: {D.ASTRAL_ACCENT};
+            }}
+            QComboBox:focus, QLineEdit:focus, QSpinBox:focus {{
+                border: 1px solid {D.PRIMARY_HOVER};
+            }}
+            QLineEdit:disabled, QSpinBox:disabled {{
+                background-color: {D.ASTRAL_DEEP};
+                color: {D.ASTRAL_MUTED};
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                width: 22px;
+            }}
+            QSpinBox::up-button, QSpinBox::down-button {{
+                width: 16px;
+                background-color: {D.ASTRAL_DEEP};
+                border: none;
+            }}
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {{
+                background-color: {D.ASTRAL_HOVER};
+            }}
+            QSlider::groove:horizontal {{
+                border: 1px solid {D.ASTRAL_BORDER};
+                height: 5px;
+                background: {D.ASTRAL_SURFACE};
+                border-radius: 3px;
+                margin: 0 5px;
+            }}
+            QSlider::handle:horizontal {{
+                background: {D.ASTRAL_ACCENT};
+                border: 1px solid {D.PRIMARY_HOVER};
+                width: 14px; height: 14px;
+                border-radius: 7px;
+                margin: -6px 0;
+            }}
+            QSlider::handle:horizontal:hover {{ background: {D.PRIMARY_HOVER}; }}
+            QScrollArea {{ border: none; background-color: {D.ASTRAL_BG}; }}
+        """
+
+    @staticmethod
+    def get_panel_toggle_button_qss():
+        D = DesignSystem
+        return f"""
+            QPushButton {{
+                background-color: {D.ASTRAL_MUTED};
+                color: {D.ASTRAL_DEEPEST};
+                border: none;
+                border-radius: 10px;
+                padding: 3px 9px;
+                font-size: {D.FONT_SIZE_XS};
+                font-weight: {D.FONT_WEIGHT_BOLD};
+                min-width: 42px;
+                max-width: 42px;
+                min-height: 21px;
+            }}
+            QPushButton:checked {{
+                background-color: {D.ASTRAL_ACCENT};
+                color: #FFFFFF;
+            }}
+        """
+
+    @staticmethod
+    def get_panel_field_qss():
+        D = DesignSystem
+        return f"""
+            QLineEdit {{
+                background-color: {D.ASTRAL_SURFACE};
+                border: 1px solid {D.ASTRAL_BORDER};
+                border-radius: {D.RADIUS_MD};
+                padding: 5px 7px;
+                color: {D.ASTRAL_TEXT};
+                font-size: {D.FONT_SIZE_BASE};
+                min-height: 24px;
+            }}
+            QLineEdit:focus {{ border: 1px solid {D.ASTRAL_ACCENT}; }}
+            QLineEdit:disabled {{
+                background-color: {D.ASTRAL_DEEP};
+                color: {D.ASTRAL_MUTED};
+            }}
+        """
+
+    @staticmethod
+    def get_panel_action_button_qss(kind="primary"):
+        D = DesignSystem
+        colors = {
+            "primary": (D.ASTRAL_ACCENT, D.PRIMARY_HOVER, D.PRIMARY_ACTIVE, "#FFFFFF"),
+            "success": ("#2F7D4A", "#3E9360", "#286A3F", "#FFFFFF"),
+            "warning": ("#9A5A28", "#B36B32", "#7D4820", "#FFFFFF"),
+            "quiet": (D.ASTRAL_SURFACE, D.ASTRAL_HOVER, D.ASTRAL_DEEP, D.ASTRAL_TEXT),
+        }
+        bg, hover, pressed, fg = colors.get(kind, colors["primary"])
+        border = bg if kind != "quiet" else D.ASTRAL_BORDER
+        return f"""
+            QPushButton {{
+                background-color: {bg};
+                color: {fg};
+                border: 1px solid {border};
+                border-radius: {D.RADIUS_MD};
+                padding: 7px 11px;
+                font-size: {D.FONT_SIZE_BASE};
+                font-weight: {D.FONT_WEIGHT_SEMIBOLD};
+                min-height: 28px;
+            }}
+            QPushButton:hover {{ background-color: {hover}; color: #FFFFFF; }}
+            QPushButton:pressed {{ background-color: {pressed}; }}
+            QPushButton:disabled {{
+                background-color: {D.ASTRAL_DEEP};
+                color: {D.ASTRAL_MUTED};
+                border-color: {D.ASTRAL_BORDER};
+            }}
+        """
+
+    @staticmethod
+    def get_plot_toolbar_qss(name="PlotToolbar", with_menu=False):
+        D = DesignSystem
+        menu = ""
+        if with_menu:
+            menu = f"""
+            QMenu {{
+                background-color: {D.SURFACE};
+                border: 1px solid {D.BORDER};
+                border-radius: {D.RADIUS_LG};
+                padding: 5px;
+                font-family: {D.FONT_FAMILY};
+                font-size: {D.FONT_SIZE_BASE};
+            }}
+            QMenu::item {{
+                padding: 7px 16px 7px 12px;
+                border-radius: {D.RADIUS_MD};
+                color: {D.TEXT};
+                min-width: 170px;
+            }}
+            QMenu::item:selected {{
+                background-color: {D.ASTRAL_BG};
+                color: #FFFFFF;
+            }}
+            QMenu::item:checked {{
+                color: {D.ASTRAL_ACCENT};
+                font-weight: {D.FONT_WEIGHT_SEMIBOLD};
+            }}
+            """
+        return f"""
+            QWidget#{name} {{
+                background-color: {D.BACKGROUND};
+                border-bottom: 1px solid {D.BORDER};
+                padding: 2px 6px;
+            }}
+            QLabel {{
+                color: {D.TEXT_MUTED};
+                font-size: {D.FONT_SIZE_SM};
+                font-weight: {D.FONT_WEIGHT_SEMIBOLD};
+                background: transparent;
+            }}
+            QPushButton, QToolButton {{
+                background-color: {D.SURFACE};
+                color: {D.TEXT_SECONDARY};
+                border: 1px solid {D.BORDER};
+                border-radius: {D.RADIUS_LG};
+                padding: 3px 8px;
+                font-size: {D.FONT_SIZE_SM};
+                font-family: {D.FONT_FAMILY};
+                font-weight: {D.FONT_WEIGHT_MEDIUM};
+                min-height: 22px;
+                min-width: 64px;
+            }}
+            QPushButton:hover, QToolButton:hover {{
+                background-color: {D.SURFACE_ALT};
+                border-color: {D.ASTRAL_ACCENT};
+                color: {D.TEXT};
+            }}
+            QPushButton:checked, QToolButton:checked {{
+                background-color: {D.ASTRAL_BG};
+                color: #FFFFFF;
+                border-color: {D.ASTRAL_BG};
+                font-weight: {D.FONT_WEIGHT_SEMIBOLD};
+            }}
+            QPushButton:pressed, QToolButton:pressed {{
+                background-color: {D.ASTRAL_HOVER};
+                color: #FFFFFF;
+            }}
+            QToolButton::menu-indicator {{ image: none; width: 0; }}
+            QComboBox {{
+                background-color: {D.SURFACE};
+                color: {D.TEXT};
+                border: 1px solid {D.BORDER};
+                border-radius: {D.RADIUS_MD};
+                padding: 3px 8px;
+                font-size: {D.FONT_SIZE_SM};
+                min-width: 145px;
+                min-height: 22px;
+            }}
+            QComboBox:hover {{ border-color: {D.PRIMARY}; }}
+            QComboBox::drop-down {{ border: none; width: 22px; }}
+            {menu}
         """
 
     @staticmethod
@@ -242,9 +629,9 @@ class DesignSystem:
             QDockWidget::title {{
                 background-color: {D.ASTRAL_DEEPEST};
                 color: {D.ASTRAL_TEXT};
-                padding: 5px 10px;
+                padding: 7px 10px;
                 font-weight: bold;
-                font-size: {D.FONT_SIZE_SM};
+                font-size: {D.FONT_SIZE_BASE};
                 text-transform: uppercase;
             }}
             QMenuBar {{

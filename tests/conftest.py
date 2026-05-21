@@ -21,11 +21,20 @@ except ImportError as e:
 def reset_singleton():
     """Remet le singleton DifmapSession à zéro avant et après chaque test."""
     from difmap_wrapper.session import DifmapSession
+    import difmap_native
     plt.close('all')
     DifmapSession._instance = None
+    try:
+        difmap_native.cleanup()
+    except Exception:
+        pass
     yield
     plt.close('all')
     DifmapSession._instance = None
+    try:
+        difmap_native.cleanup()
+    except Exception:
+        pass
 
 
 @pytest.fixture(scope="session", autouse=True)

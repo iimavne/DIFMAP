@@ -214,6 +214,23 @@ class DifmapBatchManager:
           pour éviter la surcharge système.
 
         """
+        # Vérifier que worker_func est picklable (top-level) avant toute soumission.
+        # Les lambdas et fonctions locales ont respectivement '<lambda>' ou '<locals>'
+        # dans __qualname__ et déclenchent une PicklingError cryptique au spawn.
+        qualname = getattr(worker_func, '__qualname__', '')
+        if '<lambda>' in qualname:
+            raise TypeError(
+                "worker_func ne peut pas être une fonction lambda : les lambdas "
+                "ne sont pas sérialisables par pickle entre processus.\n"
+                "→ Définissez une fonction nommée au niveau du module."
+            )
+        if '<locals>' in qualname:
+            raise TypeError(
+                f"worker_func '{qualname}' est une fonction locale (définie à l'intérieur "
+                "d'une autre fonction) et ne peut pas être sérialisée entre processus.\n"
+                "→ Déplacez la fonction au niveau du module."
+            )
+
         # Déterminer le nombre de workers à utiliser
         workers = max_workers or self.max_workers
         logger.info(

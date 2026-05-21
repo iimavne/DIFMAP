@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 from PyQt6.QtCore import QTimer
 from .base import BasePlotEditor
-from difmap_wrapper.types import EditorMode
+from difmap_wrapper.enums import EditorMode
 from difmap_wrapper.gui.styles import DesignSystem
 
 logger = logging.getLogger("difmap.uv_editor")
@@ -40,9 +40,23 @@ class UVPlotEditor(BasePlotEditor):
         self.data_alpha  = 0.5
         u = data['u'] / 1e6
         v = data['v'] / 1e6
-        self.scat_main = ax.scatter(u,  v,  s=1, color=base_color, alpha=self.data_alpha, edgecolors='none')
-        self.scat_conj = ax.scatter(-u, -v, s=1, color=base_color, alpha=self.data_alpha, edgecolors='none')
-        self.scat_conj.set_visible(True)  # conjugué affiché par défaut
+
+        # Layer 1 — fond (tous les points non-flaguués non-focalisés)
+        # Line2D est ~10× plus rapide que PathCollection (scatter) pour un rendu uniforme.
+        # Les points flaguués et focalisés sont remplacés par NaN → pas de tracé.
+        self._line_main, = ax.plot(u, v, '.', ms=1.5, color=base_color,
+                                   alpha=self.data_alpha, markeredgewidth=0)
+        self._line_conj, = ax.plot(-u, -v, '.', ms=1.5, color=base_color,
+                                   alpha=self.data_alpha, markeredgewidth=0)
+        self._line_conj.set_visible(True)
+
+        # Layer 2 — overlay antenne focalisée (sous-ensemble << N, scatter accepte per-point color)
+        _fc = DesignSystem.PLOT_FOCUS
+        self._scat_focus_m = ax.scatter(np.zeros(0), np.zeros(0), s=3.0, color=_fc,
+                                        edgecolors='none', zorder=3, alpha=self.data_alpha)
+        self._scat_focus_c = ax.scatter(np.zeros(0), np.zeros(0), s=3.0, color=_fc,
+                                        edgecolors='none', zorder=3, alpha=self.data_alpha)
+        self._scat_focus_c.set_visible(True)
 
         # Limites symétriques identiques sur X et Y pour un affichage carré.
         # Doit être positionné avant super().__init__() pour que original_limits
@@ -90,6 +104,21 @@ class UVPlotEditor(BasePlotEditor):
         self.ax.set_xlim(cx + half, cx - half)  # axe RA inversé
         self.ax.set_ylim(cy - half, cy + half)
         self.fig.canvas.draw_idle()
+
+    def action_home(self, event=None):
+        """Override : reset vue complète recalculée depuis les données (ne supprime pas les flags)."""
+        u = self.data["u"] / 1e6
+        v = self.data["v"] / 1e6
+        max_range = float(max(np.abs(u).max(), np.abs(v).max())) * 1.1
+        self.ax.set_xlim(max_range, -max_range)   # axe RA conventionnellement inversé
+        self.ax.set_ylim(-max_range, max_range)
+        self.index_antenne_actuelle = -1
+        self._nom_antenne_courante = ""
+        self._update_colors()
+        self.fig.canvas.draw_idle()
+        logger.info("Vue réinitialisée.", extra={'difmap_level': 'success'})
+        if self.sync_callback:
+            self.sync_callback({'reset_all': True})
 
     # =========================================================
     # FLAGGING
@@ -201,7 +230,7 @@ class UVPlotEditor(BasePlotEditor):
 
     def update_marker_size(self, pct: float):
         """
-        Met à jour la taille des marqueurs sur les deux scatters.
+        Met à jour la taille des marqueurs sur les deux layers.
 
         Parameters
         ----------
@@ -209,21 +238,28 @@ class UVPlotEditor(BasePlotEditor):
             Pourcentage (1–100). Converti en pts² via la plage ``_SIZE_MIN``–``_SIZE_MAX``.
         """
         self.marker_size_pct = int(pct)
-        size = self._SIZE_MIN + (pct / 100.0) * (self._SIZE_MAX - self._SIZE_MIN)
-        self.scat_main.set_sizes([size])
-        self.scat_conj.set_sizes([size])
+        size_s  = self._SIZE_MIN + (pct / 100.0) * (self._SIZE_MAX - self._SIZE_MIN)
+        size_ms = size_s ** 0.5  # pts² → pts (Line2D markersize)
+        self._line_main.set_markersize(size_ms)
+        self._line_conj.set_markersize(size_ms)
+        self._scat_focus_m.set_sizes([size_s * 2.0])  # focus légèrement plus grand
+        self._scat_focus_c.set_sizes([size_s * 2.0])
         self.fig.canvas.draw_idle()
 
     def update_data_alpha(self, alpha: float):
         """Met à jour la transparence des points (0.0–1.0)."""
         self.data_alpha = alpha
-        self.scat_main.set_alpha(alpha)
-        self.scat_conj.set_alpha(alpha)
+        self._line_main.set_alpha(alpha)
+        self._line_conj.set_alpha(alpha)
+        self._scat_focus_m.set_alpha(alpha)
+        self._scat_focus_c.set_alpha(alpha)
         self.fig.canvas.draw_idle()
 
     def update_data_color(self, color: str):
         """Met à jour la couleur de base des points de données."""
         self.base_color = color
+        self._line_main.set_color(color)
+        self._line_conj.set_color(color)
         self._update_colors()
 
     def set_conjugate_visible(self, visible: bool):
@@ -233,9 +269,10 @@ class UVPlotEditor(BasePlotEditor):
         Parameters
         ----------
         visible : bool
-            ``True`` pour afficher ``scat_conj``.
+            ``True`` pour afficher les conjugués.
         """
-        self.scat_conj.set_visible(visible)
+        self._line_conj.set_visible(visible)
+        self._scat_focus_c.set_visible(visible)
         etat = "affichés" if visible else "masqués"
         logger.info("Points conjugués %s.", etat)
         self.fig.canvas.draw_idle()
@@ -249,8 +286,9 @@ class UVPlotEditor(BasePlotEditor):
         _event : optional
             Ignoré.
         """
-        is_visible = self.scat_conj.get_visible()
-        self.scat_conj.set_visible(not is_visible)
+        is_visible = self._line_conj.get_visible()
+        self._line_conj.set_visible(not is_visible)
+        self._scat_focus_c.set_visible(not is_visible)
         etat = "affichés" if not is_visible else "masqués"
         logger.info(f"Points conjugués {etat}.")
         if self.sync_callback:
@@ -261,7 +299,7 @@ class UVPlotEditor(BasePlotEditor):
         """
         Clignotement visuel pour confirmer le rafraîchissement. Touche ``L``.
 
-        Masque temporairement les scatter plots (50 ms) via ``QTimer``
+        Masque temporairement tous les artists (50 ms) via ``QTimer``
         pour éviter le blocage de l'interface avec ``plt.pause()``.
 
         Parameters
@@ -269,79 +307,85 @@ class UVPlotEditor(BasePlotEditor):
         _event : optional
             Ignoré.
         """
-        vis_m, vis_c = self.scat_main.get_visible(), self.scat_conj.get_visible()
-        self.scat_main.set_visible(False)
-        self.scat_conj.set_visible(False)
-        self.fig.canvas.draw_idle()        
+        vis_m = self._line_main.get_visible()
+        vis_c = self._line_conj.get_visible()
+        for a in (self._line_main, self._line_conj, self._scat_focus_m, self._scat_focus_c):
+            a.set_visible(False)
+        self.fig.canvas.draw_idle()
 
-        
-        # Remplacement de plt.pause() par une fonction asynchrone PyQt
         def restore_visibility():
-            if not self.scat_main or not self.scat_conj: return
-            self.scat_main.set_visible(vis_m)
-            self.scat_conj.set_visible(vis_c)
+            self._line_main.set_visible(vis_m)
+            self._line_conj.set_visible(vis_c)
+            self._scat_focus_m.set_visible(vis_m)
+            self._scat_focus_c.set_visible(vis_c)
             self._update_colors()
-            
+
         QTimer.singleShot(50, restore_visibility)
 
     def _update_colors(self):
         """
-        Met à jour les couleurs, tailles et positions des scatter plots UV.
-
-        Applique le focus antenne (rouge sur les baselines de l'antenne cible),
-        masque les points flaggués via NaN et met à jour le titre de l'axe.
-        Utilise :meth:`BasePlotEditor._build_focus_colors` (M1).
+        Met à jour les deux layers du plan UV :
+        - Layer 1 (Line2D) : points non-flaguués non-focalisés → NaN pour les cacher.
+        - Layer 2 (scatter) : points non-flaguués focalisés → PLOT_FOCUS.
+        Points flaguués : absents des deux layers (invisibles).
         """
-        couleurs, sub_actif = self._build_focus_colors()
+        flagged   = self.obs.masque_flagges
+        u         = self.data["u"] / 1e6
+        v         = self.data["v"] / 1e6
+        sub_actif = self.liste_subarrays[self.index_subarray_actuel]
 
-        if self.index_antenne_actuelle < 0:
-            self.ax.set_title(
-                "All baselines",
-                color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10
-            )
-        elif sub_actif not in self.antennes_par_subarray:
-            label = self._nom_antenne_courante or "—"
-            self.ax.set_title(
-                f"FOCUS : {sub_actif}:{label}  [vide]",
-                color=DesignSystem.PLOT_FOCUS, fontsize=10
-            )
-            logger.info("Subarray %s : aucune visibilité.", sub_actif)
-        elif self.index_antenne_actuelle < len(self.toutes_antennes_sorted):
-            vrai_nom = self.toutes_antennes_sorted[self.index_antenne_actuelle]
-            ant_cible = self._find_local_antenna_id(sub_actif, vrai_nom)
+        # ── Masque focus antenne ───────────────────────────────────────────
+        m_focus   = np.zeros(len(u), dtype=bool)
+        ant_cible = None
+        if 0 <= self.index_antenne_actuelle < len(self.toutes_antennes_sorted):
+            nom_cible = self.toutes_antennes_sorted[self.index_antenne_actuelle]
+            ant_cible = self._find_local_antenna_id(sub_actif, nom_cible)
             if ant_cible is not None:
-                self.ax.set_title(
-                    f"FOCUS : {sub_actif}:{vrai_nom}",
-                    color=DesignSystem.PLOT_FOCUS, fontsize=10
-                )
                 m_focus = (
                     (self.data["subarray"] == sub_actif)
                     & ((self.data["tel_a"] == ant_cible) | (self.data["tel_b"] == ant_cible))
                 )
-                if not np.any(m_focus & ~self.obs.masque_flagges):
+
+        # ── Titre de l'axe ────────────────────────────────────────────────
+        if self.index_antenne_actuelle < 0:
+            self.ax.set_title("All baselines",
+                              color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10)
+        elif sub_actif not in self.antennes_par_subarray:
+            label = self._nom_antenne_courante or "—"
+            self.ax.set_title(f"FOCUS : {sub_actif}:{label}  [vide]",
+                              color=DesignSystem.PLOT_FOCUS, fontsize=10)
+            logger.info("Subarray %s : aucune visibilité.", sub_actif)
+        elif self.index_antenne_actuelle < len(self.toutes_antennes_sorted):
+            vrai_nom = self.toutes_antennes_sorted[self.index_antenne_actuelle]
+            if ant_cible is not None:
+                self.ax.set_title(f"FOCUS : {sub_actif}:{vrai_nom}",
+                                  color=DesignSystem.PLOT_FOCUS, fontsize=10)
+                if not np.any(m_focus & ~flagged):
                     logger.warning("No data for %s:%s", sub_actif, vrai_nom)
             else:
-                self.ax.set_title(
-                    f"FOCUS : {sub_actif}:{vrai_nom}  [pas de visibilités]",
-                    color=DesignSystem.PLOT_FOCUS, fontsize=10
-                )
+                self.ax.set_title(f"FOCUS : {sub_actif}:{vrai_nom}  [pas de visibilités]",
+                                  color=DesignSystem.PLOT_FOCUS, fontsize=10)
                 logger.info("Pas de visibilités pour %s dans le subarray %s.", vrai_nom, sub_actif)
 
-        u = self.data["u"] / 1e6
-        v = self.data["v"] / 1e6
-        off_m = np.column_stack((u,  v))
-        off_c = np.column_stack((-u, -v))
-        off_m[self.obs.masque_flagges] = [np.nan, np.nan]
-        off_c[self.obs.masque_flagges] = [np.nan, np.nan]
+        # ── Layer 1 : fond — non-flaguués non-focalisés (Line2D) ──────────
+        m_bg   = ~flagged & ~m_focus
+        u_bg   = np.where(m_bg, u, np.nan)
+        v_bg   = np.where(m_bg, v, np.nan)
+        self._line_main.set_xdata(u_bg)
+        self._line_main.set_ydata(v_bg)
+        self._line_conj.set_xdata(-u_bg)
+        self._line_conj.set_ydata(-v_bg)
 
-        self.scat_main.set_offsets(off_m)
-        self.scat_conj.set_offsets(off_c)
-        self.scat_main.set_facecolors(couleurs)
-        self.scat_main.set_edgecolors('none')
-        self.scat_main.set_alpha(self.data_alpha)
-        self.scat_conj.set_facecolors(couleurs)
-        self.scat_conj.set_edgecolors('none')
-        self.scat_conj.set_alpha(self.data_alpha)
+        # ── Layer 2 : overlay focus — non-flaguués focalisés (scatter) ────
+        m_fg = ~flagged & m_focus
+        if np.any(m_fg):
+            u_fg = u[m_fg]; v_fg = v[m_fg]
+            self._scat_focus_m.set_offsets(np.column_stack([u_fg,  v_fg]))
+            self._scat_focus_c.set_offsets(np.column_stack([-u_fg, -v_fg]))
+        else:
+            self._scat_focus_m.set_offsets(np.zeros((0, 2)))
+            self._scat_focus_c.set_offsets(np.zeros((0, 2)))
+
         self.fig.canvas.draw_idle()
 
     # =========================================================
@@ -350,16 +394,11 @@ class UVPlotEditor(BasePlotEditor):
 
     def refresh_data(self) -> None:
         """
-        Surchargé pour mettre à jour les offsets des scatters après
-        un notify_data_changed() (calibration, gain apply, etc.).
+        Surchargé pour rafraîchir les données après un notify_data_changed()
+        (calibration, gain apply, etc.). _update_colors() gère positions + couleurs.
         """
         self.data = self.obs.get_data()
         self._refresh_telescope_names()
-        # Mise à jour des scatters en place (pas de recréation)
-        u = self.data['u'] / 1e6
-        v = self.data['v'] / 1e6
-        self.scat_main.set_offsets(np.column_stack([u, v]))
-        self.scat_conj.set_offsets(np.column_stack([-u, -v]))
         self._update_colors()
 
     # =========================================================

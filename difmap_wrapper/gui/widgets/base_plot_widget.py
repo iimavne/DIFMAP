@@ -5,7 +5,9 @@ Classe de base pour tous les widgets Matplotlib.
 Évite la duplication de code entre UVPlotWidget, MapPlotWidget, RadPlotWidget.
 """
 
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
+import os
+
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy
 from PyQt6.QtCore import Qt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
@@ -52,6 +54,12 @@ class BasePlotWidget(QWidget):
         layout_type : str
             Type de layout Matplotlib ('constrained' ou None)
         """
+        # Assurer qu'une QApplication existe avant de créer un QWidget.
+        # Sans QApplication, Qt peut abort (Fatal Python error: Aborted).
+        if QApplication.instance() is None:
+            if not os.environ.get("DISPLAY"):
+                os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+            self._qt_app = QApplication([])
         super().__init__(parent)
 
         # Layout principal
@@ -62,9 +70,10 @@ class BasePlotWidget(QWidget):
         # ── Toolbar locale (peuplée par les sous-classes) ────────
         self.plot_toolbar_row = QWidget()
         self.plot_toolbar_row.setVisible(False)
+        self.plot_toolbar_row.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.plot_toolbar_layout = QHBoxLayout(self.plot_toolbar_row)
-        self.plot_toolbar_layout.setContentsMargins(6, 3, 6, 3)
-        self.plot_toolbar_layout.setSpacing(6)
+        self.plot_toolbar_layout.setContentsMargins(6, 2, 6, 2)
+        self.plot_toolbar_layout.setSpacing(4)
         self.layout.addWidget(self.plot_toolbar_row)
 
         # Figure Matplotlib
@@ -102,8 +111,8 @@ class BasePlotWidget(QWidget):
         self.canvas.draw_idle()
     
     def draw(self):
-        """Force un redraw complet."""
-        self.canvas.draw()
+        """Planifie un redraw via l'event loop (draw_idle évite de saturer Wayland)."""
+        self.canvas.draw_idle()
     
     def get_figure(self):
         """Retourne la Figure Matplotlib."""

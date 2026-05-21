@@ -1,9 +1,13 @@
 # difmap_wrapper/visualizer.py
 import difmap_native
 import numpy as np
+import matplotlib as mpl
 from matplotlib import pyplot as plt
 from matplotlib.colors import Normalize, LogNorm, PowerNorm
 from matplotlib.offsetbox import AnchoredOffsetbox, AuxTransformBox
+import re
+from datetime import datetime
+import logging
 
 class Visualizer:
     """
@@ -66,13 +70,19 @@ class Visualizer:
         >>> fig, ax = plt.subplots()
         >>> session.vis.uvplot(ax=ax, color='red')
         """
-        data = self._native.get_uv_data()
+        try:
+            data = self._session.obs.get_data()
+        except Exception:
+            data = {}
         if not data or len(data.get('u', [])) == 0:
             print("Aucune donnée UV. Appelez select() avant uvplot().")
             return None
 
-        u = data['u'] / 1e6
-        v = data['v'] / 1e6
+        # Données UV en λ → Mλ (convention d'affichage VLBI standard).
+        # L'axe est toujours affiché en Mλ indépendamment de skyunits().
+        _WAV_TO_MLAMBDA = 1e-6
+        u = data['u'] * _WAV_TO_MLAMBDA
+        v = data['v'] * _WAV_TO_MLAMBDA
 
         # Suivi de la création de la figure
         created_fig = False
@@ -113,30 +123,37 @@ class Visualizer:
         return ax
 
     def radplot(self, ax=None, figsize=(10, 6), color='black', alpha=0.5, s=1,
-                title=None, save_path: str = None, show: bool = True, **kwargs):
+                title=None, show_model: bool = True,
+                model_color: str = 'red', model_alpha: float = 0.7, model_s: float = 1,
+                save_path: str = None, show: bool = True, **kwargs):
         """
-        Affiche l'amplitude des visibilités en fonction de leur rayon UV.
+        Affiche l'amplitude des visibilités en fonction du rayon UV.
 
-        Ce graphique (aussi appelé "amplitude vs uv-distance") donne une vue
-        rapide de la structure de la source : une source ponctuelle donne une
-        ligne horizontale, une source étendue montre une décroissance.
+        Si un modèle CLEAN est disponible (après ``clean()``), superpose
+        l'amplitude du modèle en rouge avec ``show_model=True``.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes, optional
-            Axe sur lequel dessiner. Si absent, une nouvelle figure est créée.
+            Axe sur lequel dessiner.
         figsize : tuple of float, optional
             Taille ``(largeur, hauteur)`` en pouces. Par défaut ``(10, 6)``.
         color : str, optional
-            Couleur des points. Par défaut ``'black'``.
+            Couleur des points observés. Par défaut ``'black'``.
         alpha : float, optional
-            Transparence des points. Par défaut ``0.5``.
+            Transparence des points observés. Par défaut ``0.5``.
         s : float, optional
-            Taille des marqueurs. Par défaut ``1``.
+            Taille des marqueurs observés. Par défaut ``1``.
         title : str, optional
-            Titre du graphique. Généré automatiquement si absent.
-        **kwargs
-            Paramètres supplémentaires transmis à ``matplotlib.axes.Axes.scatter``.
+            Titre du graphique.
+        show_model : bool, optional
+            Superpose l'amplitude du modèle si disponible. Par défaut ``True``.
+        model_color : str, optional
+            Couleur des points du modèle. Par défaut ``'red'``.
+        model_alpha : float, optional
+            Transparence des points du modèle. Par défaut ``0.7``.
+        model_s : float, optional
+            Taille des marqueurs du modèle. Par défaut ``1``.
 
         Returns
         -------
@@ -144,37 +161,49 @@ class Visualizer:
 
         Examples
         --------
+        >>> session.vis.radplot()                        # données + modèle si dispo
+        >>> session.vis.radplot(show_model=False)        # données seules
         >>> session.vis.radplot(color='navy', alpha=0.3, s=0.5)
         """
-        data = self._native.get_uv_data()
+        try:
+            data = self._session.obs.get_data()
+        except Exception:
+            data = {}
         if not data or len(data.get('u', [])) == 0:
             print("Aucune donnée UV. Appelez select() avant radplot().")
             return None
 
-        u = data['u']
-        v = data['v']
+        u   = data['u']
+        v   = data['v']
         amp = data['amp']
         uv_radius = np.sqrt(u**2 + v**2) / 1e6
 
-        # Suivi de la création de la figure
-        created_fig = False
-        if ax is None:
+        created_fig = ax is None
+        if created_fig:
             fig, ax = plt.subplots(figsize=figsize)
-            created_fig = True
 
-        ax.scatter(uv_radius, amp, s=s, color=color, alpha=alpha, **kwargs)
+        # Données observées
+        ax.scatter(uv_radius, amp, s=s, color=color, alpha=alpha,
+                   label='Observé', **kwargs)
+
+        # Modèle CLEAN superposé
+        if show_model:
+            modamp = data.get('modamp')
+            if modamp is not None and np.any(modamp != 0):
+                ax.scatter(uv_radius, modamp, s=model_s, color=model_color,
+                           alpha=model_alpha, label='Modèle', zorder=3)
+                ax.legend(loc='upper right', fontsize=8, framealpha=0.7)
+
         ax.set_xlabel(r"Rayon UV ($M\lambda$)")
         ax.set_ylabel("Amplitude (Jy)")
         source_name = self._session.obs.source
-        ax.set_title(title or f"Radplot (Amplitude vs Rayon) : {source_name}")
+        ax.set_title(title or f"Radplot : {source_name}")
         ax.set_ylim(bottom=0)
         ax.grid(True, linestyle=':', alpha=0.6)
 
-        # Sauvegarde de la figure si demandée
         if save_path:
             ax.get_figure().savefig(save_path, bbox_inches='tight')
 
-        # Gestion de l'affichage et de la mémoire
         if created_fig:
             if show:
                 plt.show()
@@ -223,9 +252,22 @@ class Visualizer:
 
         mode = (mode or 'pct').lower()
         if mode in {'custom', 'clevs'}:
+            # DIFMAP: levs est en % du pic tant que cmul<=0 (cas standard)
+            # Ici, on suit ce comportement: les niveaux custom sont interprétés en % du pic.
             if not custom:
                 return []
-            return [float(v) for v in custom if v != 0]
+            if peak is None or float(peak) == 0.0:
+                return []
+            out = []
+            for x in custom:
+                try:
+                    v = float(x)
+                except Exception:
+                    continue
+                if not np.isfinite(v) or v == 0.0:
+                    continue
+                out.append(v * float(peak) / 100.0)
+            return out
 
         if mode in {'pct', 'levs', 'default', 'standard'}:
             return [pct * peak / 100.0 for pct in (-1.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0)]
@@ -238,9 +280,17 @@ class Visualizer:
         factor = abs(float(factor))
         if absmin > absmax:
             absmin, absmax = absmax, absmin
-        if absmin < 1.0e-5 or absmax < 1.0e-5 or factor <= 1.0:
+
+        # DIFMAP: loglevs génère des niveaux en % du pic avec un facteur ~2
+        # et sature typiquement à 100%.
+        absmax = min(absmax, 100.0)
+        if factor <= 1.0:
+            factor = 2.0
+
+        if absmin < 1.0e-5 or absmax < 1.0e-5:
             return []
 
+        # loglevs N  =>  -N, +N, +2N, +4N, ... (jusqu'à 100%)
         pct_levels = [-absmin]
         val = absmin
         while val <= absmax:
@@ -249,7 +299,7 @@ class Visualizer:
         return [pct * peak / 100.0 for pct in pct_levels]
 
     @staticmethod
-    def _vis_draw_contours(ax, data, x_lin, y_lin, peak, lw=0.8,
+    def _vis_draw_contours(ax, data, x_lin, y_lin, peak, lw=0.3,
                            mode='pct', absmin=1.0, absmax=100.0,
                            factor=2.0, custom=None):
         """
@@ -263,49 +313,236 @@ class Visualizer:
         cmin = float(np.nanmin(data))
         cmax = float(np.nanmax(data))
         visible = [l for l in levels if cmin < l < cmax]
+        if not visible:
+            return []
+
+        pos_levels = sorted([l for l in visible if l >= 0])
+        neg_levels = sorted([l for l in visible if l < 0])
+
+        # Conformité DIFMAP/PGPLOT (mapplot standard): en mode "levs" (%),
+        # on ne trace typiquement qu'un seul niveau négatif (-1% du pic).
+        m = (mode or 'pct').lower()
+        if m in {'pct', 'levs', 'default', 'standard'} and neg_levels:
+            neg_levels = [max(neg_levels)]
+
         drawn = []
-        for level in visible:
-            ax.contour(
-                x_lin, y_lin, data, levels=[level],
-                colors='white' if level >= 0 else 'red',
-                linewidths=lw, linestyles='solid',
-                alpha=0.9 if level >= 0 else 0.85
+        # Matplotlib peut simplifier les chemins, ce qui modifie le rendu des petites structures.
+        # On désactive la simplification uniquement pendant le tracé des contours.
+        with mpl.rc_context({"path.simplify": False, "path.simplify_threshold": 0.0}):
+            logging.info(
+                "[CONTOUR] mode=%s lw=%s pos=%d neg=%d",
+                (mode or 'pct'),
+                float(lw),
+                len(pos_levels),
+                len(neg_levels),
             )
-            drawn.append(level)
+            if pos_levels:
+                cs_pos = ax.contour(
+                    x_lin, y_lin, data, levels=pos_levels,
+                    colors='white', linewidths=lw, linestyles='solid',
+                    alpha=1.0,
+                    antialiased=False,
+                    corner_mask=False,
+                )
+                drawn.extend(pos_levels)
+                cols = getattr(cs_pos, "collections", None)
+                if cols is not None:
+                    for col in cols:
+                        col.set_antialiased(False)
+                        col.set_linewidth(float(lw))
+                        col.set_joinstyle("miter")
+                        col.set_capstyle("butt")
+
+            if neg_levels:
+                neg_styles = [(0, (12.0, 8.0)) for _ in neg_levels]
+                cs_neg = ax.contour(
+                    x_lin, y_lin, data, levels=neg_levels,
+                    colors='red', linewidths=lw, linestyles=neg_styles,
+                    alpha=1.0,
+                    antialiased=False,
+                    corner_mask=False,
+                )
+                drawn.extend(neg_levels)
+                cols = getattr(cs_neg, "collections", None)
+                if cols is not None:
+                    for col in cols:
+                        col.set_antialiased(False)
+                        col.set_linewidth(float(lw))
+                        col.set_joinstyle("miter")
+                        col.set_capstyle("butt")
+                        col.set_linestyle((0, (12.0, 8.0)))
         return drawn
 
     @staticmethod
-    def _vis_add_annotations(ax, data, map_type, info=None,
-                              drawn_levels=None, contour_mode='pct'):
-        """Annotations texte style difmap (maplot.c:1664-1703)."""
-        lines = []
-        if map_type == "clean":
-            lines.append(f"Map peak: {float(np.nanmax(data)):.3g} Jy/beam")
+    def _vis_add_annotations(ax, data, map_type, info=None, session=None,
+                              drawn_levels=None, contour_mode='pct',
+                              vmin=None, vmax=None):
+        """
+        Bloc d'annotations style PGPLOT — sous l'axe, contenu par type de carte.
+
+        Réplique fidèlement maplot.c::pllabel() de Difmap :
+        - Clean map  → "Map peak: %.3g Jy/beam"
+        - Dirty/Residual → "Displayed range: %.3g □ %.3g Jy/beam"  (plage colormap)
+        - Contours affichés en %.3g (3 chiffres significatifs), pas arrondis
+        - RMS/SNR : extensions Python non présentes dans Difmap original
+        """
+        if data is None or data.size == 0:
+            return
+
+        # Pic absolu (même logique que le C : fabs(immax) > fabs(immin) ? immax : immin)
+        immax = float(np.nanmax(data))
+        immin = float(np.nanmin(data))
+        abs_peak = immax if abs(immax) >= abs(immin) else immin
+
+        # RMS natif DIFMAP : vlbmap->maprms = sqrt(mean((pixel-mean)²)) sur la zone CLEAN.
+        # Fourni par get_map_package() / get_residual_package() via info['rms'].
+        # Ne pas recalculer sur les données croppées : la zone d'affichage ≠ la zone CLEAN.
+        rms = float(info.get('rms') or 0.0) if isinstance(info, dict) else 0.0
+
+        formatted_lines: list[str] = []
+
+        # Source et polarisation — via la session passée en paramètre ou stockée sur l'axe
+        _session = session or getattr(ax, '_difmap_session', None)
+        source, pol = None, None
+        if _session is not None:
+            try:
+                source = _session.obs.source
+            except Exception:
+                pass
+            try:
+                pol = _session.obs.get_polarization()
+            except Exception:
+                pass
+
+        # Header DIFMAP (cheap — pas d'appel à l_extract_uv / moddif)
+        header_text = ""
+        try:
+            header_text = difmap_native.get_header_text() or ""
+        except Exception:
+            pass
+
+        # Fréquence moyenne en GHz depuis le tableau IF du header
+        freq_ghz = 0.0
+        if header_text:
+            freqs = []
+            for m in re.finditer(r"^\s*\d+\s+\d+\s+([0-9.]+e[+-]\d+)", header_text, flags=re.MULTILINE):
+                try:
+                    freqs.append(float(m.group(1)))
+                except Exception:
+                    continue
+            if freqs:
+                freq_ghz = float(np.mean(freqs)) / 1e9
+
+        # Date
+        date_str = ""
+        if header_text:
+            m = re.search(r"\b(19|20)\d{2}\s+[A-Za-z]{3}\s+\d{1,2}\b", header_text)
+            if m:
+                date_str = m.group(0)
+
+        # Stations: depuis les données déjà extraites (cache obs), jamais via get_uv_data() direct
+        stations_str = ""
+        if _session is not None:
+            try:
+                uv = _session.obs._cached_raw_data or {}
+                tel_a = uv.get('tel_a')
+                tel_b = uv.get('tel_b')
+                sub = uv.get('subarray')
+                if tel_a is not None and tel_b is not None and len(tel_a) and len(tel_b):
+                    n_tel = int(max(int(np.max(tel_a)), int(np.max(tel_b)))) + 1
+                    isub = int(sub[0]) if sub is not None and len(sub) else 0
+                    codes = []
+                    for itel in range(n_tel):
+                        name = difmap_native.get_telescope_name(isub, itel)
+                        if not name:
+                            continue
+                        code = name.strip().upper()[:2]
+                        codes.append(code)
+                    if codes:
+                        stations_str = "".join(sorted(set(codes)))
+            except Exception:
+                pass
+
+        # Centre de carte depuis le header (format Difmap : OBSRA/OBSDEC sur lignes séparées)
+        # "  OBSRA  = 00 06 13.893 (2000.0)"
+        # "  OBSDEC = -06 23 35.335"
+        ra, dec = "00 00 00.000", "+00 00 00.000"
+        if header_text:
+            m_ra = re.search(r"OBSRA\s*=\s*([\d :.]+?)(?:\s*\(|\s*$)", header_text, re.MULTILINE)
+            m_dec = re.search(r"OBSDEC\s*=\s*([+-]?[\d :.]+)", header_text, re.MULTILINE)
+            if m_ra:
+                ra = m_ra.group(1).strip()
+            if m_dec:
+                dec = m_dec.group(1).strip()
+
+        # Ligne de tête : "Clean/Residual/Dirty POL map.  Array: STATIONS"
+        map_label = (map_type or 'dirty').capitalize()
+        pol_txt = pol or "XX"
+        formatted_lines.append(
+            f"{map_label} {pol_txt} map.  Array: {stations_str}" if stations_str
+            else f"{map_label} {pol_txt} map."
+        )
+
+        src = source or "Unknown"
+        if freq_ghz > 0 and date_str:
+            formatted_lines.append(f"{src}  at {freq_ghz:.3f} GHz  {date_str}")
+        elif freq_ghz > 0:
+            formatted_lines.append(f"{src}  at {freq_ghz:.3f} GHz")
+        elif date_str:
+            formatted_lines.append(f"{src}  {date_str}")
         else:
-            lines.append(
-                f"Displayed range: {float(np.nanmin(data)):.3g} □ "
-                f"{float(np.nanmax(data)):.3g} Jy/beam"
-            )
-        if drawn_levels:
-            peak = Visualizer._vis_central_peak(data)
-            if (contour_mode or '').lower() in {'custom', 'clevs'}:
-                lvl_strs = [f"{l:.3g}" for l in drawn_levels]
-                lines.append("Contours (Jy/b): " + ", ".join(lvl_strs))
-            elif peak != 0:
-                pct_strs = [f"{l / peak * 100:.3g}" for l in drawn_levels]
-                lines.append("Contours %: " + ", ".join(pct_strs))
-        if map_type == "clean" and info:
-            bmaj = info.get('bmaj', 0.0)
-            bmin = info.get('bmin', 0.0)
-            bpa  = info.get('bpa',  0.0)
+            formatted_lines.append(src)
+
+        formatted_lines.append(f"Map center:  RA: {ra},  Dec: {dec} (2000.0)")
+
+        # Peak / range — logique identique au C (maplot.c:1664-1668) :
+        #   clean (ncmp > 0) → "Map peak: %.3g"    (pic absolu)
+        #   dirty / residual → "Displayed range: %.3g □ %.3g"  (plage colormap)
+        if map_type == 'clean':
+            formatted_lines.append(f"Map peak: {abs_peak:.3g} Jy/beam")
+        else:
+            # Plage affichée = vmin/vmax utilisateur si fournis, sinon étendue des données
+            cmin = float(vmin) if vmin is not None else immin
+            cmax = float(vmax) if vmax is not None else immax
+            formatted_lines.append(f"Displayed range: {cmin:.3g} □ {cmax:.3g} Jy/beam")
+
+        # Contours — format %.3g (3 chiffres sig.) identique au C (maplot.c:1280)
+        if map_type == 'clean' and drawn_levels:
+            cpeak = abs_peak
+            if cpeak != 0:
+                pct_levels = [float(lvl) / cpeak * 100.0
+                              for lvl in drawn_levels if np.isfinite(lvl)]
+                shown = pct_levels[:8]
+                suffix = " ..." if len(pct_levels) > 8 else ""
+                formatted_lines.append(
+                    "Contours %:" + "".join(f"  {p:.3g}" for p in shown) + suffix
+                )
+
+        # Faisceau — seulement pour clean (maplot.c:1688 : if(mb->ncmp))
+        if map_type == 'clean' and isinstance(info, dict):
+            bmaj = float(info.get('bmaj', 0.0) or 0.0)
+            bmin = float(info.get('bmin', 0.0) or 0.0)
+            bpa  = float(info.get('bpa',  0.0) or 0.0)
             if bmaj > 0 and bmin > 0:
-                lines.append(f"Beam FWHM: {bmaj:.3g} × {bmin:.3g} (mas) at {bpa:.3g}°")
-        y = 0.03
-        for line in lines:
-            ax.text(0.02, y, line, transform=ax.transAxes,
-                    fontsize=7, color='white', va='bottom', ha='left',
-                    bbox=dict(boxstyle='round,pad=0.15', facecolor='black', alpha=0.4, linewidth=0))
-            y += 0.08
+                formatted_lines.append(
+                    f"Beam FWHM: {bmaj:.3g} x {bmin:.3g} (mas) at {bpa:.3g}\\u00b0"
+                )
+
+        # RMS et SNR — extensions Python (non présentes dans Difmap original)
+        if map_type in {'residual', 'clean'} and rms > 0:
+            formatted_lines.append(f"RMS: {rms:.3g} Jy/beam")
+            formatted_lines.append(f"{abs(abs_peak) / rms:.1f}σ")
+
+        ax.text(
+            0.5, -0.12, "\n".join(formatted_lines),
+            transform=ax.transAxes,
+            ha='center', va='top',
+            fontsize=7.5,
+            fontfamily='monospace',
+            color='black',
+            clip_on=False,
+            zorder=10,
+        )
 
     @staticmethod
     def plot_clean_map(img_dict: dict, windows=None, ax=None,
@@ -315,7 +552,10 @@ class Visualizer:
                        contour_mode: str = 'pct',
                        contour_absmin: float = 1.0, contour_absmax: float = 100.0,
                        contour_factor: float = 2.0, contour_custom=None,
-                       save_path: str = None, show: bool = True) -> 'plt.Axes':
+                       contour_linewidth: float = 0.3,
+                       show_model: bool = False,
+                       save_path: str = None, show: bool = True,
+                       session=None) -> 'plt.Axes':
         """
         Affichage scientifique d'une Clean Map, Residual Map ou Dirty Map,
         identique au mode pgplot de Difmap (maplot.c).
@@ -353,7 +593,9 @@ class Visualizer:
         contour_factor : float
             Pour ``'log'`` : facteur multiplicatif (défaut 2.0).
         contour_custom : list of float, optional
-            Pour ``'custom'`` : niveaux absolus en Jy/beam.
+            Pour ``'custom'`` : niveaux en % du pic (comportement difmap).
+        contour_linewidth : float, optional
+            Épaisseur des traits de contours en points. Par défaut 0.3.
         save_path : str, optional
             Chemin de sauvegarde.
         show : bool
@@ -385,19 +627,26 @@ class Visualizer:
         astrometric_extent = [xmax_e, xmin_e, ymin_e, ymax_e]
 
         ny_px, nx_px = data.shape
-        x_lin = np.linspace(xmax_e, xmin_e, nx_px)
-        y_lin = np.linspace(ymin_e, ymax_e, ny_px)
+        x_pixel_size = (xmin_e - xmax_e) / nx_px
+        y_pixel_size = (ymax_e - ymin_e) / ny_px
+        x_coords = np.linspace(xmax_e, xmin_e, nx_px, endpoint=False) + x_pixel_size / 2
+        y_coords = np.linspace(ymin_e, ymax_e, ny_px, endpoint=False) + y_pixel_size / 2
+        x_grid, y_grid = np.meshgrid(x_coords, y_coords)
 
         # 1. Image de fond
+        scale_l = (scale or 'linear').lower()
+        data_show = np.ma.masked_less_equal(data, 0.0) if scale_l == 'log' else data
         norm = Visualizer._make_norm(scale, vmin, vmax, data)
-        im = ax.imshow(data, origin='lower', extent=astrometric_extent, cmap=cmap,
+        im = ax.imshow(data_show, origin='lower', extent=astrometric_extent, cmap=cmap,
                        aspect='equal', norm=norm)
         ax.get_figure().colorbar(im, ax=ax, label='Flux (Jy/beam)', fraction=0.046, pad=0.04)
 
         # 3. Contours isophotes
+        # data est déjà la zone imageable (croppée par get_map_package).
+        # Utiliser le pic de l'intégralité de data, comme maplot.c:setcont() sur la zone imageable.
         peak = Visualizer._vis_central_peak(data)
         drawn = Visualizer._vis_draw_contours(
-            ax, data, x_lin, y_lin, peak,
+            ax, data, x_grid, y_grid, peak, lw=contour_linewidth,
             mode=contour_mode, absmin=contour_absmin, absmax=contour_absmax,
             factor=contour_factor, custom=contour_custom
         )
@@ -412,7 +661,64 @@ class Visualizer:
                 linewidth=1.3, edgecolor='cyan', facecolor='none', linestyle='--', alpha=0.85
             ))
 
-        # 5. Ellipse faisceau propre (uniquement pour carte restaurée)
+        # 5. Composantes du modèle CLEAN (optionnel, show_model=True)
+        # Logique exacte de DIFMAP modplot.c:cmpplot():
+        # - type == delta → affiche '+' (symbole 2 PGPLOT)
+        # - type != delta → affiche ellipse (major, ratio, phi)
+        # Couleurs selon DIFMAP modplot.c:31-70:
+        # - freepar=0 (fixed) + flux>0 → color 10 (lime/green)
+        # - freepar=0 (fixed) + flux<0 → color 2 (red)
+        # Les composantes CLEAN sont toujours freepar=0 (fixed)
+        # Vérification des limites comme DIFMAP modplot.c:74
+        if show_model:
+            import math
+            from matplotlib.patches import Ellipse as _Ellipse
+            
+            # Récupérer les limites d'affichage
+            xa, xb = extent[0], extent[1]
+            ya, yb = extent[2], extent[3]
+            if xa > xb:
+                xa, xb = xb, xa
+            if ya > yb:
+                ya, yb = yb, ya
+            
+            for cmp in img_dict.get('model_components', []):
+                cx, cy = cmp['x'], cmp['y']
+                cmp_type = cmp.get('type', 'delta')
+                major = cmp.get('major', 0.0)
+                flux = cmp.get('flux', 0.0)
+                
+                # Vérifier si le centre est visible (comme DIFMAP cmpplot:74)
+                visible = (cx >= xa and cx <= xb and cy >= ya and cy <= yb)
+                if not visible:
+                    continue  # Ne pas afficher les composantes hors limites
+                
+                # Couleur selon le signe du flux (comme DIFMAP)
+                if flux >= 0:
+                    color = 'lime'      # PGPLOT color 10 (green/yellow)
+                else:
+                    color = 'red'        # PGPLOT color 2 (red)
+                
+                # Delta components: afficher '+' uniquement
+                if cmp_type == 'delta' or major <= 0:
+                    ax.plot(cx, cy, '+', color=color, markersize=5,
+                            markeredgewidth=0.8, alpha=0.9, zorder=6)
+                else:
+                    # Composantes étendues: afficher ellipse uniquement
+                    phi_rad = cmp.get('phi', 0.0)
+                    ratio = cmp.get('ratio', 1.0)
+                    angle_deg = 90.0 - math.degrees(phi_rad)
+                    minor = major * ratio
+                    ax.add_patch(_Ellipse(
+                        (cx, cy),
+                        width=major,
+                        height=minor,
+                        angle=angle_deg,
+                        facecolor='none', edgecolor=color,
+                        linewidth=0.8, alpha=0.9, zorder=6
+                    ))
+
+        # 6. Ellipse faisceau propre (uniquement pour carte restaurée)
         if map_type == "clean":
             bmaj = info.get('bmaj', 0.0)
             bmin = info.get('bmin', 0.0)
@@ -428,13 +734,15 @@ class Visualizer:
                     pad=0.0, borderpad=1.5, frameon=False
                 ))
 
-        # 6. Annotations texte
-        Visualizer._vis_add_annotations(ax, data, map_type, info=info,
-                                         drawn_levels=drawn, contour_mode=contour_mode)
+        # 6. Annotations texte (en bas, en dehors de la grille)
+        Visualizer._vis_add_annotations(ax, data, map_type, info=info, session=session,
+                                         drawn_levels=drawn, contour_mode=contour_mode,
+                                         vmin=vmin, vmax=vmax)
 
         ax.set_xlabel("Décalage RA (mas)")
         ax.set_ylabel("Décalage Dec (mas)")
         ax.set_title(title)
+        # Note: xlabel est défini dans _vis_add_annotations
 
         if save_path and created_fig:
             ax.get_figure().savefig(save_path, bbox_inches='tight')
@@ -447,13 +755,16 @@ class Visualizer:
         return ax
 
     @staticmethod
-    def plot_image(img_dict: dict, cmap: str = None, figsize: tuple = (8, 6),
+    def plot_image(img_dict: dict, ax=None, cmap: str = None, figsize: tuple = (8, 6),
                    title: str = None, xlim=None, ylim=None,
                    scale: str = 'linear', vmin=None, vmax=None,
                    contour_mode: str = 'pct',
                    contour_absmin: float = 1.0, contour_absmax: float = 100.0,
                    contour_factor: float = 2.0, contour_custom=None,
-                   save_path: str = None, show: bool = True, **kwargs) -> None:
+                   contour_linewidth: float = 0.3,
+                   show_model: bool = False,
+                   save_path: str = None, show: bool = True,
+                   session=None, **kwargs) -> 'plt.Axes':
         """
         Affiche une image astrophysique avec sa barre de couleur et ses axes astrométriques.
 
@@ -501,6 +812,7 @@ class Visualizer:
         if map_type == "clean":
             return Visualizer.plot_clean_map(
                 img_dict,
+                ax=ax,
                 cmap=cmap or 'inferno',
                 figsize=figsize,
                 title=title or "Clean Map",
@@ -508,8 +820,11 @@ class Visualizer:
                 contour_mode=contour_mode, contour_absmin=contour_absmin,
                 contour_absmax=contour_absmax, contour_factor=contour_factor,
                 contour_custom=contour_custom,
+                contour_linewidth=contour_linewidth,
+                show_model=show_model,
                 save_path=save_path,
                 show=show,
+                session=session,
             )
 
         if title is None:
@@ -525,37 +840,48 @@ class Visualizer:
         x_lin = np.linspace(xmax_e, xmin_e, nx_px)
         y_lin = np.linspace(ymin_e, ymax_e, ny_px)
 
-        fig, ax = plt.subplots(figsize=figsize)
-        norm = Visualizer._make_norm(scale, vmin, vmax, data)
-        im = ax.imshow(data, extent=astrometric_extent, origin='lower', cmap=cmap,
-                       aspect='equal', norm=norm, **kwargs)
-        fig.colorbar(im, ax=ax, label='Flux (Jy/beam)')
+        created_fig = ax is None
+        if created_fig:
+            fig, ax = plt.subplots(figsize=figsize)
 
-        # Contours difmap (négatifs rouges, positifs blancs)
-        peak = Visualizer._vis_central_peak(data)
-        drawn = Visualizer._vis_draw_contours(
-            ax, data, x_lin, y_lin, peak,
-            mode=contour_mode, absmin=contour_absmin, absmax=contour_absmax,
-            factor=contour_factor, custom=contour_custom
-        )
-        Visualizer._vis_add_annotations(ax, data, map_type,
-                                         drawn_levels=drawn, contour_mode=contour_mode)
+        scale_l = (scale or 'linear').lower()
+        data_show = np.ma.masked_less_equal(data, 0.0) if scale_l == 'log' else data
+        norm = Visualizer._make_norm(scale, vmin, vmax, data)
+        im = ax.imshow(data_show, extent=astrometric_extent, origin='lower', cmap=cmap,
+                       aspect='equal', norm=norm, **kwargs)
+        ax.get_figure().colorbar(im, ax=ax, label='Flux (Jy/beam)')
+
+        # IMPORTANT: Difmap n'affiche les contours QUE sur les clean maps restaurées (ncmp > 0)
+        # Voir difmap.c:3855: docont = mappar.docont && ((vlbmap->ncmp && domap) || ...)
+        # Dirty et Residual maps n'ont JAMAIS de contours
+        Visualizer._vis_add_annotations(ax, data, map_type, info=img_dict.get('info'),
+                                         session=session,
+                                         drawn_levels=None, contour_mode='none',
+                                         vmin=vmin, vmax=vmax)
 
         ax.set_title(title)
         ax.set_xlabel("Décalage RA (mas)")
         ax.set_ylabel("Décalage Dec (mas)")
+        # Coller l'affichage à l'extent exact par défaut (évite la marge "cadre")
         if xlim is not None:
             ax.set_xlim(xlim)
+        else:
+            ax.set_xlim(astrometric_extent[0], astrometric_extent[1])
         if ylim is not None:
             ax.set_ylim(ylim)
-
-        if save_path:
-            fig.savefig(save_path, bbox_inches='tight')
-
-        if show:
-            plt.show()
         else:
-            plt.close(fig)
+            ax.set_ylim(astrometric_extent[2], astrometric_extent[3])
+
+        if save_path and created_fig:
+            ax.get_figure().savefig(save_path, bbox_inches='tight')
+
+        if created_fig:
+            if show:
+                plt.show()
+            else:
+                plt.close(ax.get_figure())
+
+        return ax
     def mapplot(self, img_dict: dict = None, **kwargs):
         """
         Affiche l'image actuellement en mémoire.
@@ -583,7 +909,7 @@ class Visualizer:
         >>> session.vis.mapplot(title="Dirty Map après inversion")
         """
         if img_dict is None:
-            from .exceptions import DifmapStateError
+            from ..utils.exceptions import DifmapStateError
             if self._session.imager._last_cellsize is None:
                 raise DifmapStateError(
                     "Astrométrie inconnue. Veuillez exécuter mapsize() avant mapplot()."
@@ -592,8 +918,6 @@ class Visualizer:
                 cellsize=self._session.imager._last_cellsize
             )
         # Titre automatique si l'appelant n'en fournit pas
-        kwargs.setdefault(
-            "title",
-            "Clean Map" if img_dict.get("map_type") == "clean" else "Dirty Map"
-        )
-        return self.plot_image(img_dict, **kwargs)
+        _titles = {"clean": "Clean Map", "residual": "Residual Map", "dirty": "Dirty Map"}
+        kwargs.setdefault("title", _titles.get(img_dict.get("map_type"), "Dirty Map"))
+        return self.plot_image(img_dict, session=self._session, **kwargs)

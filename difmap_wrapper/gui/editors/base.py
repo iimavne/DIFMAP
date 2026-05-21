@@ -5,7 +5,7 @@ import numpy as np
 from matplotlib.widgets import MultiCursor, RectangleSelector, SpanSelector
 from PyQt6.QtCore import Qt
 
-from difmap_wrapper.types import EditorMode
+from difmap_wrapper.enums import EditorMode
 from difmap_wrapper.gui.styles import DesignSystem
 
 logger = logging.getLogger("difmap.editors")
@@ -95,7 +95,7 @@ class BasePlotEditor:
                     c_itel = int(itel)
                     try:
                         name = observation._native.get_telescope_name(c_isub, c_itel)
-                        if name and name != "INCONNU":
+                        if isinstance(name, str) and name and name != "INCONNU":
                             self.noms_antennes[c_itel] = name.strip()
                     except Exception:
                         pass
@@ -107,7 +107,7 @@ class BasePlotEditor:
             tel_ids = np.unique(np.concatenate([data["tel_a"][masque], data["tel_b"][masque]]))
             self.antennes_par_subarray[sub] = sorted(
                 tel_ids.tolist(),
-                key=lambda aid: self.noms_antennes.get(aid, str(aid))
+                key=lambda aid: str(self.noms_antennes.get(aid, aid))
             )
 
         # Liste globale du focus : noms de stations du fichier complet, y compris
@@ -132,9 +132,9 @@ class BasePlotEditor:
         self.press_info = None
         self.pan_start = None
         self.original_limits = (self.ax.get_xlim(), self.ax.get_ylim())
-        self.marker_size_pct = 10   # pourcentage courant (1–100)
-        self._SIZE_MIN = 1.0   # pts² à 1 %
-        self._SIZE_MAX = 50.0  # pts² à 100 %
+        self.marker_size_pct = 5   # pourcentage courant (1–100)
+        self._SIZE_MIN = 0.35  # pts² à 1 %
+        self._SIZE_MAX = 26.0  # pts² à 100 %
 
         # Widgets Matplotlib
         self.rs = RectangleSelector(
@@ -168,6 +168,7 @@ class BasePlotEditor:
             "h": self.action_help, "H": self.action_help,
             "l": self.action_redisplay, "L": self.action_redisplay,
             "z": self.action_toggle_zoom, "Z": self.action_toggle_zoom,
+            "g": self.action_toggle_pan, "G": self.action_toggle_pan,
             "m": self.action_toggle_pan, "M": self.action_toggle_pan,
             "c": self.action_toggle_cut, "C": self.action_toggle_cut,
             "d": self.action_cancel_cut, "D": self.action_cancel_cut,
@@ -254,6 +255,7 @@ class BasePlotEditor:
             except Exception:
                 pass
         self._cids.clear()
+        self._disconnect_crosshair()
         self.obs.unregister_editor(self)
 
     def refresh_data(self) -> None:
@@ -658,6 +660,66 @@ class BasePlotEditor:
             line.set_visible(True)
         self.cursor.set_active(True)
 
+    def _disconnect_crosshair(self) -> None:
+        """Déconnecte et masque entièrement le crosshair courant, s'il existe."""
+        if not self.cursor:
+            self.cursor_active = False
+            return
+        try:
+            if hasattr(self.cursor, 'vlines'):
+                for line in self.cursor.vlines:
+                    line.set_visible(False)
+                    try:
+                        line.remove()
+                    except Exception:
+                        pass
+            if hasattr(self.cursor, 'hlines'):
+                for line in self.cursor.hlines:
+                    line.set_visible(False)
+                    try:
+                        line.remove()
+                    except Exception:
+                        pass
+            if hasattr(self.cursor, 'set_active'):
+                self.cursor.set_active(False)
+            if hasattr(self.cursor, 'disconnect_events'):
+                self.cursor.disconnect_events()
+            elif hasattr(self.cursor, 'disconnect'):
+                self.cursor.disconnect()
+        except Exception:
+            pass
+        self.cursor = None
+        self.cursor_active = False
+
+    def set_crosshair_visible(self, visible: bool):
+        """
+        Définit explicitement l'état du crosshair sans toggle aveugle.
+
+        Cela évite les doublons de MultiCursor quand plusieurs contrôles UI
+        essaient de synchroniser le même état.
+        """
+        visible = bool(visible)
+        if visible == self.cursor_active and (visible or self.cursor is None):
+            return
+
+        _xlim = self.ax.get_xlim()
+        _ylim = self.ax.get_ylim()
+
+        self._disconnect_crosshair()
+        if visible:
+            self.cursor = MultiCursor(
+                self.fig.canvas, self.axes_list,
+                color=DesignSystem.PLOT_FOCUS, lw=0.8,
+                horizOn=True, vertOn=True
+            )
+            self.cursor_active = True
+
+        self.fig.canvas.draw_idle()
+        self.ax.set_xlim(_xlim)
+        self.ax.set_ylim(_ylim)
+        if self.sync_callback:
+            self.sync_callback({'crosshair': self.cursor_active})
+
     def action_toggle_crosshair(self, event=None):
         """
         Active ou désactive le crosshair plein écran (``MultiCursor``). Touche ``+``.
@@ -670,40 +732,9 @@ class BasePlotEditor:
         event : matplotlib.backend_bases.KeyEvent, optional
             Événement clavier (ignoré).
         """
-        self.cursor_active = not self.cursor_active
-        if self.cursor_active:
-            self.cursor = MultiCursor(
-                self.fig.canvas, self.axes_list,
-                color=DesignSystem.PLOT_FOCUS, lw=0.8,
-                horizOn=True, vertOn=True
-            )
-        else:
-            if self.cursor:
-                # 1. Rendre les lignes physiques invisibles
-                if hasattr(self.cursor, 'vlines'):
-                    for line in self.cursor.vlines:
-                        line.set_visible(False)
-                if hasattr(self.cursor, 'hlines'):
-                    for line in self.cursor.hlines:
-                        line.set_visible(False)
-                
-                # 2. Désactiver l'état actif du widget
-                if hasattr(self.cursor, 'set_active'):
-                    self.cursor.set_active(False)
-                
-                # 3. Déconnecter les signaux de la souris
-                if hasattr(self.cursor, 'disconnect_events'):
-                    self.cursor.disconnect_events()
-                elif hasattr(self.cursor, 'disconnect'):
-                    self.cursor.disconnect()
-                    
-                self.cursor = None
-                
-        self.fig.canvas.draw()
+        self.set_crosshair_visible(not self.cursor_active)
         status = "Activé" if self.cursor_active else "Désactivé"
         logger.info("Cross-hair : %s", status)
-        if self.sync_callback:
-            self.sync_callback({'crosshair': self.cursor_active})
 
     def action_toggle_channels(self, event=None):
         """
@@ -733,18 +764,6 @@ class BasePlotEditor:
         self.update_marker_size(next_pct)
         if self.sync_callback:
             self.sync_callback({'marker_size': next_pct})
-
-    def set_crosshair_visible(self, visible: bool):
-        """
-        Appelé depuis MainWindow checkboxe (et routing).
-        Utile pour basculer le crosshair sans action clavier.
-        """
-        if visible and not self.cursor_active:
-            # Activer : même logique que action_toggle_crosshair(True)
-            self.action_toggle_crosshair(None)
-        elif not visible and self.cursor_active:
-            # Désactiver : même logique que action_toggle_crosshair(True) qui toggle
-            self.action_toggle_crosshair(None)
 
     def set_conjugate_visible(self, visible: bool):
         """

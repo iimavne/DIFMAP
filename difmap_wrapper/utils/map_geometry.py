@@ -121,24 +121,22 @@ class DifmapMapGeometry:
         """
         xcent = nx // 2
         ycent = ny // 2
-        
-        # Ajustement pour indices Python (xb, yb sont exclusifs)
-        xb_adj = xb - 1
-        yb_adj = yb - 1
-        
-        # Calcul des coordonnées mondiales (lignes 476-491)
+
+        # Calcul des coordonnées mondiales : on travaille sur les BORDS de pixels.
+        # Avec slicing Python, xb/yb sont EXCLUSIFS : ils correspondent naturellement
+        # au bord supérieur de la dernière colonne/ligne incluse.
         if xinc > 0:
             wxa = (xa - xcent) * xinc
-            wxb = (xb_adj - xcent) * xinc
+            wxb = (xb - xcent) * xinc
         else:
-            wxa = (xb_adj - xcent) * xinc
+            wxa = (xb - xcent) * xinc
             wxb = (xa - xcent) * xinc
             
         if yinc > 0:
             wya = (ya - ycent) * yinc
-            wyb = (yb_adj - ycent) * yinc
+            wyb = (yb - ycent) * yinc
         else:
-            wya = (yb_adj - ycent) * yinc
+            wya = (yb - ycent) * yinc
             wyb = (ya - ycent) * yinc
         
         # Conversion pour Matplotlib : [xmax, xmin, ymin, ymax]
@@ -204,87 +202,78 @@ class DifmapMapGeometry:
         tuple
             (data_crop, extent, nx_crop, ny_crop)
         """
+        # cellsize est en mas (unités de carte par défaut de Difmap).
+        # Facteur de conversion mas → radians : rad = mas * MAS_TO_RAD
+        _MAS_TO_RAD = np.pi / (180.0 * 3600.0 * 1000.0)
+        _RAD_TO_MAS = 1.0 / _MAS_TO_RAD
+
         ny, nx = map_data.shape
         cy = cellsize_y if cellsize_y is not None else cellsize
-        
-        # Conversion en radians
-        xinc = cellsize * 1e-3 * np.pi / (180.0 * 3600.0)
-        yinc = cy * 1e-3 * np.pi / (180.0 * 3600.0)
-        
+
+        xinc = cellsize * _MAS_TO_RAD
+        yinc = cy * _MAS_TO_RAD
+
         if xmin is None or xmax is None or ymin is None or ymax is None:
-            # Zone par défaut
+            # Crop par défaut de Difmap: quart central (nx/4 à 3*nx/4)
+            # Voir maplot.c:setarea()
             xa, xb, ya, yb = DifmapMapGeometry.get_default_area(nx, ny)
         else:
-            # Zone personnalisée
             xa, xb, ya, yb = DifmapMapGeometry.world_to_pixel_coords(
-                xmin * 1e-3 * np.pi / (180.0 * 3600.0),
-                xmax * 1e-3 * np.pi / (180.0 * 3600.0),
-                ymin * 1e-3 * np.pi / (180.0 * 3600.0),
-                ymax * 1e-3 * np.pi / (180.0 * 3600.0),
+                xmin * _MAS_TO_RAD,
+                xmax * _MAS_TO_RAD,
+                ymin * _MAS_TO_RAD,
+                ymax * _MAS_TO_RAD,
                 xinc, yinc, nx, ny
             )
-        
+
         # Application du crop
         cropped_data = map_data[ya:yb, xa:xb]
-        
-        # Calcul de l'extent pour Matplotlib
+
+        # Calcul de l'extent pour Matplotlib (en mas)
         extent = DifmapMapGeometry.pixel_to_world_extent(
             xa, xb, ya, yb, xinc, yinc, nx, ny
         )
-        
-        # Conversion en mas
-        extent = [val * 180.0 * 3600.0 * 1000.0 / np.pi for val in extent]
+        extent = [val * _RAD_TO_MAS for val in extent]
         
         return cropped_data, extent, cropped_data.shape[1], cropped_data.shape[0]
 
 
-def get_difmap_contour_levels(peak: float, mode: str = 'pct',
-                             absmin: float = 1.0, absmax: float = 100.0,
-                             factor: float = 2.0, custom_levels: Optional[List[float]] = None) -> List[float]:
+def get_difmap_contour_levels(
+    peak: float,
+    mode: str = 'pct',
+    min_pct: float = 1.0,
+    max_pct: float = 64.0,
+    factor: float = 2.0,
+) -> List[float]:
     """
-    Génère les niveaux de contours selon les règles Difmap natives.
-    
-    Implémente les niveaux par défaut de maplot.c:
-    - [-1, 1, 2, 4, 8, 16, 32, 64] * peak/100 pour mode 'pct'
-    - [-absmin, absmin, absmin*factor, ...] pour mode 'log'
-    
+    Calcule les niveaux de contours selon les conventions Difmap.
+
     Parameters
     ----------
     peak : float
-        Valeur maximale dans la carte
+        Valeur de pic de la carte (Jy/beam).
     mode : str
-        'pct', 'log', ou 'custom'
-    absmin, absmax, factor : float
-        Paramètres pour mode 'log'
-    custom_levels : list[float], optional
-        Niveaux personnalisés pour mode 'custom'
-        
+        ``'pct'`` – niveaux par défaut Difmap ([-1,1,2,4,8,16,32,64] % du pic).
+        ``'log'`` – niveaux logarithmiques de min_pct à max_pct avec facteur multiplicatif.
+    min_pct, max_pct : float
+        Bornes en pourcentage du pic (mode ``'log'`` uniquement).
+    factor : float
+        Facteur multiplicatif entre niveaux consécutifs (mode ``'log'`` uniquement).
+
     Returns
     -------
-    list[float]
-        Liste des niveaux de contours
+    list of float
+        Niveaux de contours en unités absolues (même unité que peak).
     """
-    if mode == 'custom' and custom_levels:
-        return custom_levels
-    
-    if mode == 'log':
-        # Implémentation correcte du mode logarithmique
-        # Génère une série géométrique depuis absmin jusqu'à absmax ou peak
-        levels = []
-        current = absmin
-        while current <= min(absmax, abs(peak)):
-            levels.extend([-current, current])  # Négatif et positif
-            current *= factor
-        return sorted(levels)
-    
-    # Mode 'pct' - niveaux par défaut Difmap originaux
-    # Garder les niveaux signés corrects même si peak est négatif
-    default_levels = [-1, 1, 2, 4, 8, 16, 32, 64]
-    abs_peak = abs(peak)
-    levels = [level * abs_peak / 100.0 for level in default_levels]
-    
-    # Si le pic est négatif, inverser les signes pour garder la cohérence
-    if peak < 0:
-        levels = [-level for level in levels]
-    
-    return levels
+    if mode == 'pct':
+        pcts = [-1.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0]
+        return [p / 100.0 * peak for p in pcts]
+
+    # mode == 'log'
+    positive: List[float] = []
+    level = min_pct
+    while level <= max_pct + 1e-9:
+        positive.append(level / 100.0 * peak)
+        level *= factor
+    return ([-positive[0]] + positive) if positive else []
+

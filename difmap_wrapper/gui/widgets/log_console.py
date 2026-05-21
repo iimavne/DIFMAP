@@ -32,6 +32,7 @@ class ImprovedLogConsole(QDockWidget):
         'debug':   '#607080',   # gris
         'inspect': '#26C6DA',   # teal
         'stats':   '#AB8FE0',   # violet doux
+        'c_engine': '#C8C8C8',  # gris clair — sortie brute moteur C
     }
     def __init__(self, title="SYSTEM LOG", parent=None):
         """
@@ -55,9 +56,10 @@ class ImprovedLogConsole(QDockWidget):
                 background-color: {DesignSystem.TERMINAL_BG};
                 color: {DesignSystem.TERMINAL_TEXT};
                 font-family: {DesignSystem.FONT_MONO};
-                font-size: 12px;
+                font-size: {DesignSystem.FONT_SIZE_BASE};
                 border: none;
-                padding: 8px;
+                padding: 10px;
+                selection-background-color: {DesignSystem.ASTRAL_ACCENT};
             }}
         """)
         
@@ -224,6 +226,48 @@ class ImprovedLogConsole(QDockWidget):
     def _dispatch(self, level: str, message: str) -> None:
         """Slot Qt : reçoit (level, message) depuis DifmapLogHandler et affiche."""
         self._append_styled(message, level)
+
+    # =========================================================
+    def log_raw(self, text: str) -> None:
+        """
+        Affiche la sortie brute du moteur C (sans timestamp ni icône).
+
+        Reproduit l'affichage de l'ancien terminal difmap : texte blanc-gris,
+        police mono, pas de préfixe. Chaque ligne est affichée telle quelle.
+
+        Parameters
+        ----------
+        text : str
+            Texte brut émis par lprintf() côté C.
+        """
+        if not text:
+            return
+        cursor = self.text_edit.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor(self.COLORS['c_engine']))
+        fmt.setFontWeight(400)
+        cursor.setCharFormat(fmt)
+        cursor.insertText(text + "\n")
+        self.text_edit.setTextCursor(cursor)
+        self.text_edit.verticalScrollBar().setValue(
+            self.text_edit.verticalScrollBar().maximum()
+        )
+
+    def log_separator(self, label: str = "") -> None:
+        """Affiche une ligne de séparation horizontale dans la console."""
+        line = f"{'═' * 22} {label} {'═' * 22}" if label else "═" * 50
+        cursor = self.text_edit.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor('#3A4A5A'))
+        fmt.setFontWeight(400)
+        cursor.setCharFormat(fmt)
+        cursor.insertText(line + "\n")
+        self.text_edit.setTextCursor(cursor)
+        self.text_edit.verticalScrollBar().setValue(
+            self.text_edit.verticalScrollBar().maximum()
+        )
 
     # =========================================================
     # Utilitaires

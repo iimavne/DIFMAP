@@ -7796,6 +7796,7 @@ double get_native_estimated_bmaj(void) { return (vlbmap) ? vlbmap->e_bmaj * RTOM
 double get_native_estimated_bmin(void) { return (vlbmap) ? vlbmap->e_bmin * RTOMAS : 0.0; }
 double get_native_estimated_bpa(void) { return (vlbmap) ? vlbmap->e_bpa * rtod : 0.0; }
 double get_native_pixsize(void) { return (vlbmap) ? vlbmap->xinc * RTOMAS : 0.0; }
+int get_native_map_state(void) { return (vlbmap) ? (int)vlbmap->domap : -1; }
 
 const char* get_native_telescope_name(int isub, int itel) {
     if (vlbob == NULL) return "INCONNU";
@@ -7805,9 +7806,34 @@ const char* get_native_telescope_name(int isub, int itel) {
     return sub->tel[itel].name;
 }
 
-/* Plage d'IFs sélectionnée (0-indexed, g_if_end=-1 = dernier IF disponible) */
-static int g_if_beg = 0;
-static int g_if_end = -1;
+/* ------------------------------------------------------------------ */
+/* Masque de sélection d'IFs (0-indexed).                             */
+/* g_if_mask[i] = 1 → IF i visible ; = 0 → exclu.                   */
+/* ------------------------------------------------------------------ */
+#define NATIVE_MAX_IF 64
+static int g_if_mask[NATIVE_MAX_IF];
+
+/* Remplit le masque pour un range contigu 1-indexed (0 = dernier IF). */
+static void _set_if_mask_range(int if_beg_1, int if_end_1) {
+    int i;
+    int nif = (vlbob != NULL) ? vlbob->nif : NATIVE_MAX_IF;
+    int lo = (if_beg_1 > 0) ? if_beg_1 - 1 : 0;
+    int hi = (if_end_1 > 0) ? if_end_1 - 1 : nif - 1;
+    if (hi >= NATIVE_MAX_IF) hi = NATIVE_MAX_IF - 1;
+    for (i = 0; i < NATIVE_MAX_IF; i++)
+        g_if_mask[i] = (i >= lo && i <= hi) ? 1 : 0;
+}
+
+/* Remplit le masque à partir d'une liste d'IFs 1-indexed. */
+static void _set_if_mask_list(const int* if_list, int n) {
+    int i;
+    for (i = 0; i < NATIVE_MAX_IF; i++) g_if_mask[i] = 0;
+    for (i = 0; i < n; i++) {
+        int idx = if_list[i] - 1;   /* 1-indexed → 0-indexed */
+        if (idx >= 0 && idx < NATIVE_MAX_IF)
+            g_if_mask[idx] = 1;
+    }
+}
 
 int native_observe(const char* filepath) {
     obs_end();
@@ -7816,7 +7842,7 @@ int native_observe(const char* filepath) {
     vlbspec = new_Specattr(vlbob);
     if(!vlbspec) { obs_end(); return -1; }
     invpar = invdef; respar = resdef; slfpar = slfdef;
-    g_if_beg = 0; g_if_end = -1;  /* reset : tous les IFs visibles */
+    _set_if_mask_range(1, 0);   /* reset : tous les IFs visibles */
     return 0;
 }
 
@@ -7830,26 +7856,42 @@ int native_select(const char* pol, int if_beg, int if_end, int ch_beg, int ch_en
     Stokes stokes = Stokes_id((char*)pol);
     if (stokes == NO_POL) return -1;
     if (vlbmap) vlbmap->domap = vlbmap->dobeam = MAP_IS_STALE;
-    /*
-     * Changement de polarisation = re-sélection complète.
-     * Les paramètres IF/channel sont acceptés mais on remet la plage IF
-     * aux valeurs demandées (1-indexed → 0-indexed, 0 = dernier).
-     */
-    g_if_beg = (if_beg > 0) ? if_beg - 1 : 0;
-    g_if_end = (if_end > 0) ? if_end - 1 : -1;
+    _set_if_mask_range(if_beg, if_end);
     if (ob_select(vlbob, 0, NULL, stokes)) return -1;
     return 0;
 }
 
 /*
- * Met à jour uniquement la plage d'IFs visible sans relire le fichier scratch.
- * À utiliser quand seul le filtre IF change (pas la polarisation).
- * Beaucoup plus rapide que native_select : pas d'ob_select(), pas d'I/O disque.
+ * Met à jour uniquement la plage d'IFs visible (range contigu) sans
+ * relire le fichier scratch.
  */
 int native_set_if_range(int if_beg, int if_end) {
     if (vlbob == NULL) return -1;
-    g_if_beg = (if_beg > 0) ? if_beg - 1 : 0;
-    g_if_end = (if_end > 0) ? if_end - 1 : -1;
+    _set_if_mask_range(if_beg, if_end);
+    return 0;
+}
+
+/*
+ * Sélectionne une liste d'IFs non-contiguë et change la polarisation.
+ * if_list : tableau d'indices IF 1-indexed, longueur n.
+ */
+int native_select_ifs(const char* pol, const int* if_list, int n) {
+    if (vlbob == NULL) return -1;
+    Stokes stokes = Stokes_id((char*)pol);
+    if (stokes == NO_POL) return -1;
+    if (vlbmap) vlbmap->domap = vlbmap->dobeam = MAP_IS_STALE;
+    _set_if_mask_list(if_list, n);
+    if (ob_select(vlbob, 0, NULL, stokes)) return -1;
+    return 0;
+}
+
+/*
+ * Met à jour le masque d'IFs sans changer la polarisation ni relire le scratch.
+ * if_list : tableau d'indices IF 1-indexed, longueur n.
+ */
+int native_set_if_mask(const int* if_list, int n) {
+    if (vlbob == NULL) return -1;
+    _set_if_mask_list(if_list, n);
     return 0;
 }
 
@@ -7857,6 +7899,86 @@ int native_set_if_range(int if_beg, int if_end) {
 int native_get_nif(void) {
     if (vlbob == NULL) return 0;
     return vlbob->nif;
+}
+
+/* Retourne le nombre de canaux par IF. */
+int native_get_nchan(void) {
+    if (vlbob == NULL) return 0;
+    return vlbob->nchan;
+}
+
+/*
+ * Reproduction exacte de uvsel_fn : sélectionne pol + paires de canaux globaux.
+ * bchans/echans : tableaux de bornes 0-indexed (après conversion 1→0).
+ * n_pairs       : nombre de paires.
+ *
+ * Synchronise aussi g_if_mask pour accélérer l_extract_uv.
+ */
+int native_select_channels(const char* pol,
+                            const int* bchans, const int* echans,
+                            int n_pairs) {
+    if (vlbob == NULL) return -1;
+    Stokes stokes = Stokes_id((char*)pol);
+    if (stokes == NO_POL) return -1;
+    if (vlbmap) vlbmap->domap = vlbmap->dobeam = MAP_IS_STALE;
+
+    int i, j;
+    int nchan = (vlbob->nchan > 0) ? vlbob->nchan : 1;
+
+    if (n_pairs == 0) {
+        /* Tout sélectionner : on construit un Chlist couvrant tous les canaux.
+         * ob_select(NULL) réutilise le stream.cl précédent (il ne remet pas à zéro),
+         * donc NULL ne suffit pas après une sélection partielle. */
+        _set_if_mask_range(1, 0);
+        int total_all = vlbob->nif * ((vlbob->nchan > 0) ? vlbob->nchan : 1);
+        Chlist *cl_all = new_Chlist();
+        if (cl_all == NULL) return -1;
+        if (add_crange(cl_all, 0, total_all - 1)) {
+            del_Chlist(cl_all);
+            return -1;
+        }
+        if (ob_select(vlbob, 0, cl_all, stokes)) {
+            del_Chlist(cl_all);
+            return -1;
+        }
+        return 0;
+    }
+
+    /* Construire la Chlist.
+     * bchans/echans sont 1-indexed (convention difmap côté utilisateur) ;
+     * add_crange attend du 0-indexed, comme uvsel_fn fait bchan-1 en interne. */
+    int total_chans = vlbob->nif * nchan;
+    Chlist *cl = new_Chlist();
+    if (cl == NULL) return -1;
+    for (i = 0; i < n_pairs; i++) {
+        int bc = bchans[i] - 1;
+        int ec = echans[i] - 1;
+        if (bc < 0 || ec >= total_chans || bc > ec) {
+            del_Chlist(cl);
+            return -1;
+        }
+        if (add_crange(cl, bc, ec)) {
+            del_Chlist(cl);
+            return -1;
+        }
+    }
+
+    /* Synchroniser g_if_mask d'après les IFs couverts (indices 0-based après -1) */
+    for (j = 0; j < NATIVE_MAX_IF; j++) g_if_mask[j] = 0;
+    for (i = 0; i < n_pairs; i++) {
+        int cif_lo = (bchans[i] - 1) / nchan;
+        int cif_hi = (echans[i] - 1) / nchan;
+        for (j = cif_lo; j <= cif_hi && j < NATIVE_MAX_IF; j++)
+            g_if_mask[j] = 1;
+    }
+
+    /* ob_select prend ownership du Chlist et le stocke dans vlbob->stream.cl.
+     * Ne pas appeler del_Chlist sur le chemin de succès (pattern original difmap). */
+    if (ob_select(vlbob, 0, cl, stokes)) {
+        del_Chlist(cl);
+        return -1;
+    }
+    return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -7983,9 +8105,13 @@ const char *native_get_header_text(void) {
 
 int native_uvweight(float uvbin, float errpow, int dorad) {
     if (vlbob == NULL) return -1;
-    if (uvbin >= 0.0f) invpar.uvbin = uvbin;
-    if (errpow <= 0.0f) invpar.errpow = errpow;
-    invpar.dorad = dorad;
+    /* Mirror the clamping applied by the interactive uvweight command. */
+    if (uvbin < 0.0f)                        uvbin = 0.0f;
+    else if (uvbin > 0.0f && uvbin < 1.0f)   uvbin = 1.0f;
+    if (errpow > 0.0f)                        errpow = 0.0f;
+    invpar.uvbin  = uvbin;
+    invpar.errpow = errpow;
+    invpar.dorad  = dorad;
     if (vlbmap) vlbmap->domap = vlbmap->dobeam = MAP_IS_STALE;
     return 0;
 }
@@ -8002,6 +8128,54 @@ int native_uvtaper(float gauval, float gaurad_wav) {
     return 0;
 }
 
+int native_staper(float gauval, float gaurad_wav) {
+    if (vlbob == NULL) return -1;
+    slfpar.gauval = gauval;
+    slfpar.gaurad = uvtowav(gaurad_wav);
+    if(slfpar.gauval<=0.0f || slfpar.gauval>=0.99f || slfpar.gaurad<=0.0f) {
+        slfpar.gauval = 0.0f;
+        slfpar.gaurad = 0.0f;
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Paramétrage de l'inversion (invert)                                */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Configure la plage UV (en longueurs d'onde) utilisée par invert().
+ * Équivalent à la commande difmap "uvrange" (uvmin, uvmax).
+ *
+ * Paramètres :
+ *   uvmin_wav - rayon UV min (wavelengths), 0 = pas de coupure.
+ *   uvmax_wav - rayon UV max (wavelengths), 0 = pas de coupure.
+ */
+int native_uvrange(float uvmin_wav, float uvmax_wav) {
+    if (vlbob == NULL) return -1;
+    /* Mirror the validation from the interactive uvrange command (difmap.c:1067-1073). */
+    if (uvmin_wav < 0.0f) uvmin_wav = 0.0f;
+    if (uvmin_wav >= uvmax_wav || uvmax_wav <= 0.0f)
+        uvmin_wav = uvmax_wav = 0.0f;
+    invpar.uvmin = uvmin_wav;
+    invpar.uvmax = uvmax_wav;
+    /* Mark map and beam stale so the next invert() recomputes them. */
+    if (vlbmap) vlbmap->domap = vlbmap->dobeam = MAP_IS_STALE;
+    return 0;
+}
+
+/*
+ * Configure la demi-largeur à mi-hauteur (HWHM) de la fonction
+ * d'interpolation UV, en pixels (paramètre hwhm difmap).
+ *
+ * Note : difmap attend typiquement 0.0 pour la valeur par défaut.
+ */
+int native_uvhwhm(float uvhwhm_pix) {
+    if (vlbob == NULL) return -1;
+    invpar.uvhwhm = uvhwhm_pix;
+    return 0;
+}
+
 int native_mapsize(int nx, float cellsize, int ny, float cellsize_y) {
     if (vlbob == NULL) return -1;
     int actual_ny = (ny > 0) ? ny : nx;
@@ -8014,6 +8188,12 @@ int native_mapsize(int nx, float cellsize, int ny, float cellsize_y) {
 
 int native_invert(void) {
     if(vlbmap == NULL || vlbob == NULL) return -1;
+    /* Force recalculation of both map and beam.
+     * uvinvert() refuses to run when domap==0 && dobeam==0 (interprets this
+     * as "nothing requested"), which happens after a previous invert() cleared
+     * the flags.  Setting them here ensures invert() is always honoured. */
+    vlbmap->dobeam = 1;
+    vlbmap->domap  = MAP_IS_STALE;
     if(uvinvert(vlbob, vlbmap, invpar.uvmin, invpar.uvmax, invpar.gauval,
                 invpar.gaurad, invpar.dorad, invpar.errpow, invpar.uvbin)) return -1;
     respar.e_bmin = vlbmap->e_bmin;
@@ -8022,11 +8202,18 @@ int native_invert(void) {
     return 0;
 }
 
-int native_clean(int niter, float gain) {
+/*
+ * Wrapper natif pour l'algorithme CLEAN.
+ * Paramètres :
+ *   niter  - nombre max d'itérations (si < 0, arrêt au premier négatif)
+ *   gain   - gain de boucle CLEAN (0 < gain < 1)
+ *   cutoff - seuil de flux résiduel pour arrêt (Jy/beam, 0 = pas de limite)
+ */
+int native_clean(int niter, float gain, float cutoff) {
     Model *clnmod;
     Modcmp *cmp;
     if (vlbob == NULL || vlbmap == NULL) return -1;
-    clnmod = mapclean(vlbob, vlbmap, vlbwins, niter, 0.0f, gain, 1);
+    clnmod = mapclean(vlbob, vlbmap, vlbwins, niter, cutoff, gain, 1);
     if (!clnmod) return -1;
     if (count_antenna_beams(vlbob->ab) > 0) {
         for (cmp = clnmod->head; cmp; cmp = cmp->next)
@@ -8036,6 +8223,13 @@ int native_clean(int niter, float gain) {
     return 0;
 }
 
+/*
+ * Clears BOTH the established model (doold=1) AND the tentative CLEAN model
+ * (donew=1).  This is intentionally more aggressive than the interactive
+ * "clrmod" command whose default only clears newmod (doold=0, donew=1).
+ * The Python API always wants a clean slate before a fresh CLEAN cycle, so
+ * clearing both is the correct behaviour here.
+ */
 int native_clrmod(void) {
     if (vlbob == NULL) return -1;
     return clrmod(vlbob, 1, 1, 0) ? -1 : 0;
@@ -8066,9 +8260,8 @@ int native_refresh_beam(void) {
     return 0;
 }
 
-int native_restore(void) {
-    int dosm = 1;
-    int noresid = 0;
+int native_restore(int noresid, int dosm) {
+    int apply_dosm = dosm;
     if (vlbob == NULL || vlbmap == NULL) return -1;
     if (respar.e_bmin <= 0.0f || respar.e_bmaj <= 0.0f) return -1;
     respar.bmin = respar.e_bmin;
@@ -8084,17 +8277,97 @@ int native_restore(void) {
     if (vlbob->model->ncmp > 0) {
         if (mapres(vlbob, vlbmap, vlbob->model, vlbmap->map,
                    respar.bmaj, respar.bmin, respar.bpa * dtor,
-                   0, noresid, dosm, getfreq(vlbob, -1)) == NULL)
+                   0, noresid, apply_dosm, getfreq(vlbob, -1)) == NULL)
             return -1;
-        dosm = 0;
+        apply_dosm = 0;
     }
     if (vlbob->newmod->ncmp > 0) {
         if (mapres(vlbob, vlbmap, vlbob->newmod, vlbmap->map,
                    respar.bmaj, respar.bmin, respar.bpa * dtor,
-                   0, noresid, dosm, getfreq(vlbob, -1)) == NULL)
+                   0, noresid, apply_dosm, getfreq(vlbob, -1)) == NULL)
             return -1;
     }
     vlbmap->domap = MAP_IS_CLEAN;
+    return 0;
+}
+
+int native_restore_beam(float bmaj_mas, float bmin_mas, float bpa_deg, int noresid, int dosm) {
+    int apply_dosm = dosm;
+    if (vlbob == NULL || vlbmap == NULL) return -1;
+    if (bmaj_mas <= 0.0f || bmin_mas <= 0.0f) return -1;
+    if (vlbob->model->ncmp + vlbob->newmod->ncmp < 1) return -1;
+
+    respar.bmaj = xytorad(bmaj_mas);
+    respar.bmin = xytorad(bmin_mas);
+    respar.bpa  = bpa_deg;
+
+    if (respar.bmin > respar.bmaj) {
+        float ftmp = respar.bmin;
+        respar.bmin = respar.bmaj;
+        respar.bmaj = ftmp;
+    }
+
+    vlbmap->domap = MAP_IS_STALE;
+    if (vlbob->model->ncmp > 0) {
+        if (mapres(vlbob, vlbmap, vlbob->model, vlbmap->map,
+                   respar.bmaj, respar.bmin, respar.bpa * dtor,
+                   0, noresid, apply_dosm, getfreq(vlbob, -1)) == NULL)
+            return -1;
+        apply_dosm = 0;
+    }
+    if (vlbob->newmod->ncmp > 0) {
+        if (mapres(vlbob, vlbmap, vlbob->newmod, vlbmap->map,
+                   respar.bmaj, respar.bmin, respar.bpa * dtor,
+                   0, noresid, apply_dosm, getfreq(vlbob, -1)) == NULL)
+            return -1;
+    }
+    vlbmap->domap = MAP_IS_CLEAN;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Paramétrage de l'auto-calibration (selfcal)                         */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Configure les limites de gain selfcal.
+ *
+ * Paramètres :
+ *   maxamp - correction amplitude max autorisée (<=1.0 => ignorée)
+ *   maxphs - correction phase max EN DEGRÉS (<=0.0 => ignorée).
+ *            Converti en radians ici, identique à la commande interactive
+ *            (difmap.c:2995 : slfpar.maxphs = user_deg * dtor).
+ *            slfcal() compare les corrections de phase en radians.
+ */
+int native_set_selfcal_limits(float maxamp, float maxphs) {
+    if (vlbob == NULL) return -1;
+    slfpar.maxamp = maxamp < 1.0f ? 0.0f : maxamp;
+    /* Convert degrees → radians, then apply the same sanity check as the
+     * interactive selfcal setter (difmap.c:3002-3005). */
+    float maxphs_rad = maxphs * (float)(M_PI / 180.0);
+    if (maxphs_rad < 0.0f || maxphs_rad >= (float)M_PI)
+        maxphs_rad = 0.0f;
+    slfpar.maxphs = maxphs_rad;
+    return 0;
+}
+
+/*
+ * Configure le nombre minimum de télescopes pour les solutions.
+ */
+int native_set_selfcal_mintel(int p_mintel, int a_mintel) {
+    if (vlbob == NULL) return -1;
+    slfpar.p_mintel = p_mintel;
+    slfpar.a_mintel = a_mintel;
+    return 0;
+}
+
+/*
+ * Configure les options de flag/clip lors de selfcal.
+ */
+int native_set_selfcal_flags(int doflag, int clip) {
+    if (vlbob == NULL) return -1;
+    slfpar.doflag = doflag;
+    slfpar.clip = clip;
     return 0;
 }
 
@@ -8102,6 +8375,103 @@ int native_wfits(const char *filename) {
     if(!vlbob) return -1;
     return uvf_write(vlbob, filename, 0);
 }
+
+/* Écrit la clean map (requiert MAP_IS_CLEAN dans le buffer). */
+int native_wmap(const char *filename) {
+    if (!vlbob || !vlbmap) return -1;
+    if (vlbmap->domap != MAP_IS_CLEAN) return -2;
+    return w_MapBeam(vlbob, vlbmap, 1, filename) ? -1 : 0;
+}
+
+/* Écrit le dirty beam (requiert un beam valide, dobeam == 0). */
+int native_wbeam(const char *filename) {
+    if (!vlbob || !vlbmap) return -1;
+    if (vlbmap->dobeam != 0) return -2;
+    return w_MapBeam(vlbob, vlbmap, 0, filename) ? -1 : 0;
+}
+
+/* Écrit la carte courante dirty/résiduelle (requiert MAP_IS_MAP, domap == 0). */
+int native_wdmap(const char *filename) {
+    if (!vlbob || !vlbmap) return -1;
+    if (vlbmap->domap != MAP_IS_MAP) return -2;
+    return w_MapBeam(vlbob, vlbmap, 1, filename) ? -1 : 0;
+}
+
+/* =====================================================================
+ * MODÈLE CLEAN — Export des composantes vers Python
+ * ===================================================================== */
+
+static int    model_ncmp_buf   = 0;
+static float *model_flux_buf   = NULL;
+static float *model_x_buf      = NULL;
+static float *model_y_buf      = NULL;
+static float *model_major_buf  = NULL;
+static float *model_ratio_buf  = NULL;
+static float *model_phi_buf    = NULL;
+static int   *model_type_buf   = NULL;
+
+int native_extract_model(void) {
+    if (vlbob == NULL) return -1;
+
+    int n = vlbob->model->ncmp + vlbob->newmod->ncmp;
+
+    free(model_flux_buf);  model_flux_buf  = NULL;
+    free(model_x_buf);     model_x_buf     = NULL;
+    free(model_y_buf);     model_y_buf     = NULL;
+    free(model_major_buf); model_major_buf = NULL;
+    free(model_ratio_buf); model_ratio_buf = NULL;
+    free(model_phi_buf);   model_phi_buf   = NULL;
+    free(model_type_buf);  model_type_buf  = NULL;
+    model_ncmp_buf = 0;
+
+    if (n == 0) return 0;
+
+    model_flux_buf  = (float*)malloc(n * sizeof(float));
+    model_x_buf     = (float*)malloc(n * sizeof(float));
+    model_y_buf     = (float*)malloc(n * sizeof(float));
+    model_major_buf = (float*)malloc(n * sizeof(float));
+    model_ratio_buf = (float*)malloc(n * sizeof(float));
+    model_phi_buf   = (float*)malloc(n * sizeof(float));
+    model_type_buf  = (int*)  malloc(n * sizeof(int));
+
+    if (!model_flux_buf || !model_x_buf || !model_y_buf || !model_major_buf ||
+        !model_ratio_buf || !model_phi_buf || !model_type_buf) return -1;
+
+    double rad2mas = 180.0 * 3600.0 * 1000.0 / M_PI;
+    int i = 0;
+    Modcmp *cmp;
+
+    for (cmp = vlbob->model->head; cmp; cmp = cmp->next, i++) {
+        model_flux_buf[i]  = cmp->flux;
+        model_x_buf[i]     = (float)(cmp->x   * rad2mas);
+        model_y_buf[i]     = (float)(cmp->y   * rad2mas);
+        model_major_buf[i] = (float)(cmp->major * rad2mas);
+        model_ratio_buf[i] = cmp->ratio;
+        model_phi_buf[i]   = cmp->phi;
+        model_type_buf[i]  = (int)cmp->type;
+    }
+    for (cmp = vlbob->newmod->head; cmp; cmp = cmp->next, i++) {
+        model_flux_buf[i]  = cmp->flux;
+        model_x_buf[i]     = (float)(cmp->x   * rad2mas);
+        model_y_buf[i]     = (float)(cmp->y   * rad2mas);
+        model_major_buf[i] = (float)(cmp->major * rad2mas);
+        model_ratio_buf[i] = cmp->ratio;
+        model_phi_buf[i]   = cmp->phi;
+        model_type_buf[i]  = (int)cmp->type;
+    }
+
+    model_ncmp_buf = n;
+    return 0;
+}
+
+int    native_get_model_ncmp(void)  { return model_ncmp_buf; }
+float* native_get_model_flux(void)  { return model_flux_buf; }
+float* native_get_model_x(void)    { return model_x_buf; }
+float* native_get_model_y(void)    { return model_y_buf; }
+float* native_get_model_major(void) { return model_major_buf; }
+float* native_get_model_ratio(void) { return model_ratio_buf; }
+float* native_get_model_phi(void)   { return model_phi_buf; }
+int*   native_get_model_type(void)  { return model_type_buf; }
 
 /* Signatures officielles de l'éditeur Difmap (depuis obedit.c) */
 int ed_integ(Observation *ob, Subarray *sub, int ut, int cif, int doflag, int selbase, int selstat, int selchan, int selif, int index);
@@ -8147,21 +8517,19 @@ float* get_native_mod_phs(void) { return flat_modphs; }
 int l_extract_uv(void) {
     int isub, itime, ibase, cif;
     int count = 0;
-    int eff_if_end;  /* borne haute effective (0-indexed) */
 
     if(vlbob == NULL) return -1;
 
-    eff_if_end = (g_if_end >= 0) ? g_if_end : vlbob->nif - 1;
-
-    if(vlbob->model->ncmp + vlbob->newmod->ncmp + vlbob->cmodel->ncmp + vlbob->cnewmod->ncmp > 0) {
-        Moddif md;
-        /* La fonction moddif calcule et injecte modamp et modphs dans la RAM */
-        moddif(vlbob, &md, 0.0f, 0.0f, 1); /* 1 correspond à MD_VIS_FIT */
+    /* Establish tentative model components into the UV plane (like native 'keep').
+     * mergemod() calls fixmod() which writes vis->modamp/vis->modphs for every
+     * baseline. Without this, modamp/modphs remain zero after CLEAN. */
+    if(vlbob->newmod->ncmp + vlbob->cnewmod->ncmp > 0) {
+        mergemod(vlbob, 1);
     }
 
     /* 1. COMPTAGE */
     for(cif=0; (cif=nextIF(vlbob, cif, 1, 1)) >= 0; cif++) {
-        if(cif < g_if_beg || cif > eff_if_end) continue;
+        if(cif >= NATIVE_MAX_IF || !g_if_mask[cif]) continue;
         if(getIF(vlbob, cif)) continue;
         for(isub=0; isub < vlbob->nsub; isub++) {
             Subarray *sub = &vlbob->sub[isub];
@@ -8179,23 +8547,27 @@ int l_extract_uv(void) {
 
     /* 2. RÉALLOCATION */
     if(count > uv_buffer_size) {
-        flat_u = (float*)realloc(flat_u, count * sizeof(float));
-        flat_v = (float*)realloc(flat_v, count * sizeof(float));
-        flat_amp = (float*)realloc(flat_amp, count * sizeof(float));
-        flat_wgt = (float*)realloc(flat_wgt, count * sizeof(float));
-        
-        flat_tel_a = (int*)realloc(flat_tel_a, count * sizeof(int));
-        flat_tel_b = (int*)realloc(flat_tel_b, count * sizeof(int));
-        flat_time = (double*)realloc(flat_time, count * sizeof(double));
-        flat_subarray = (int*)realloc(flat_subarray, count * sizeof(int));
-        flat_if = (int*)realloc(flat_if, count * sizeof(int));
-        flat_vis_ptrs = (Visibility**)realloc(flat_vis_ptrs, count * sizeof(Visibility*));
-        flat_modamp = (float*)realloc(flat_modamp, count * sizeof(float)); 
-        flat_modphs = (float*)realloc(flat_modphs, count * sizeof(float));
-
-        flat_ut = (int*)realloc(flat_ut, count * sizeof(int));
-        flat_ibase = (int*)realloc(flat_ibase, count * sizeof(int));
-        vis_phs = realloc(vis_phs, count * sizeof(float));
+#define SAFE_REALLOC(ptr, n, type) do { \
+    void *_tmp = realloc((ptr), (n) * sizeof(type)); \
+    if (!_tmp) { return -1; } \
+    (ptr) = (type*)_tmp; \
+} while(0)
+        SAFE_REALLOC(flat_u,        count, float);
+        SAFE_REALLOC(flat_v,        count, float);
+        SAFE_REALLOC(flat_amp,      count, float);
+        SAFE_REALLOC(flat_wgt,      count, float);
+        SAFE_REALLOC(flat_tel_a,    count, int);
+        SAFE_REALLOC(flat_tel_b,    count, int);
+        SAFE_REALLOC(flat_time,     count, double);
+        SAFE_REALLOC(flat_subarray, count, int);
+        SAFE_REALLOC(flat_if,       count, int);
+        SAFE_REALLOC(flat_vis_ptrs, count, Visibility*);
+        SAFE_REALLOC(flat_modamp,   count, float);
+        SAFE_REALLOC(flat_modphs,   count, float);
+        SAFE_REALLOC(flat_ut,       count, int);
+        SAFE_REALLOC(flat_ibase,    count, int);
+        SAFE_REALLOC(vis_phs,       count, float);
+#undef SAFE_REALLOC
     }
     
     uv_buffer_size = count;
@@ -8203,7 +8575,7 @@ int l_extract_uv(void) {
     /* 3. REMPLISSAGE */
     int index = 0;
     for(cif=0; (cif=nextIF(vlbob, cif, 1, 1)) >= 0; cif++) {
-        if(cif < g_if_beg || cif > eff_if_end) continue;
+        if(cif >= NATIVE_MAX_IF || !g_if_mask[cif]) continue;
         getIF(vlbob, cif);
         double if_freq = vlbob->ifs[cif].freq; 
 
@@ -8360,10 +8732,20 @@ int native_delwin(void) {
 }
 
 int native_peakwin(float size, int doabs) {
+    int saved_domap, ret;
     if (!vlbmap) return -1;
     if (vlbwins == NULL && (vlbwins = new_Mapwin()) == NULL) return -1;
-    if (peakwin(vlbmap, vlbwins, size, doabs)) return -1;
-    return 0;
+    /* mapwin.c:peakwin() refuses to run if domap||dobeam != 0.
+       After native_restore(), domap=MAP_IS_CLEAN=2: the buffer holds valid
+       clean-map data and peakwin should be allowed to scan it.
+       Temporarily promote it to MAP_IS_MAP so the check passes. */
+    saved_domap = vlbmap->domap;
+    if (saved_domap == MAP_IS_CLEAN)
+        vlbmap->domap = MAP_IS_MAP;
+    ret = peakwin(vlbmap, vlbwins, size, doabs);
+    if (ret != 0)
+        vlbmap->domap = saved_domap;   /* restore on failure */
+    return ret ? -1 : 0;
 }
 
 static Subwin *native_get_window_at(int index) {
@@ -8433,5 +8815,23 @@ int native_cleanup(void) {
     invpar.errpow = 0.0f;
     invpar.uvbin = 0.0f;
     invpar.dorad = 0;
+
+    free(flat_u);         flat_u         = NULL;
+    free(flat_v);         flat_v         = NULL;
+    free(flat_amp);       flat_amp       = NULL;
+    free(flat_wgt);       flat_wgt       = NULL;
+    free(flat_modamp);    flat_modamp    = NULL;
+    free(flat_modphs);    flat_modphs    = NULL;
+    free(flat_tel_a);     flat_tel_a     = NULL;
+    free(flat_tel_b);     flat_tel_b     = NULL;
+    free(flat_time);      flat_time      = NULL;
+    free(flat_subarray);  flat_subarray  = NULL;
+    free(flat_if);        flat_if        = NULL;
+    free(flat_vis_ptrs);  flat_vis_ptrs  = NULL;
+    free(vis_phs);        vis_phs        = NULL;
+    free(flat_ut);        flat_ut        = NULL;
+    free(flat_ibase);     flat_ibase     = NULL;
+    uv_buffer_size = 0;
+
     return 0;
 }
