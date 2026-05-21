@@ -262,6 +262,7 @@ class MainWindow(QMainWindow):
         """Charge un fichier FITS dans le moteur et rafraîchit l'UI."""
         try:
             filename = os.path.basename(filepath)
+            self.log_console.clear_log()
             self.log_console.log_separator(filename)
             self.log_console.log(f"Loading: {filepath}...")
             from PyQt6.QtWidgets import QApplication
