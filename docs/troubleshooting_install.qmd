@@ -1,0 +1,80 @@
+---
+title: "Dépannage installation"
+---
+
+Cette page regroupe les problèmes d'installation les plus fréquents (Linux) et les solutions associées.
+
+## Quarto / documentation
+
+### `python -m quarto` échoue
+
+Quarto n'est pas un module Python : c'est un exécutable.
+
+- utiliser `quarto --version`, `quarto render docs`, `quarto preview docs`
+
+### `quarto render` : "not a Quarto project"
+
+Le projet Quarto est le dossier `docs/` (c'est là que se trouve `_quarto.yml`).
+
+- exécuter `quarto render docs` (depuis la racine)
+
+### Génération de la Référence API
+
+La référence API est générée par **quartodoc** (outil Python).
+
+- installer dans l'environnement virtuel : `pip install quartodoc`
+- générer : `quartodoc build --config docs/_quarto.yml`
+
+## Erreurs de compilation / linkage
+
+### `pgplot` introuvable / erreurs de linkage
+
+Symptômes typiques :
+
+- erreurs `ld: cannot find -lpgplot`
+- erreurs de symboles non résolus liés à PGPLOT
+
+Pistes :
+
+- vérifier que le paquet système `pgplot5` est installé
+- vérifier la présence des headers et librairies (souvent via `pkg-config` si configuré)
+
+### X11 manquant (headless)
+
+Même sans interface graphique, certaines dépendances historiques de Difmap requièrent des bibliothèques X11.
+
+- installer `libx11-dev`
+
+## Problèmes Meson / Ninja
+
+### `meson` / `ninja` non trouvés
+
+- vérifier l'installation système : `meson`, `ninja-build`
+- vérifier l'environnement virtuel Python (si installés via `pip`)
+
+## Problèmes d'import du module natif (`difmap_native.so`)
+
+### Mode éditable et chemin `build/`
+
+En mode éditable, le module natif est chargé depuis le répertoire de build, pas depuis `site-packages`.
+
+- réinstaller : `pip install -e . --no-build-isolation`
+- exécuter dans un shell où `.venv` est activé
+
+## Python : `python` vs `python3`
+
+Certaines distributions n'installent pas de binaire `python` (seulement `python3`).
+
+- utiliser `python3` pour créer l'environnement : `python3 -m venv .venv`
+- si nécessaire : installer `python-is-python3`
+
+## Problèmes PyQt6 / GUI
+
+### L'application ne se lance pas / plugin Qt
+
+- vérifier l'installation de `PyQt6`
+- sur certains environnements, des dépendances système Qt peuvent être nécessaires
+
+### Messages GTK lors du preview Quarto
+
+Des messages comme `Gtk-Message: Not loading module "atk-bridge"` peuvent apparaître lors de `quarto preview`. Ils ne bloquent généralement pas le serveur de preview.

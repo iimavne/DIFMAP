@@ -119,29 +119,41 @@ C'est la façade utilisateur. Toute la complexité des pointeurs C est abstraite
 
 ```
 difmap_wrapper/
-├── __init__.py          # Exporte DifmapSession, DifmapError
-├── session.py           # DifmapSession + _SingletonMeta
-├── observation.py       # Observation (données UV, flagging, observer pattern)
-├── imaging.py           # DifmapImager (grille, pondération, FFT, image)
-├── visualizer.py        # Visualizer (graphiques statiques Matplotlib)
-├── manager.py           # DifmapBatchManager (batch parallèle)
-├── exceptions.py        # DifmapError, DifmapStateError
-├── enums.py             # EditorMode (modes des éditeurs)
-├── editors/
-│   ├── base.py          # BasePlotEditor (logique commune)
-│   ├── uv_editor.py     # UVPlotEditor (plan UV)
-│   └── rad_editor.py    # RadPlotEditor (amplitude/phase)
-└── gui/
-    ├── app.py           # Point d'entrée QApplication
-    ├── main_window.py   # MainWindow (QMainWindow)
-    ├── plot_widget.py   # UVPlotWidget (onglet UV)
-    ├── radplot_widget.py # RadPlotWidget (onglet Radplot)
-    ├── map_widget.py    # MapPlotWidget (onglet Dirty Map)
-    ├── components/      # ControlPanel, MainToolbar, LogConsole
-    ├── routing/         # SignalRouter (flux de signaux Qt)
-    ├── styles/          # DesignSystem, themes
-    ├── utils/           # Styles Matplotlib
-    └── validation/      # Validation des inputs utilisateur
+├── __init__.py          # Exporte DifmapSession, DifmapError, DifmapStateError
+├── app.py               # Point d'entrée QApplication (main())
+├── enums.py             # EditorMode (modes des éditeurs interactifs)
+│
+├── core/                # API Python principale
+│   ├── session.py       # DifmapSession + _SingletonMeta
+│   ├── observation.py   # Observation (données UV, flagging, observer pattern)
+│   ├── imaging.py       # DifmapImager (grille, pondération, FFT, image)
+│   ├── visualizer.py    # Visualizer (graphiques statiques Matplotlib)
+│   └── manager.py       # DifmapBatchManager (batch parallèle)
+│
+├── gui/                 # Interface PyQt6
+│   ├── main_window.py   # MainWindow (QMainWindow — fenêtre principale)
+│   ├── styles.py        # Thème visuel Qt (couleurs, polices)
+│   ├── utils.py         # Utilitaires Qt internes
+│   ├── editors/         # Éditeurs Matplotlib interactifs (utilisables hors GUI)
+│   │   ├── base.py      # BasePlotEditor (modes, navigation, undo)
+│   │   ├── uv_editor.py # UVPlotEditor (plan UV, cut, flagging)
+│   │   └── rad_editor.py # RadPlotEditor (amplitude, phase, stats)
+│   └── widgets/         # Widgets Qt composant la fenêtre
+│       ├── plot_widget.py      # Onglet UV
+│       ├── radplot_widget.py   # Onglet Radplot
+│       ├── map_widget.py       # Onglet Dirty Map
+│       ├── control_panel.py    # Dock gauche (sélection, flagging, imagerie)
+│       ├── main_toolbar.py     # Barre d'outils supérieure
+│       ├── log_console.py      # Console de logs (dock droit)
+│       ├── header_widget.py    # En-tête source/polarisation
+│       ├── styled_buttons.py   # Boutons avec style cohérent
+│       └── base_plot_widget.py # Classe de base des onglets graphiques
+│
+└── utils/               # Utilitaires partagés
+    ├── exceptions.py    # DifmapError, DifmapStateError
+    ├── map_geometry.py  # DifmapMapGeometry (extent, crop, recadrage)
+    ├── map_annotations.py # Annotations d'image (beam, contours, échelle)
+    └── standardizer.py  # Normalisation des arguments utilisateur
 ```
 
 ### Machine d'état de `DifmapSession`

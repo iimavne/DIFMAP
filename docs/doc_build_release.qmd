@@ -1,0 +1,50 @@
+---
+title: "Build / tests / génération doc"
+---
+
+Cette page décrit les commandes standard pour contribuer au projet : build du module natif, exécution des tests, et génération de la documentation.
+
+## Build du wrapper (module natif)
+
+Le projet utilise Meson via `meson-python`.
+
+- installation standard : `pip install .`
+- mode éditable (développement) : `pip install -e . --no-build-isolation`
+
+Après modification de fichiers `.c`, `.f`, `.pyx`, `.pxd`, relancer :
+
+```bash
+pip install -e . --no-build-isolation
+```
+
+## Lancer les tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+## Générer la Référence API (quartodoc)
+
+La référence API (section `docs/reference/`) est générée depuis les docstrings NumPy.
+
+```bash
+quartodoc build --config docs/_quarto.yml
+```
+
+Les fichiers générés sous `docs/reference/` sont versionnés dans le dépôt (à committer).
+
+## Builder et prévisualiser le site Quarto
+
+Builder :
+
+```bash
+quarto render docs
+```
+
+Prévisualiser en serveur local :
+
+```bash
+quarto preview docs
+```
+
+Le site généré se trouve dans `docs/_site/`.

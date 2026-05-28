@@ -26,14 +26,128 @@ Workflow complet pour créer une Dirty Map :
 
 | Name | Description |
 | --- | --- |
+| [addwin](#difmap_wrapper.DifmapImager.addwin) | Ajoute une fenêtre CLEAN rectangulaire. |
+| [clean](#difmap_wrapper.DifmapImager.clean) | Déconvolue la Dirty Map par l'algorithme CLEAN natif. |
+| [clrmod](#difmap_wrapper.DifmapImager.clrmod) | Vide le modèle CLEAN côté C. |
+| [delwin](#difmap_wrapper.DifmapImager.delwin) | Supprime toutes les fenêtres CLEAN actives. |
 | [get_cropped_map](#difmap_wrapper.DifmapImager.get_cropped_map) | Retourne l'image recadrée autour de son centre. |
+| [get_elliptical_window](#difmap_wrapper.DifmapImager.get_elliptical_window) | Calcule une fenêtre elliptique adaptée au beam comme Difmap. |
 | [get_map](#difmap_wrapper.DifmapImager.get_map) | Retourne l'image courante depuis la mémoire C (tableau 2D, float). |
 | [get_map_package](#difmap_wrapper.DifmapImager.get_map_package) | Rassemble l'image, le faisceau et les métadonnées dans un seul dictionnaire. |
+| [get_model_components](#difmap_wrapper.DifmapImager.get_model_components) | Retourne la liste des composantes CLEAN du modèle courant. |
+| [get_residual_package](#difmap_wrapper.DifmapImager.get_residual_package) | Retourne le package de la Residual Map capturée lors du dernier appel à ``restore()``. |
+| [has_map_data](#difmap_wrapper.DifmapImager.has_map_data) | Vérifie si des données de carte sont disponibles en mémoire C. |
 | [invert](#difmap_wrapper.DifmapImager.invert) | Calcule la Dirty Map par transformée de Fourier inverse. |
+| [make_clean_map](#difmap_wrapper.DifmapImager.make_clean_map) | Orchestre la création d'une Clean Map de A à Z. |
 | [make_dirty_map](#difmap_wrapper.DifmapImager.make_dirty_map) | Crée une Dirty Map en une seule commande. |
 | [mapsize](#difmap_wrapper.DifmapImager.mapsize) | Définit la grille d'imagerie. |
+| [peak](#difmap_wrapper.DifmapImager.peak) | Retourne les statistiques du pic de flux dans la carte courante. |
+| [peakwin](#difmap_wrapper.DifmapImager.peakwin) | Ajoute automatiquement une fenêtre CLEAN autour du pic de flux. |
+| [reset_state](#difmap_wrapper.DifmapImager.reset_state) | Remet à zéro l'état Python du DifmapImager après le chargement d'un nouveau fichier. |
+| [restore](#difmap_wrapper.DifmapImager.restore) | Restaure la Clean Map en convoluant le modèle avec le faisceau propre. |
+| [selfcal](#difmap_wrapper.DifmapImager.selfcal) | Applique une auto-calibration sur les visibilités. |
+| [selfcal_taper](#difmap_wrapper.DifmapImager.selfcal_taper) | Configure le taper gaussien spécifique à l'auto-calibration. |
+| [snapshot_residual_from_current_map](#difmap_wrapper.DifmapImager.snapshot_residual_from_current_map) | Capture un snapshot du buffer carte courant comme "résiduel". |
+| [uvhwhm](#difmap_wrapper.DifmapImager.uvhwhm) | Applique un taper gaussien à la grille UV (demi-largeur en pixels). |
+| [uvrange](#difmap_wrapper.DifmapImager.uvrange) | Définit la plage UV utilisée lors du prochain ``invert()``. |
 | [uvtaper](#difmap_wrapper.DifmapImager.uvtaper) | Applique un filtre gaussien (taper) pour réduire la résolution angulaire. |
 | [uvweight](#difmap_wrapper.DifmapImager.uvweight) | Définit comment les visibilités sont pondérées avant l'imagerie. |
+| [wbeam](#difmap_wrapper.DifmapImager.wbeam) | Exporte le dirty beam courant en FITS image. |
+| [wdmap](#difmap_wrapper.DifmapImager.wdmap) | Exporte la carte dirty ou résiduelle courante en FITS image. |
+| [wmap](#difmap_wrapper.DifmapImager.wmap) | Exporte la clean map courante en FITS image. |
+
+### addwin { #difmap_wrapper.DifmapImager.addwin }
+
+```python
+DifmapImager.addwin(xa, xb, ya, yb)
+```
+
+Ajoute une fenêtre CLEAN rectangulaire.
+
+Équivalent à la commande ``addwin`` de Difmap.
+Les coordonnées sont en milli-arcseconds (mas) depuis le centre de la carte.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type   | Description                             | Default    |
+|--------|--------|-----------------------------------------|------------|
+| xa     | float  | Bord gauche de la fenêtre (RA, en mas). | _required_ |
+| xb     | float  | Bord droit de la fenêtre (RA, en mas).  | _required_ |
+| ya     | float  | Bord bas de la fenêtre (Dec, en mas).   | _required_ |
+| yb     | float  | Bord haut de la fenêtre (Dec, en mas).  | _required_ |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.imager.addwin(-5, 5, -5, 5)   # fenêtre 10×10 mas centrée
+```
+
+### clean { #difmap_wrapper.DifmapImager.clean }
+
+```python
+DifmapImager.clean(niter=100, gain=0.05, cutoff=0.0)
+```
+
+Déconvolue la Dirty Map par l'algorithme CLEAN natif.
+
+Doit être appelé après ``invert()``. Soustrait itérativement les
+composantes ponctuelles du lobe de synthèse et construit le modèle
+de sources propres.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type   | Description                                                                                                                                                                                                                                                                                                                                                                                            | Default   |
+|--------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| niter  | int    | Nombre maximum d'itérations CLEAN. Par défaut 100.  **Comportement spécial** : si ``niter < 0``, le CLEAN s'arrête au premier composant négatif détecté. Utile pour les sources compactes où l'on veut éviter de nettoyer les artefacts négatifs autour de la source (lobes latéraux). Par exemple ``niter=-100`` permet jusqu'à 100 itérations mais s'arrête dès qu'un pixel négatif est sélectionné. | `100`     |
+| gain   | float  | Gain de boucle CLEAN (entre 0 et 1). Par défaut 0.05. Valeurs typiques : 0.1 pour sources compactes, 0.05 pour structures étendues.                                                                                                                                                                                                                                                                    | `0.05`    |
+| cutoff | float  | Seuil de flux résiduel pour arrêt automatique (Jy/beam). Par défaut 0.0 (pas de limite). Le CLEAN s'arrête quand le pic résiduel absolu tombe sous ce seuil. Utile pour :  - Éviter de nettoyer sous le niveau du bruit - Contrôler finement la profondeur de déconvolution - Sources multi-échelles où l'émission diffuse a un flux   plus faible que les sources ponctuelles                         | `0.0`     |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type        | Description                                                        |
+|--------|-------------|--------------------------------------------------------------------|
+|        | DifmapError | Si le moteur C retourne une erreur (carte ou observation absente). |
+
+#### Examples {.doc-section .doc-section-examples}
+
+CLEAN standard pour source compacte :
+
+```python
+>>> session.imager.clean(niter=-200, gain=0.1)  # arrêt au 1er négatif
+```
+
+CLEAN profond avec contrôle du bruit :
+
+```python
+>>> session.imager.clean(niter=1000, gain=0.05, cutoff=0.003)  # arrêt à 3 mJy
+```
+
+### clrmod { #difmap_wrapper.DifmapImager.clrmod }
+
+```python
+DifmapImager.clrmod()
+```
+
+Vide le modèle CLEAN côté C.
+
+Cette méthode doit être appelée avant chaque nouvelle opération clean()
+pour éviter l'accumulation des composantes des runs précédents.
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type        | Description                                                  |
+|--------|-------------|--------------------------------------------------------------|
+|        | DifmapError | Si le moteur C retourne une erreur lors du vidage du modèle. |
+
+### delwin { #difmap_wrapper.DifmapImager.delwin }
+
+```python
+DifmapImager.delwin()
+```
+
+Supprime toutes les fenêtres CLEAN actives.
+
+Équivalent à la commande ``delwin`` de Difmap.
 
 ### get_cropped_map { #difmap_wrapper.DifmapImager.get_cropped_map }
 
@@ -63,6 +177,31 @@ Utile pour réduire la taille de la figure affichée sans recalculer la FFT.
 |--------|------------|--------------------------------------------------------------|
 |        | ValueError | Si ``target_shape`` dépasse la taille de l'image en mémoire. |
 
+### get_elliptical_window { #difmap_wrapper.DifmapImager.get_elliptical_window }
+
+```python
+DifmapImager.get_elliptical_window(center_x, center_y, size=1.0)
+```
+
+Calcule une fenêtre elliptique adaptée au beam comme Difmap.
+
+Utilise les paramètres BMAJ, BMIN, BPA du beam pour créer
+une fenêtre elliptique via el_define() comme dans Difmap.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type   | Description                                 | Default    |
+|----------|--------|---------------------------------------------|------------|
+| center_x | float  | Centre de la fenêtre en mas                 | _required_ |
+| center_y | float  | Centre de la fenêtre en mas                 | _required_ |
+| size     | float  | Taille en multiples du FWHM. Par défaut 1.0 | `1.0`      |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type   | Description                                                    |
+|--------|--------|----------------------------------------------------------------|
+|        | tuple  | (x_min, x_max, y_min, y_max) en mas pour la fenêtre elliptique |
+
 ### get_map { #difmap_wrapper.DifmapImager.get_map }
 
 ```python
@@ -80,7 +219,7 @@ Retourne l'image courante depuis la mémoire C (tableau 2D, float).
 ### get_map_package { #difmap_wrapper.DifmapImager.get_map_package }
 
 ```python
-DifmapImager.get_map_package(cellsize)
+DifmapImager.get_map_package(cellsize, cellsize_y=None)
 ```
 
 Rassemble l'image, le faisceau et les métadonnées dans un seul dictionnaire.
@@ -89,15 +228,16 @@ Ce dictionnaire est le format attendu par ``Visualizer.plot_image()``.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type   | Description                                                                | Default    |
-|----------|--------|----------------------------------------------------------------------------|------------|
-| cellsize | float  | Taille du pixel en mas (doit correspondre à celle passée à ``mapsize()``). | _required_ |
+| Name       | Type   | Description                                                            | Default    |
+|------------|--------|------------------------------------------------------------------------|------------|
+| cellsize   | float  | Taille du pixel en mas sur l'axe X.                                    | _required_ |
+| cellsize_y | float  | Taille du pixel en mas sur l'axe Y. Défaut : identique à ``cellsize``. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type   | Description                                                                                                                                                                                                                                                                                                                                                            |
-|--------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | dict   | ``'data'`` : tableau 2D NumPy de la Dirty Map (Jy/beam).  ``'beam_data'`` : tableau 2D NumPy du faisceau synthétique (PSF).  ``'extent'`` : limites astrométriques ``[xmax, xmin, ymin, ymax]`` en mas, prêtes pour ``matplotlib.imshow()``.  ``'info'`` : dict avec ``nx``, ``ny``, ``cellsize``, ``bmaj``, ``bmin``, ``bpa`` (dimensions et paramètres du faisceau). |
+| Name   | Type   | Description                                                                                                                                                                                                                                                                                                                                                                            |
+|--------|--------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | dict   | ``'data'`` : tableau 2D NumPy de la Dirty Map (Jy/beam).  ``'beam_data'`` : tableau 2D NumPy du faisceau synthétique (PSF).  ``'extent'`` : limites astrométriques ``[xmax, xmin, ymin, ymax]`` en mas, prêtes pour ``matplotlib.imshow()``.  ``'info'`` : dict avec ``nx``, ``ny``, ``cellsize``, ``cellsize_y``, ``bmaj``, ``bmin``, ``bpa`` (dimensions et paramètres du faisceau). |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -109,10 +249,74 @@ Ce dictionnaire est le format attendu par ``Visualizer.plot_image()``.
 0.85
 ```
 
+### get_model_components { #difmap_wrapper.DifmapImager.get_model_components }
+
+```python
+DifmapImager.get_model_components()
+```
+
+Retourne la liste des composantes CLEAN du modèle courant.
+
+Disponible après ``clean()`` ou ``restore()``. Agrège les composantes
+établies (``model``) et tentatives (``newmod``) du moteur C.
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type         | Description                                                                                                                                                                        |
+|--------|--------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | list of dict | Chaque dict contient ``'flux'`` (Jy), ``'x'`` (mas), ``'y'`` (mas), ``'major'`` (mas, 0 pour un delta), ``'ratio'``, ``'phi'`` (rad), ``'type'`` (``'delta'``, ``'gaussian'``, …). |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.imager.clean(500, 0.05)
+>>> comps = session.imager.get_model_components()
+>>> print(f"{len(comps)} composantes, flux total = {sum(c['flux'] for c in comps):.3f} Jy")
+```
+
+### get_residual_package { #difmap_wrapper.DifmapImager.get_residual_package }
+
+```python
+DifmapImager.get_residual_package(cellsize, cellsize_y=None)
+```
+
+Retourne le package de la Residual Map capturée lors du dernier appel à ``restore()``.
+
+La Residual Map est le buffer **après** ``clean()`` et **avant** ``restore()`` :
+elle représente le résidu que CLEAN n'a pas réussi à déconvoluer.
+Contrairement à la Dirty Map, elle ne contient pas de lobes de synthèse
+autour des sources détectées.
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type   | Description                                                            |
+|--------|--------|------------------------------------------------------------------------|
+|        | dict   | Même structure que ``get_map_package()`` avec ``map_type="residual"``. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type             | Description                                                           |
+|--------|------------------|-----------------------------------------------------------------------|
+|        | DifmapStateError | Si ``restore()`` n'a pas encore été appelé (pas de résiduel capturé). |
+
+### has_map_data { #difmap_wrapper.DifmapImager.has_map_data }
+
+```python
+DifmapImager.has_map_data()
+```
+
+Vérifie si des données de carte sont disponibles en mémoire C.
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type   | Description                                                     |
+|--------|--------|-----------------------------------------------------------------|
+|        | bool   | True si une carte (dirty ou clean) est disponible, False sinon. |
+
 ### invert { #difmap_wrapper.DifmapImager.invert }
 
 ```python
-DifmapImager.invert()
+DifmapImager.invert(uvmin_wav=None, uvmax_wav=None, uvhwhm_pix=None)
 ```
 
 Calcule la Dirty Map par transformée de Fourier inverse.
@@ -121,24 +325,88 @@ Gridde les visibilités sur la grille définie par ``mapsize()``,
 puis applique la FFT inverse. Le résultat est stocké en mémoire C
 et accessible via ``get_map()``.
 
-#### Raises {.doc-section .doc-section-raises}
+#### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type        | Description                                                |
-|--------|-------------|------------------------------------------------------------|
-|        | DifmapError | Si la FFT échoue (grille non définie ou données absentes). |
+| Name       | Type   | Description                                                                                                    | Default   |
+|------------|--------|----------------------------------------------------------------------------------------------------------------|-----------|
+| uvmin_wav  | float  | Si fourni, configure ``uvrange`` avant d'inverter. ``None`` (défaut) respecte le dernier ``uvrange()`` appelé. | `None`    |
+| uvmax_wav  | float  | Idem. Passer ``uvmax_wav=0`` réinitialise la coupure maximale.                                                 | `None`    |
+| uvhwhm_pix | float  | Si fourni, configure ``uvhwhm`` avant d'inverter.                                                              | `None`    |
+
+#### Notes {.doc-section .doc-section-notes}
+
+``uvrange`` et ``uvhwhm`` sont persistants dans le moteur C : les
+appeler via ``invert()`` ou en standalone via ``session.imager.uvrange()``
+est strictement équivalent. Préférez la forme standalone pour les
+workflows pas-à-pas.
 
 #### Examples {.doc-section .doc-section-examples}
 
+Workflow purist (séparé) :
+
 ```python
->>> session.imager.mapsize(512, 0.1)
+>>> session.imager.uvrange(uvmax_wav=500)
 >>> session.imager.invert()
->>> img_array = session.imager.get_map()
 ```
+
+Workflow compact (inline) :
+
+```python
+>>> session.imager.invert(uvmax_wav=500)
+```
+
+Max seulement, sans min :
+
+```python
+>>> session.imager.invert(uvmax_wav=500)          # uvmin=0 implicite
+>>> session.imager.invert(uvmin_wav=0, uvmax_wav=500)  # identique
+```
+
+Réinitialiser le filtre et inverter :
+
+```python
+>>> session.imager.invert(uvmin_wav=0, uvmax_wav=0)   # plage complète
+```
+
+### make_clean_map { #difmap_wrapper.DifmapImager.make_clean_map }
+
+```python
+DifmapImager.make_clean_map(
+    size,
+    cellsize,
+    niter=100,
+    gain=0.05,
+    cutoff=0.0,
+    pol='I',
+    ny=None,
+    cellsize_y=None,
+    windows=None,
+)
+```
+
+Orchestre la création d'une Clean Map de A à Z.
+
+Capture automatiquement la Residual Map entre ``clean()`` et ``restore()``.
+Le résiduel est accessible via ``get_residual_package()`` après l'appel.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type                     | Description                                                                                                                                                  | Default    |
+|------------|--------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| size       | (int, float)             | Dimensions de la grille (voir ``mapsize()``).                                                                                                                | _required_ |
+| cellsize   | (int, float)             | Dimensions de la grille (voir ``mapsize()``).                                                                                                                | _required_ |
+| niter      | int                      | Max d'itérations. Si négatif, arrêt au 1er composant négatif.                                                                                                | `100`      |
+| gain       | float                    | Gain de boucle CLEAN (0 < gain < 1).                                                                                                                         | `0.05`     |
+| cutoff     | float                    | Seuil de flux résiduel pour arrêt (Jy/beam). 0 = pas de limite.                                                                                              | `0.0`      |
+| pol        | str                      | Polarisation à imager ("I", "RR", "LL", etc.).                                                                                                               | `'I'`      |
+| ny         | (int, float)             | Pour grille rectangulaire.                                                                                                                                   | `None`     |
+| cellsize_y | (int, float)             | Pour grille rectangulaire.                                                                                                                                   | `None`     |
+| windows    | list of (xa, xb, ya, yb) | Fenêtres CLEAN en mas. Si omis, CLEAN opère sur toute la zone imageable (comportement natif de Difmap sans fenêtre). Exemple : ``windows=[(-5, 5, -5, 5)]``. | `None`     |
 
 ### make_dirty_map { #difmap_wrapper.DifmapImager.make_dirty_map }
 
 ```python
-DifmapImager.make_dirty_map(size, cellsize, pol='I')
+DifmapImager.make_dirty_map(size, cellsize, pol='I', ny=None, cellsize_y=None)
 ```
 
 Crée une Dirty Map en une seule commande.
@@ -148,11 +416,13 @@ package complet. Idéal pour une utilisation rapide dans un notebook.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type   | Description                                                    | Default    |
-|----------|--------|----------------------------------------------------------------|------------|
-| size     | int    | Nombre de pixels sur chaque côté (puissance de 2 recommandée). | _required_ |
-| cellsize | float  | Taille du pixel en milli-arcseconde.                           | _required_ |
-| pol      | str    | Polarisation à imager. Par défaut ``"I"`` (Stokes I).          | `'I'`      |
+| Name       | Type         | Description                                                            | Default    |
+|------------|--------------|------------------------------------------------------------------------|------------|
+| size       | int          | Nombre de pixels sur l'axe X (puissance de 2 recommandée).             | _required_ |
+| cellsize   | float        | Taille du pixel en milli-arcseconde sur l'axe X.                       | _required_ |
+| pol        | Polarization | Polarisation à imager. Par défaut ``"I"`` (Stokes I).                  | `'I'`      |
+| ny         | int          | Nombre de pixels sur l'axe Y. Défaut : identique à ``size``.           | `None`     |
+| cellsize_y | float        | Taille du pixel en mas sur l'axe Y. Défaut : identique à ``cellsize``. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -170,20 +440,24 @@ package complet. Idéal pour une utilisation rapide dans un notebook.
 ### mapsize { #difmap_wrapper.DifmapImager.mapsize }
 
 ```python
-DifmapImager.mapsize(size, cellsize)
+DifmapImager.mapsize(size, cellsize, ny=None, cellsize_y=None)
 ```
 
 Définit la grille d'imagerie.
 
-Doit être appelé avant ``invert()``. La taille totale du champ de vue
-est ``size × cellsize`` (mas).
+Doit être appelé avant ``invert()``. Par défaut la grille est carrée
+(``ny = size``, ``cellsize_y = cellsize``). Passer ``ny`` et/ou
+``cellsize_y`` permet de créer une grille rectangulaire, comme le
+supporte la commande ``mapsize`` native de DIFMAP.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type   | Description                                                                                                        | Default    |
-|----------|--------|--------------------------------------------------------------------------------------------------------------------|------------|
-| size     | int    | Nombre de pixels sur chaque côté de l'image. Doit être une puissance de 2 pour la FFT (ex : 256, 512, 1024).       | _required_ |
-| cellsize | float  | Taille d'un pixel en milli-arcseconde (mas). Choisir environ un tiers à un cinquième de la résolution du faisceau. | _required_ |
+| Name       | Type   | Description                                                                                                                                                                                                     | Default    |
+|------------|--------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| size       | int    | Nombre de pixels sur l'axe X. Doit être une puissance de 2 (ex : 256, 512, 1024).                                                                                                                               | _required_ |
+| cellsize   | float  | Taille d'un pixel en unités angulaires courantes (mas par défaut). Le moteur C applique ``xytorad()`` en interne, qui dépend des unités actives via ``skyunits()``. Ne pas diviser manuellement par un facteur. | _required_ |
+| ny         | int    | Nombre de pixels sur l'axe Y. Défaut : identique à ``size``.                                                                                                                                                    | `None`     |
+| cellsize_y | float  | Taille d'un pixel en unités angulaires courantes sur l'axe Y. Défaut : identique à ``cellsize``.                                                                                                                | `None`     |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -194,7 +468,274 @@ est ``size × cellsize`` (mas).
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
->>> session.imager.mapsize(512, 0.1)   # champ 51.2 mas, pixel 0.1 mas
+>>> session.imager.mapsize(512, 0.1)              # grille carrée 512×512
+>>> session.imager.mapsize(512, 0.1, ny=256)      # grille rectangulaire 512×256
+```
+
+### peak { #difmap_wrapper.DifmapImager.peak }
+
+```python
+DifmapImager.peak(doabs=True)
+```
+
+Retourne les statistiques du pic de flux dans la carte courante.
+
+Équivalent à la commande ``peak`` de Difmap.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type   | Description                                                                                                                                                                                              | Default   |
+|--------|--------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| doabs  | bool   | Si ``True`` (défaut), cherche le pic en valeur absolue (max ou min). Identique au comportement natif de la commande ``peak`` de DIFMAP (difmap.c:4558). Si ``False``, cherche uniquement le pic positif. | `True`    |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type   | Description                                                                                                                                                                                                                                                  |
+|--------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | dict   | ``'flux'`` : valeur du pic en Jy/beam (peut être négative si doabs=True).  ``'x'`` : position X en mas (positif = Est).  ``'y'`` : position Y en mas (positif = Nord).  ``'rms'`` : bruit RMS de la carte en Jy/beam.  ``'snr'`` : rapport signal sur bruit. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type             | Description                                  |
+|--------|------------------|----------------------------------------------|
+|        | DifmapStateError | Si aucune carte n'est disponible en mémoire. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.imager.invert()
+>>> p = session.imager.peak()
+>>> print(f"Pic : {p['flux']:.3f} Jy/beam, SNR = {p['snr']:.1f}")
+```
+
+### peakwin { #difmap_wrapper.DifmapImager.peakwin }
+
+```python
+DifmapImager.peakwin(size=1.0, doabs=False)
+```
+
+Ajoute automatiquement une fenêtre CLEAN autour du pic de flux.
+
+Équivalent à la commande ``peakwin`` de Difmap : place une fenêtre
+centrée sur le pixel de valeur maximale avec une taille proportionnelle
+au faisceau synthétique.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type   | Description                                                                                     | Default   |
+|--------|--------|-------------------------------------------------------------------------------------------------|-----------|
+| size   | float  | Taille de la fenêtre relative à la taille FWHM du beam. Par défaut 1.0.                         | `1.0`     |
+| doabs  | bool   | Si ``True``, cherche le pic en valeur absolue (max ou min). Par défaut ``False`` (pic positif). | `False`   |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type        | Description                       |
+|--------|-------------|-----------------------------------|
+|        | DifmapError | Si aucune carte n'est en mémoire. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.imager.invert()
+>>> session.imager.peakwin(size=2.0)   # fenêtre 2× le beam autour du pic
+>>> session.imager.clean(500, 0.05)
+```
+
+### reset_state { #difmap_wrapper.DifmapImager.reset_state }
+
+```python
+DifmapImager.reset_state()
+```
+
+Remet à zéro l'état Python du DifmapImager après le chargement d'un nouveau fichier.
+
+Le moteur C remet invpar/respar/slfpar à leurs valeurs par défaut via
+native_observe() → invpar=invdef.  Cette méthode synchronise les
+miroirs Python en conséquence.  À appeler immédiatement après
+session.observe() dans le pipeline GUI.
+
+### restore { #difmap_wrapper.DifmapImager.restore }
+
+```python
+DifmapImager.restore(beam=None, noresid=False, dosm=True)
+```
+
+Restaure la Clean Map en convoluant le modèle avec le faisceau propre.
+
+Doit être appelé après ``clean()``. Utilise automatiquement les
+paramètres du faisceau estimés lors du dernier ``invert()``.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name    | Type                       | Description                                                                                                                                                       | Default   |
+|---------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| beam    | tuple of (bmaj, bmin, bpa) | Faisceau explicite en mas/mas/degrés. Si omis, utilise le faisceau estimé par ``invert()``.                                                                       | `None`    |
+| noresid | bool                       | Si ``True``, efface la carte résiduelle avant restauration (produit uniquement le modèle convolu, sans résidus). Défaut ``False`` (comportement DIFMAP standard). | `False`   |
+| dosm    | bool                       | Si ``True`` (défaut), lisse les résiduels avant restauration (convolue avec le faisceau propre). Identique au défaut DIFMAP.                                      | `True`    |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type        | Description                                                                |
+|--------|-------------|----------------------------------------------------------------------------|
+|        | DifmapError | Si le moteur C retourne une erreur (modèle absent ou faisceau non estimé). |
+
+### selfcal { #difmap_wrapper.DifmapImager.selfcal }
+
+```python
+DifmapImager.selfcal(
+    doamp=False,
+    dofloat=False,
+    solint=0.0,
+    maxamp=0.0,
+    maxphs=0.0,
+    p_mintel=3,
+    a_mintel=4,
+    doflag=True,
+    clip=False,
+)
+```
+
+Applique une auto-calibration sur les visibilités.
+
+Équivalent à la commande ``selfcal`` de Difmap. Utilise le modèle
+CLEAN courant pour corriger les gains des antennes. La carte doit
+être recalculée (``invert()``) après cette opération.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name    | Type   | Description                                                                                   | Default   |
+|---------|--------|-----------------------------------------------------------------------------------------------|-----------|
+| doamp   | bool   | Si ``True``, calibration amplitude + phase. Par défaut ``False`` (phase seule).               | `False`   |
+| dofloat | bool   | Si ``True``, corrections d'amplitude non contraintes (flottantes). Par défaut ``False``.      | `False`   |
+| solint  | float  | Intervalle de solution en minutes. ``0.0`` = intégration par intégration. Par défaut ``0.0``. | `0.0`     |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type        | Description                                                     |
+|--------|-------------|-----------------------------------------------------------------|
+|        | DifmapError | Si l'auto-calibration échoue (pas de modèle ou pas de données). |
+
+#### Examples {.doc-section .doc-section-examples}
+
+Boucle CLEAN + selfcal classique :
+
+```python
+>>> session.imager.invert()
+>>> session.imager.clean(200, 0.05)
+>>> session.imager.selfcal()          # phase seule
+>>> session.imager.invert()           # recalculer la carte résiduelle
+>>> session.imager.clean(500, 0.05)
+>>> session.imager.selfcal(doamp=True) # amplitude + phase
+```
+
+### selfcal_taper { #difmap_wrapper.DifmapImager.selfcal_taper }
+
+```python
+DifmapImager.selfcal_taper(gaussian_value=None, gaussian_radius_wav=None)
+```
+
+Configure le taper gaussien spécifique à l'auto-calibration.
+
+Équivalent à la commande ``staper`` de Difmap. Ce taper est indépendant
+du taper d'inversion (``uvtaper``) : il pondère les visibilités utilisées
+pour résoudre les gains, sans affecter la carte.
+
+Appelé sans argument, affiche le taper selfcal actif sans modifier l'état.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name                | Type   | Description                                                                                                             | Default   |
+|---------------------|--------|-------------------------------------------------------------------------------------------------------------------------|-----------|
+| gaussian_value      | float  | Amplitude du filtre gaussien (entre 0 et 1). ``0.0`` = aucun taper.                                                     | `None`    |
+| gaussian_radius_wav | float  | Rayon en unités UV courantes (Mλ par défaut), identique à ``uvtaper()``. Le moteur C applique ``uvtowav()`` en interne. | `None`    |
+
+#### Examples {.doc-section .doc-section-examples}
+
+Taper selfcal à 50 Mλ :
+
+```python
+>>> session.imager.selfcal_taper(0.3, 50)
+```
+
+Désactiver :
+
+```python
+>>> session.imager.selfcal_taper(0, 0)
+```
+
+### snapshot_residual_from_current_map { #difmap_wrapper.DifmapImager.snapshot_residual_from_current_map }
+
+```python
+DifmapImager.snapshot_residual_from_current_map()
+```
+
+Capture un snapshot du buffer carte courant comme "résiduel".
+
+Utilisé par la GUI juste après un ``invert()`` (Dirty Map) pour rendre
+l'onglet Residual immédiatement disponible, même avant tout CLEAN.
+
+#### Notes {.doc-section .doc-section-notes}
+
+- Ne modifie pas ``_current_map_type``.
+- Ne dépend pas de ``restore()``.
+
+### uvhwhm { #difmap_wrapper.DifmapImager.uvhwhm }
+
+```python
+DifmapImager.uvhwhm(uvhwhm_pix)
+```
+
+Applique un taper gaussien à la grille UV (demi-largeur en pixels).
+
+Équivalent à la commande ``uvhwhm`` de Difmap. Persistant entre
+les appels à ``invert()``.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name       | Type   | Description                                                                             | Default    |
+|------------|--------|-----------------------------------------------------------------------------------------|------------|
+| uvhwhm_pix | float  | Demi-largeur à mi-hauteur de la gaussienne, en pixels de grille. ``0`` pour désactiver. | _required_ |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.imager.uvhwhm(2.0)   # taper gaussien
+>>> session.imager.invert()
+```
+
+### uvrange { #difmap_wrapper.DifmapImager.uvrange }
+
+```python
+DifmapImager.uvrange(uvmin_wav=None, uvmax_wav=None)
+```
+
+Définit la plage UV utilisée lors du prochain ``invert()``.
+
+Équivalent à la commande ``uvrange`` de Difmap. Persistant : le filtre
+reste actif jusqu'à ce qu'il soit explicitement réinitialisé.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name      | Type   | Description                                                                                                                  | Default   |
+|-----------|--------|------------------------------------------------------------------------------------------------------------------------------|-----------|
+| uvmin_wav | float  | Rayon UV minimum (en longueurs d'onde, unités courantes Mλ par défaut). ``None`` ou ``0`` signifie aucune limite inférieure. | `None`    |
+| uvmax_wav | float  | Rayon UV maximum. ``None`` ou ``0`` signifie aucune limite supérieure.                                                       | `None`    |
+
+#### Notes {.doc-section .doc-section-notes}
+
+**Limite inférieure seule impossible** : le moteur C annule le filtre
+si ``uvmin >= uvmax`` ou ``uvmax <= 0``. Pour filtrer uniquement en
+dessous d'un rayon, utilisez ``uvmax`` avec ``uvmin=0``.
+
+Appeler sans arguments réinitialise à la plage complète.
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> session.imager.uvrange(uvmax_wav=500)       # exclure baselines > 500 Mλ
+>>> session.imager.uvrange(uvmin_wav=10, uvmax_wav=800)  # exclure courtes baselines
+>>> session.imager.uvrange()                    # réinitialiser (plage complète)
+>>> session.imager.invert()                     # utilise le filtre précédent
 ```
 
 ### uvtaper { #difmap_wrapper.DifmapImager.uvtaper }
@@ -207,21 +748,21 @@ Applique un filtre gaussien (taper) pour réduire la résolution angulaire.
 
 Le taper atténue les baselines les plus longues, ce qui améliore la
 sensibilité aux structures étendues au détriment de la résolution.
-Appelé sans argument, affiche ou désactive le taper actif.
+Appelé sans argument, affiche le taper actif sans modifier l'état.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name                | Type   | Description                                                                                            | Default   |
-|---------------------|--------|--------------------------------------------------------------------------------------------------------|-----------|
-| gaussian_value      | float  | Amplitude du filtre gaussien (entre 0 et 1). ``0.0`` = aucun taper.                                    | `None`    |
-| gaussian_radius_wav | float  | Rayon du filtre en longueurs d'onde. Définit à quelle distance dans le plan UV l'atténuation commence. | `None`    |
+| Name                | Type   | Description                                                                                                                                                                 | Default   |
+|---------------------|--------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| gaussian_value      | float  | Amplitude du filtre gaussien (entre 0 et 1). ``0.0`` = aucun taper.                                                                                                         | `None`    |
+| gaussian_radius_wav | float  | Rayon du filtre en unités UV courantes (Mλ par défaut, identique à la commande native ``uvtaper`` de Difmap). Le moteur C applique la conversion interne via ``uvtowav()``. | `None`    |
 
 #### Examples {.doc-section .doc-section-examples}
 
 Appliquer un taper à partir de 50 Mλ :
 
 ```python
->>> session.imager.uvtaper(gaussian_value=0.3, gaussian_radius_wav=50e6)
+>>> session.imager.uvtaper(gaussian_value=0.3, gaussian_radius_wav=50)
 ```
 
 Désactiver le taper :
@@ -230,11 +771,11 @@ Désactiver le taper :
 >>> session.imager.uvtaper(0, 0)
 ```
 
-Afficher le taper actif :
+Afficher le taper actif (sans modifier l'état) :
 
 ```python
 >>> session.imager.uvtaper()
-Taper actuel : Valeur = 0.3, Rayon = 50000000.0 longueurs d'onde
+Taper actuel : Valeur = 0.3, Rayon = 50 unités UV courantes
 ```
 
 ### uvweight { #difmap_wrapper.DifmapImager.uvweight }
@@ -276,3 +817,74 @@ Afficher la pondération active :
 >>> session.imager.uvweight()
 Pondération actuelle : bin_size=2.0, err_power=0.0, radial=Non
 ```
+
+### wbeam { #difmap_wrapper.DifmapImager.wbeam }
+
+```python
+DifmapImager.wbeam(filepath)
+```
+
+Exporte le dirty beam courant en FITS image.
+
+Doit être appelé après ``invert()``.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type   | Description       | Default    |
+|----------|--------|-------------------|------------|
+| filepath | str    | Chemin de sortie. | _required_ |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type             | Description                      |
+|--------|------------------|----------------------------------|
+|        | DifmapStateError | Si le beam n'est pas disponible. |
+|        | DifmapError      | Si l'écriture FITS échoue.       |
+
+### wdmap { #difmap_wrapper.DifmapImager.wdmap }
+
+```python
+DifmapImager.wdmap(filepath)
+```
+
+Exporte la carte dirty ou résiduelle courante en FITS image.
+
+Doit être appelé après ``invert()`` (pour la dirty map) ou après
+``clean()`` (pour la residual map). Ne fonctionne pas sur une clean map.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type   | Description       | Default    |
+|----------|--------|-------------------|------------|
+| filepath | str    | Chemin de sortie. | _required_ |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type             | Description                                                    |
+|--------|------------------|----------------------------------------------------------------|
+|        | DifmapStateError | Si la carte n'est pas dans l'état dirty/résiduel (MAP_IS_MAP). |
+|        | DifmapError      | Si l'écriture FITS échoue.                                     |
+
+### wmap { #difmap_wrapper.DifmapImager.wmap }
+
+```python
+DifmapImager.wmap(filepath)
+```
+
+Exporte la clean map courante en FITS image.
+
+Doit être appelé après ``restore()``. Le buffer doit être en état
+``MAP_IS_CLEAN`` — appeler ``restore()`` d'abord.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type   | Description                                         | Default    |
+|----------|--------|-----------------------------------------------------|------------|
+| filepath | str    | Chemin de sortie (extension ``.fits`` recommandée). | _required_ |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type             | Description                                                 |
+|--------|------------------|-------------------------------------------------------------|
+|        | DifmapStateError | Si ``restore()`` n'a pas encore été appelé (map non clean). |
+|        | DifmapError      | Si l'écriture FITS échoue.                                  |

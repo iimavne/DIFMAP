@@ -204,8 +204,8 @@ graph TD
 
     BASE -->|hérite| UV
     BASE -->|hérite| RAD
-    UV   -->|"lit/écrit masque_flagges"| OBS
-    RAD  -->|"lit/écrit masque_flagges"| OBS
+    UV   -->|"lit/écrit flag_mask"| OBS
+    RAD  -->|"lit/écrit flag_mask"| OBS
     OBS  -->|"notify_data_changed()"| UV
     OBS  -->|"notify_data_changed()"| RAD
 
@@ -213,7 +213,7 @@ graph TD
     style Core    fill:#eff6ff,stroke:#3b82f6
 ```
 
-`Observation` est le point central : elle détient `masque_flagges` et notifie les éditeurs enregistrés quand les données changent (pattern Observer).
+`Observation` est le point central : elle détient `flag_mask` et notifie les éditeurs enregistrés quand les données changent (pattern Observer).
 
 ### Flux de synchronisation GUI ↔ Éditeur
 
@@ -238,12 +238,14 @@ sequenceDiagram
 
 ## Éditeurs interactifs hors GUI (notebook)
 
-Les éditeurs peuvent être instanciés directement sur n'importe quelle figure Matplotlib, sans lancer l'application Qt.
+Les éditeurs peuvent être instanciés directement sur n'importe quelle figure Matplotlib, sans lancer l'application Qt. Cela permet de faire du flagging interactif dans un notebook, puis de récupérer le masque de flagging pour continuer le traitement en Python.
+
+### UVPlotEditor — flagging dans le plan UV
 
 ```python
 import matplotlib.pyplot as plt
 from difmap_wrapper import DifmapSession
-from difmap_wrapper.editors.uv_editor import UVPlotEditor
+from difmap_wrapper.gui.editors.uv_editor import UVPlotEditor
 
 with DifmapSession() as session:
     session.observe("data/source.uvfits")
@@ -251,7 +253,6 @@ with DifmapSession() as session:
     data = session.obs.get_data()
 
     fig, ax = plt.subplots(figsize=(8, 8))
-
     editor = UVPlotEditor(
         observation=session.obs,
         fig=fig,
@@ -259,19 +260,26 @@ with DifmapSession() as session:
         data=data,
     )
     plt.show()
-    editor.cleanup()   # déconnecte les callbacks et désenregistre l'éditeur
+    # ← interagissez ici : touches C (cut), F (flag), U (undo)
+
+    # Après interaction, récupérer le masque de flagging
+    mask = session.obs.flag_mask   # tableau bool, True = flagué
+    print(f"{mask.sum()} visibilités flaguées")
+
+    # Sauvegarder si souhaité
+    session.obs.save_wobs("data/source_flagged.fits")
+
+    editor.cleanup()   # toujours appeler en dernier
 ```
 
-::: {.callout-important}
-Appelez toujours `editor.cleanup()` avant de recréer un éditeur sur la même figure. Sans cela, les callbacks Matplotlib restent connectés et la figure peut se comporter de façon inattendue.
-:::
+Les raccourcis clavier disponibles hors GUI sont les mêmes que dans l'application : `C` (cut rectangle), `F` (flag au clic), `U` / `Ctrl+Z` (undo), `A` (flaguer le point le plus proche).
 
-La même logique s'applique à `RadPlotEditor` :
+### RadPlotEditor — flagging en amplitude/phase
 
 ```python
-from difmap_wrapper.editors.rad_editor import RadPlotEditor
+from difmap_wrapper.gui.editors.rad_editor import RadPlotEditor
 
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(10, 5))
 editor = RadPlotEditor(
     observation=session.obs,
     fig=fig,
@@ -280,4 +288,18 @@ editor = RadPlotEditor(
 )
 plt.show()
 editor.cleanup()
+```
+
+### Cycle de vie
+
+::: {.callout-important}
+Appelez toujours `editor.cleanup()` avant de recréer un éditeur sur la même figure ou de fermer la session. Sans cela, les callbacks Matplotlib restent connectés et les interactions futures peuvent déclencher des erreurs ou des comportements inattendus.
+:::
+
+L'ordre correct dans un notebook :
+
+```python
+editor.cleanup()          # 1. déconnecter les callbacks
+session.obs.save_wobs(…)  # 2. sauvegarder si besoin
+# session.cleanup() est géré par le bloc with
 ```

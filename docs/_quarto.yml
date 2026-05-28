@@ -28,20 +28,40 @@ website:
         contents:
           - text: "Installation"
             file: 01_installation.qmd
+          - text: "Dépannage installation"
+            file: troubleshooting_install.qmd
           - text: "Quick Start"
             file: 02_quick_start.qmd
 
-      # ── 2. GUIDE UTILISATEUR ──────────────────────────────────────
-      - section: "Guide utilisateur"
+      # ── 2. CHERCHEUR — API PYTHON ─────────────────────────────────
+      - section: "Chercheur — API Python"
         contents:
+          - text: "Concepts & conventions"
+            file: concepts_conventions.qmd
           - text: "Recettes & Patterns API"
             file: 03_api_python.qmd
+          - section: "Tutoriels A→Z"
+            contents:
+              - text: "Tutoriel 1 — Produire une Dirty Map"
+                file: tutorials/01_dirty_map.qmd
+              - text: "Tutoriel 2 — Flagging programmatique"
+                file: tutorials/02_flagging_programmatique.qmd
+              - text: "Tutoriel 3 — Traitement batch (processus)"
+                file: tutorials/03_batch_pipeline.qmd
+
+      # ── 3. UTILISATEUR — GUI ──────────────────────────────────────
+      - section: "Utilisateur — Interface graphique"
+        contents:
           - text: "Interface graphique (PyQt6)"
             file: 04_interface_gui.qmd
+          - text: "Workflows GUI"
+            file: gui_workflows.qmd
+          - text: "Dépannage GUI"
+            file: troubleshooting_gui.qmd
           - text: "Traitement batch parallèle"
             file: 05_batch.qmd
 
-      # ── 3. RÉFÉRENCE API (auto-générée depuis les docstrings) ─────
+      # ── 4. RÉFÉRENCE API (auto-générée depuis les docstrings) ─────
       # Les pages individuelles (session.DifmapSession.qmd, etc.)
       # sont générées par :  quartodoc build --config docs/_quarto.yml
       # Elles n'existent pas tant que cette commande n'a pas été lancée.
@@ -49,8 +69,8 @@ website:
         contents:
           - auto: reference/  
 
-      # ── 4. INTERNALS ──────────────────────────────────────────────
-      - section: "TRouver un titre"
+      # ── 5. DÉVELOPPEUR ────────────────────────────────────────────
+      - section: "Développeur"
         contents:
           - text: "Contexte et existant"
             file: 06_contexte.qmd
@@ -60,6 +80,14 @@ website:
             file: 08_implementation.qmd
           - text: "Contribuer"
             file: 09_contribuer.qmd
+          - text: "Build / tests / génération doc"
+            file: doc_build_release.qmd
+
+      # ── 6. LIMITATIONS ────────────────────────────────────────────
+      - section: "Limitations"
+        contents:
+          - text: "Limitations connues"
+            file: known_limitations.qmd
 
   page-footer:
     left: "difmap_smartedit v2.5.0 — wrapper Python pour Difmap (Caltech)"

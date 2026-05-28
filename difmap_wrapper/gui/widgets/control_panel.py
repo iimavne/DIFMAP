@@ -1409,7 +1409,7 @@ class ControlPanel(QDockWidget):
         sc.addWidget(self._thin_sep())
         sc.addWidget(self._subsection_header("Selfcal"))
 
-        self.lbl_selfcal_status = QLabel("Aucun modèle — lancez CLEAN d'abord")
+        self.lbl_selfcal_status = QLabel("Aucun modèle — lancez « Start CLEAN » d'abord")
         self.lbl_selfcal_status.setStyleSheet(
             f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; font-style: italic;"
         )

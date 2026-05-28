@@ -4,6 +4,19 @@ title: "Contribuer"
 
 Ce guide explique comment ajouter des fonctionnalités au wrapper, recompiler après des modifications, et respecter les conventions du projet.
 
+::: {.callout-important}
+## Règles de modification du code natif (`difmap_src/`)
+
+Le moteur Difmap est un code C/Fortran historique. Dans ce projet, **il est interdit de modifier le code C de `difmap_src/`**, sauf les fonctions explicitement commentées en français (zones autorisées). Toute autre modification du moteur natif est considérée hors-scope et risque d'introduire des divergences scientifiques.
+
+Si vous devez exposer une nouvelle information à Python, l'approche attendue est :
+
+- Ajouter une fonction minimale de façade (*getter/setter*) dans une zone autorisée.
+- Propager cette fonction via `difmap_api.h` → `binding/cdifmap.pxd` → `binding/difmap_native.pyx` → `difmap_wrapper/`.
+
+Pour les invariants critiques (segfault, sync Fortran, zéro-copie), voir [Implémentation technique](08_implementation.qmd).
+:::
+
 ## Environnement de développement
 
 ```bash
@@ -21,6 +34,20 @@ pip install meson-python meson ninja \
 # Installer en mode éditable (recompile sans réinstaller)
 pip install -e . --no-build-isolation
 ```
+
+---
+
+## Générer la Référence API (quartodoc)
+
+La section **Référence API** du site Quarto est générée depuis les docstrings du package `difmap_wrapper`.
+
+```bash
+quartodoc build --config docs/_quarto.yml
+```
+
+Cette commande met à jour les fichiers sous `docs/reference/`.
+
+Après génération, **committez** les changements dans `docs/reference/` (choix projet : référence versionnée dans le dépôt).
 
 ---
 
@@ -82,7 +109,7 @@ def get_n_vis() -> int:
 ### Étape 5 — Exposer dans l'API Python
 
 ```python
-# difmap_wrapper/observation.py
+# difmap_wrapper/core/observation.py
 def n_vis(self) -> int:
     """
     Nombre total de visibilités dans l'observation active.
@@ -140,7 +167,7 @@ Meson ne recompile que les fichiers modifiés (compilation incrémentale). La pr
 python -m pytest tests/ -v
 ```
 
-Les tests sont dans `tests/` :
+Les tests sont dans `tests/` (exemples de points d'entrée) :
 
 | Fichier | Ce qu'il teste |
 |:--------|:---------------|
@@ -173,11 +200,11 @@ def test_singleton_bloque_double_instance(tmp_fits_file):
 | Fonctions C (façade) | `native_xxx` ou `get_native_xxx` | `native_invert()`, `get_native_map_nx()` |
 | Fonctions Cython | nom court, snake_case | `get_map()`, `observe()` |
 | Méthodes Python publiques | snake_case anglais | `make_dirty_map()`, `flag_data()` |
-| Attributs publics | snake_case anglais | `flag_mask`, `cut_history` |
+| Attributs publics | snake_case anglais | `flag_mask`, `undo_history` |
 | Classes | PascalCase | `DifmapSession`, `BasePlotEditor` |
 
 ::: {.callout-warning}
-Les attributs `masque_flagges` et `historique_coupes` de `Observation` sont en français (héritage du code initial). Ne pas reproduire ce pattern dans de nouveaux attributs publics — utilisez l'anglais.
+Les noms publics sont en anglais, snake_case. Les anciens attributs français `masque_flagges` et `historique_coupes` ont été renommés en `flag_mask` et `undo_history`. Ne pas reproduire ce pattern dans de nouveaux attributs.
 :::
 
 ### Gestion des erreurs
@@ -225,4 +252,5 @@ def ma_methode(self, param: int) -> dict:
 - [ ] La docstring inclut `Parameters`, `Returns`, `Raises`
 - [ ] Un test unitaire existe dans `tests/`
 - [ ] Les noms sont en anglais et en snake_case
+- [ ] `quartodoc build --config docs/_quarto.yml` a été exécuté si la signature/doc a changé
 - [ ] `pip install -e . --no-build-isolation` + `pytest tests/` passent sans erreur

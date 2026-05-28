@@ -1,0 +1,94 @@
+---
+title: "Concepts & conventions"
+---
+
+Cette page définit les conventions utilisées par l'API Python : unités, conventions de signe, notion de flag, et ordre d'appel attendu.
+
+## Objets et responsabilités
+
+Le point d'entrée est `DifmapSession`. Il expose trois sous-objets :
+
+| Attribut | Rôle |
+|:---------|:-----|
+| `session.obs` | Données UV : sélection, extraction, flagging, sauvegarde |
+| `session.imager` | Imagerie : grille, pondération, FFT, image |
+| `session.vis` | Graphiques statiques Matplotlib |
+
+## Ordre d'appel (cycle de vie)
+
+Les opérations reposent sur un état C global. L'ordre minimal typique est :
+
+1. `session.observe(filepath)`
+2. `session.obs.select(...)`
+3. `session.imager.mapsize(size, cellsize)`
+4. `session.imager.uvweight(...)` (optionnel)
+5. `session.imager.uvtaper(...)` (optionnel)
+6. `session.imager.invert()`
+7. `session.imager.get_map()` / `session.imager.get_map_package(...)`
+
+La méthode `session.imager.make_dirty_map(...)` enchaîne ces étapes dans le cas simple.
+
+::: {.callout-important}
+## Une session = un processus
+
+Le moteur C maintient un état global. Il n'est pas possible d'avoir deux sessions actives dans le même processus.
+
+- Pour le parallélisme : utiliser des processus OS (voir [Traitement batch parallèle](05_batch.qmd)).
+- En cas de doute : privilégier `with DifmapSession() as session:`.
+:::
+
+## Unités UV : `λ` vs `Mλ`
+
+Les coordonnées UV retournées par `session.obs.get_data()` sont en **longueurs d'onde (λ)**, qui est l'unité native du format UVFITS et de Difmap.
+
+- Pour convertir en **Méga-longueurs d'onde (Mλ)** : diviser par `1e6`.
+- Les visualisations `uvplot()` et `radplot()` utilisent généralement des axes en Mλ.
+
+## Poids (`weight`) et flags
+
+Dans les tableaux retournés par `session.obs.get_data()` :
+
+- une visibilité est considérée **valide** si `weight > 0`
+- une visibilité est considérée **flaguée** si `weight <= 0`
+
+Le flagging (GUI ou programmatique) agit sur ces poids dans la mémoire C.
+
+::: {.callout-note}
+## Indices 0-based vs 1-indexed
+
+Deux familles d'indices coexistent :
+
+- Les indices de visibilités (pour `flag_data()` / `unflag_data()`) sont **0-based** (indices NumPy).
+- Les indices d'IF et de canaux (pour `select()` et variantes) sont **1-indexed**, avec la convention Difmap : `0` signifie "jusqu'au dernier".
+:::
+
+## Conventions d'image et orientation
+
+Difmap stocke les pixels dans un ordre mémoire qui ne suit pas toujours la convention astronomique standard (RA croît vers la gauche). L'API applique une correction lors de la récupération de l'image (voir [Implémentation technique](08_implementation.qmd)).
+
+Pour un affichage Matplotlib, utilisez `extent` fourni par `get_map_package()` afin d'obtenir directement des axes en mas cohérents.
+
+## IF / canaux / polarisation
+
+La sélection des données se fait via `session.obs.select(...)` (voir la [Référence API](/reference) : `Observation`).
+
+Les paramètres permettent de filtrer :
+
+- la polarisation / Stokes (`pol`)
+- les IF
+- les canaux
+
+### `select(pol, ifs, channels)`
+
+Conventions importantes (issues de la doc de référence) :
+
+- `pol` : une chaîne (exemples courants : `"I"`, `"RR"`, `"LL"`). Pour connaître ce qui est effectivement présent dans un fichier, utiliser `session.obs.available_polarizations()`.
+- `ifs` :
+  - un tuple `(premier_if, dernier_if)` **1-indexed**. `0` signifie "dernier IF". Exemple : `(1, 0)` = tous.
+  - ou une liste d'IFs **1-indexed** non-contigus. Exemple : `[1, 3]`.
+- `channels` : un tuple `(premier_canal, dernier_canal)` **1-indexed**. `0` signifie "dernier canal".
+
+### Sélections avancées
+
+- `session.obs.set_if_range(if_beg, if_end)` : modifie uniquement le filtre IF (plus rapide que `select()` quand on ne change pas la polarisation).
+- `session.obs.select_channels(pol, pairs)` : sélection fine par paires de canaux **globaux** (1-indexed) couvrant plusieurs IF.

@@ -22,8 +22,9 @@ zoom, statistiques), utiliser l'interface graphique PyQt6.
 | Name | Description |
 | --- | --- |
 | [mapplot](#difmap_wrapper.Visualizer.mapplot) | Affiche l'image actuellement en mémoire. |
+| [plot_clean_map](#difmap_wrapper.Visualizer.plot_clean_map) | Affichage scientifique d'une Clean Map, Residual Map ou Dirty Map, |
 | [plot_image](#difmap_wrapper.Visualizer.plot_image) | Affiche une image astrophysique avec sa barre de couleur et ses axes astrométriques. |
-| [radplot](#difmap_wrapper.Visualizer.radplot) | Affiche l'amplitude des visibilités en fonction de leur rayon UV. |
+| [radplot](#difmap_wrapper.Visualizer.radplot) | Affiche l'amplitude des visibilités en fonction du rayon UV. |
 | [uvplot](#difmap_wrapper.Visualizer.uvplot) | Affiche la couverture du plan UV (U en abscisse, V en ordonnée). |
 
 ### mapplot { #difmap_wrapper.Visualizer.mapplot }
@@ -58,29 +59,113 @@ moteur C avec les paramètres du dernier ``mapsize()``.
 >>> session.vis.mapplot(title="Dirty Map après inversion")
 ```
 
+### plot_clean_map { #difmap_wrapper.Visualizer.plot_clean_map }
+
+```python
+Visualizer.plot_clean_map(
+    img_dict,
+    windows=None,
+    ax=None,
+    cmap='inferno',
+    figsize=(8, 8),
+    title=None,
+    scale='linear',
+    vmin=None,
+    vmax=None,
+    contour_mode='pct',
+    contour_absmin=1.0,
+    contour_absmax=100.0,
+    contour_factor=2.0,
+    contour_custom=None,
+    contour_linewidth=0.3,
+    show_model=False,
+    save_path=None,
+    show=True,
+    session=None,
+)
+```
+
+Affichage scientifique d'une Clean Map, Residual Map ou Dirty Map,
+identique au mode pgplot de Difmap (maplot.c).
+
+Comportement selon ``img_dict['map_type']`` :
+
+- ``"clean"``    → "Map peak: X Jy/beam" + ellipse du faisceau
+- ``"residual"`` → "Displayed range: min □ max Jy/beam", pas d'ellipse
+- ``"dirty"``    → idem résiduel
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name              | Type                 | Description                                                                    | Default     |
+|-------------------|----------------------|--------------------------------------------------------------------------------|-------------|
+| img_dict          | dict                 | Dictionnaire retourné par ``get_map_package()`` ou ``get_residual_package()``. | _required_  |
+| windows           | list of tuple        | Fenêtres CLEAN ``[(xa, xb, ya, yb)]`` en mas.                                  | `None`      |
+| ax                | matplotlib.axes.Axes | Axe existant. Si absent, une nouvelle figure est créée.                        | `None`      |
+| cmap              | str                  | Palette de couleurs. Par défaut ``'inferno'``.                                 | `'inferno'` |
+| figsize           | tuple                | Taille de la figure. Par défaut ``(8, 8)``.                                    | `(8, 8)`    |
+| title             | str                  | Titre. Si absent, déduit de ``map_type``.                                      | `None`      |
+| scale             | str                  | Échelle de couleur : ``'linear'``, ``'log'`` ou ``'sqrt'`` (mapfunc).          | `'linear'`  |
+| vmin              | float                | Bornes de la colormap (``None`` = automatique).                                | `None`      |
+| vmax              | float                | Bornes de la colormap (``None`` = automatique).                                | `None`      |
+| contour_mode      | str                  | ``'pct'`` (levs Difmap), ``'log'`` (loglevs) ou ``'custom'``.                  | `'pct'`     |
+| contour_absmin    | float                | Pour ``'log'`` : niveau min en % du pic (défaut 1 %).                          | `1.0`       |
+| contour_absmax    | float                | Pour ``'log'`` : niveau max en % du pic (défaut 100 %).                        | `100.0`     |
+| contour_factor    | float                | Pour ``'log'`` : facteur multiplicatif (défaut 2.0).                           | `2.0`       |
+| contour_custom    | list of float        | Pour ``'custom'`` : niveaux en % du pic (comportement difmap).                 | `None`      |
+| contour_linewidth | float                | Épaisseur des traits de contours en points. Par défaut 0.3.                    | `0.3`       |
+| save_path         | str                  | Chemin de sauvegarde.                                                          | `None`      |
+| show              | bool                 | Afficher si True.                                                              | `True`      |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                 | Description   |
+|--------|----------------------|---------------|
+|        | matplotlib.axes.Axes |               |
+
 ### plot_image { #difmap_wrapper.Visualizer.plot_image }
 
 ```python
 Visualizer.plot_image(
     img_dict,
-    cmap='magma',
+    ax=None,
+    cmap=None,
     figsize=(8, 6),
-    title='Dirty Map',
+    title=None,
+    xlim=None,
+    ylim=None,
+    scale='linear',
+    vmin=None,
+    vmax=None,
+    contour_mode='pct',
+    contour_absmin=1.0,
+    contour_absmax=100.0,
+    contour_factor=2.0,
+    contour_custom=None,
+    contour_linewidth=0.3,
+    show_model=False,
+    save_path=None,
+    show=True,
+    session=None,
     **kwargs,
 )
 ```
 
 Affiche une image astrophysique avec sa barre de couleur et ses axes astrométriques.
 
+Le titre et la palette de couleurs sont déduits automatiquement de la clé
+``'map_type'`` du dictionnaire (``"dirty"`` → "Dirty Map" / inferno,
+``"clean"`` → "Clean Map" / viridis) sauf si ``title`` ou ``cmap``
+sont fournis explicitement.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type           | Description                                                                                                                                                  | Default       |
-|----------|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| img_dict | dict           | Dictionnaire retourné par ``DifmapImager.get_map_package()``. Doit contenir les clés ``'data'`` (tableau 2D) et ``'extent'`` (limites en mas pour les axes). | _required_    |
-| cmap     | str            | Palette de couleurs Matplotlib. Par défaut ``'magma'``.                                                                                                      | `'magma'`     |
-| figsize  | tuple of float | Taille ``(largeur, hauteur)`` en pouces. Par défaut ``(8, 6)``.                                                                                              | `(8, 6)`      |
-| title    | str            | Titre affiché au-dessus de l'image. Par défaut ``"Dirty Map"``.                                                                                              | `'Dirty Map'` |
-| **kwargs |                | Paramètres supplémentaires transmis à ``matplotlib.pyplot.imshow``.                                                                                          | `{}`          |
+| Name     | Type           | Description                                                                                                                                                                                                                                                                              | Default    |
+|----------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| img_dict | dict           | Dictionnaire retourné par ``DifmapImager.get_map_package()``. Doit contenir les clés ``'data'`` (tableau 2D) et ``'extent'`` (limites en mas pour les axes). La clé optionnelle ``'map_type'`` (``"dirty"`` ou ``"clean"``) est utilisée pour choisir le titre et la palette par défaut. | _required_ |
+| cmap     | str            | Palette de couleurs Matplotlib. Si absent, déduit de ``map_type``.                                                                                                                                                                                                                       | `None`     |
+| figsize  | tuple of float | Taille ``(largeur, hauteur)`` en pouces. Par défaut ``(8, 6)``.                                                                                                                                                                                                                          | `(8, 6)`   |
+| title    | str            | Titre affiché au-dessus de l'image. Si absent, déduit de ``map_type``.                                                                                                                                                                                                                   | `None`     |
+| **kwargs |                | Paramètres supplémentaires transmis à ``matplotlib.pyplot.imshow``.                                                                                                                                                                                                                      | `{}`       |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -92,7 +177,10 @@ Affiche une image astrophysique avec sa barre de couleur et ses axes astrométri
 
 ```python
 >>> img = session.imager.make_dirty_map(512, 0.1)
->>> session.vis.plot_image(img, cmap='viridis', title="Source J0003")
+>>> session.vis.plot_image(img)                          # titre auto "Dirty Map"
+>>> img2 = session.imager.make_clean_map(512, 0.1)
+>>> session.vis.plot_image(img2)                         # titre auto "Clean Map"
+>>> session.vis.plot_image(img, title="Source J0003")    # titre explicite
 ```
 
 ### radplot { #difmap_wrapper.Visualizer.radplot }
@@ -105,27 +193,35 @@ Visualizer.radplot(
     alpha=0.5,
     s=1,
     title=None,
+    show_model=True,
+    model_color='red',
+    model_alpha=0.7,
+    model_s=1,
+    save_path=None,
+    show=True,
     **kwargs,
 )
 ```
 
-Affiche l'amplitude des visibilités en fonction de leur rayon UV.
+Affiche l'amplitude des visibilités en fonction du rayon UV.
 
-Ce graphique (aussi appelé "amplitude vs uv-distance") donne une vue
-rapide de la structure de la source : une source ponctuelle donne une
-ligne horizontale, une source étendue montre une décroissance.
+Si un modèle CLEAN est disponible (après ``clean()``), superpose
+l'amplitude du modèle en rouge avec ``show_model=True``.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                 | Description                                                             | Default   |
-|----------|----------------------|-------------------------------------------------------------------------|-----------|
-| ax       | matplotlib.axes.Axes | Axe sur lequel dessiner. Si absent, une nouvelle figure est créée.      | `None`    |
-| figsize  | tuple of float       | Taille ``(largeur, hauteur)`` en pouces. Par défaut ``(10, 6)``.        | `(10, 6)` |
-| color    | str                  | Couleur des points. Par défaut ``'black'``.                             | `'black'` |
-| alpha    | float                | Transparence des points. Par défaut ``0.5``.                            | `0.5`     |
-| s        | float                | Taille des marqueurs. Par défaut ``1``.                                 | `1`       |
-| title    | str                  | Titre du graphique. Généré automatiquement si absent.                   | `None`    |
-| **kwargs |                      | Paramètres supplémentaires transmis à ``matplotlib.axes.Axes.scatter``. | `{}`      |
+| Name        | Type                 | Description                                                         | Default   |
+|-------------|----------------------|---------------------------------------------------------------------|-----------|
+| ax          | matplotlib.axes.Axes | Axe sur lequel dessiner.                                            | `None`    |
+| figsize     | tuple of float       | Taille ``(largeur, hauteur)`` en pouces. Par défaut ``(10, 6)``.    | `(10, 6)` |
+| color       | str                  | Couleur des points observés. Par défaut ``'black'``.                | `'black'` |
+| alpha       | float                | Transparence des points observés. Par défaut ``0.5``.               | `0.5`     |
+| s           | float                | Taille des marqueurs observés. Par défaut ``1``.                    | `1`       |
+| title       | str                  | Titre du graphique.                                                 | `None`    |
+| show_model  | bool                 | Superpose l'amplitude du modèle si disponible. Par défaut ``True``. | `True`    |
+| model_color | str                  | Couleur des points du modèle. Par défaut ``'red'``.                 | `'red'`   |
+| model_alpha | float                | Transparence des points du modèle. Par défaut ``0.7``.              | `0.7`     |
+| model_s     | float                | Taille des marqueurs du modèle. Par défaut ``1``.                   | `1`       |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -136,6 +232,8 @@ ligne horizontale, une source étendue montre une décroissance.
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
+>>> session.vis.radplot()                        # données + modèle si dispo
+>>> session.vis.radplot(show_model=False)        # données seules
 >>> session.vis.radplot(color='navy', alpha=0.3, s=0.5)
 ```
 
@@ -150,6 +248,10 @@ Visualizer.uvplot(
     alpha=0.5,
     title=None,
     edgecolors='none',
+    xlim=None,
+    ylim=None,
+    save_path=None,
+    show=True,
     **kwargs,
 )
 ```

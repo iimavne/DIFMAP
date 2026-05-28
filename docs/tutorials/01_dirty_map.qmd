@@ -1,0 +1,34 @@
+---
+title: "Tutoriel 1 — Produire une Dirty Map"
+---
+
+Ce tutoriel montre un pipeline reproductible pour produire une Dirty Map et la visualiser.
+
+## Objectif
+
+- Charger un UVFITS
+- Sélectionner une polarisation
+- Créer une Dirty Map
+- Récupérer un package complet (`data`, `beam_data`, `extent`, `info`)
+
+## Script minimal
+
+```python
+from difmap_wrapper import DifmapSession
+
+with DifmapSession() as session:
+    session.observe("data/source.uvfits")
+    session.obs.select(pol="I")
+
+    session.imager.mapsize(512, 0.1)
+    session.imager.invert()
+
+    img = session.imager.get_map_package(cellsize=0.1)
+    session.vis.plot_image(img, cmap="inferno")
+```
+
+## Points d'attention
+
+- `mapsize(size, cellsize)` définit la taille d'image et l'échantillonnage (mas/pixel).
+- L'image retournée est en `Jy/beam`.
+- Pour les conventions d'axes (RA/Dec, extent) : voir [Concepts & conventions](../concepts_conventions.qmd).

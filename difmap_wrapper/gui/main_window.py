@@ -6,7 +6,7 @@ import numpy as np
 import difmap_native
 
 from PyQt6.QtWidgets import QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox, QGridLayout, QApplication
-from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QCursor
 
 from difmap_wrapper import DifmapSession
@@ -25,67 +25,89 @@ from .widgets.header_widget import HeaderWidget
 
 
 
-class CleanWorker(QThread):
-    """Exécute le CLEAN difmap en arrière-plan, itération par chunk."""
-    progress = pyqtSignal(int, int)   # (done, total)
-    paused   = pyqtSignal(int, int)   # (done, total) when a conditional breakpoint is reached
-    finished = pyqtSignal()
-    error    = pyqtSignal(str)
+class CleanTimer:
+    """
+    Exécute le CLEAN difmap par chunks sur le thread principal via QTimer.
 
-    def __init__(self, imager, niter, gain, cutoff, chunk_size=50, pause_after=0):
-        super().__init__()
-        self._imager     = imager
-        self._niter      = niter
-        self._gain       = gain
-        self._cutoff     = cutoff
-        self._chunk_size = chunk_size
-        self._pause_after = pause_after   # 0 = no conditional breakpoint
-        self._done   = 0
-        self._paused = False
-        self._abort  = False
+    Le moteur C difmap n'est pas thread-safe (variables globales vlbmap/vlbob,
+    PGPLOT/X11). Toute appel natif doit rester sur le thread principal.
+    QTimer avec interval=0 cède le contrôle à la boucle d'événements entre
+    chaque chunk, gardant l'UI réactive sans utiliser de QThread.
+    """
+
+    def __init__(self, parent, imager, niter, gain, cutoff, chunk_size=50, pause_after=0):
+        self._parent      = parent
+        self._imager      = imager
+        self._niter       = niter
+        self._gain        = gain
+        self._cutoff      = cutoff
+        self._chunk_size  = chunk_size
+        self._pause_after = pause_after
+        self._done        = 0
+        self._paused      = False
+        self._abort       = False
         self._cutoff_reached = False
+        self._timer = QTimer(parent)
+        self._timer.setInterval(0)
+        self._timer.timeout.connect(self._step)
+
+    def isRunning(self) -> bool:
+        return self._timer.isActive() or self._paused
 
     def request_pause(self):
         self._paused = True
+        self._timer.stop()
 
     def request_resume(self):
         self._paused = False
+        self._timer.start()
 
     def abort(self):
         self._abort  = True
         self._paused = False
+        self._timer.stop()
 
-    def run(self):
-        try:
-            while self._done < self._niter and not self._abort:
-                while self._paused and not self._abort:
-                    self.msleep(50)
-                if self._abort:
-                    break
-                chunk = min(self._chunk_size, self._niter - self._done)
-                if self._pause_after > 0:
-                    since_last = self._done % self._pause_after
-                    to_bp = (self._pause_after - since_last) if since_last else self._pause_after
-                    chunk = min(chunk, to_bp)
-                self._imager.clean(chunk, self._gain, self._cutoff)
-                self._done += chunk
-                self.progress.emit(self._done, self._niter)
+    def start(self):
+        self._timer.start()
 
-                if self._cutoff > 0:
-                    try:
-                        peak_info = self._imager.peak()
-                        if peak_info and float(peak_info.get('flux', 0.0)) <= float(self._cutoff):
-                            self._cutoff_reached = True
-                            break
-                    except Exception:
-                        pass
-                if self._pause_after > 0 and self._done % self._pause_after == 0 and self._done < self._niter:
-                    self._paused = True
-                    self.paused.emit(self._done, self._niter)
+    def _step(self):
+        if self._done >= self._niter or self._abort:
+            self._timer.stop()
             if not self._abort:
-                self.finished.emit()
+                self._parent._on_clean_finished()
+            return
+
+        chunk = min(self._chunk_size, self._niter - self._done)
+        if self._pause_after > 0:
+            since_last = self._done % self._pause_after
+            to_bp = (self._pause_after - since_last) if since_last else self._pause_after
+            chunk = min(chunk, to_bp)
+
+        try:
+            self._imager.clean(chunk, self._gain, self._cutoff)
         except Exception as exc:
-            self.error.emit(str(exc))
+            self._timer.stop()
+            self._parent._on_clean_error(str(exc))
+            return
+
+        self._done += chunk
+        self._parent._on_clean_progress(self._done, self._niter)
+
+        if self._cutoff > 0:
+            try:
+                peak_info = self._imager.peak()
+                if peak_info and float(peak_info.get('flux', 0.0)) <= float(self._cutoff):
+                    self._cutoff_reached = True
+                    self._timer.stop()
+                    self._parent._on_clean_finished()
+                    return
+            except Exception:
+                pass
+
+        if self._pause_after > 0 and self._done % self._pause_after == 0 and self._done < self._niter:
+            self._paused = True
+            self._timer.stop()
+            self._parent._on_clean_paused(self._done, self._niter)
 
 
 
@@ -263,6 +285,10 @@ class MainWindow(QMainWindow):
 
     def _load_file_logic(self, filepath: str) -> None:
         """Charge un fichier UVFITS sur le thread principal (difmap/PGPLOT/X11 non thread-safe)."""
+        if self._clean_worker is not None:
+            self._clean_worker.abort()
+            self._clean_worker = None
+            self._set_ui_for_clean(False)
         try:
             filename = os.path.basename(filepath)
             self.log_console.clear_log()
@@ -295,6 +321,8 @@ class MainWindow(QMainWindow):
             self.control_panel.set_available_polarizations(available_pols, current=actual_pol)
             if n_ifs:
                 self.control_panel.set_if_range(n_ifs, nchan=nchan)
+            self._selected_ifs = None
+            self._channels_text = ""
 
             try:
                 u_ml = self.data['u'] / 1e6
@@ -380,7 +408,7 @@ class MainWindow(QMainWindow):
         Rechargements suivants : appelle reload_data() sur le widget existant.
 
         _bulk_reloading bloque _sync_all_plots pendant que les deux widgets
-        sont mis à jour, évitant les IndexError de masque_flagges.
+        sont mis à jour, évitant les IndexError de flag_mask.
         """
         self._bulk_reloading = True
         try:
@@ -709,7 +737,7 @@ class MainWindow(QMainWindow):
         ctrl.chk_show_model_map.setVisible(is_map)
         ctrl.chk_show_model_map.setEnabled(is_map and has_model)
         if is_map and not has_model:
-            ctrl.chk_show_model_map.setToolTip("Aucun modèle — lancez CLEAN d'abord")
+            ctrl.chk_show_model_map.setToolTip("Aucun modèle — lancez « Start CLEAN » d'abord")
         else:
             ctrl.chk_show_model_map.setToolTip("Afficher les composantes CLEAN sur la carte")
 
@@ -1078,6 +1106,18 @@ class MainWindow(QMainWindow):
                 pass
 
             img_dict = self.session.imager.get_map_package(cellsize)
+            # Mettre en cache la dirty map pour All Maps
+            try:
+                _frozen = dict(img_dict)
+                if hasattr(img_dict.get('data'), 'copy'):
+                    _frozen['data'] = img_dict['data'].copy()
+                if isinstance(img_dict.get('extent'), list):
+                    _frozen['extent'] = list(img_dict['extent'])
+                if isinstance(img_dict.get('info'), dict):
+                    _frozen['info'] = dict(img_dict['info'])
+                self._last_dirty_package = _frozen
+            except Exception:
+                pass
             # Suivre la maquette: Dirty Map n'expose pas Scale/Min/Max/Contours.
             # On force donc un rendu auto (linear + vmin/vmax auto) et pas de contours.
             scale, vmin, vmax = 'linear', None, None
@@ -1106,7 +1146,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Imaging Error", err_msg)
 
     def _start_clean(self):
-        """Lance ou reprend le CLEAN de façon asynchrone via CleanWorker (QThread)."""
+        """Lance ou reprend le CLEAN par chunks sur le thread principal (QTimer)."""
         if (self._clean_worker is not None
                 and self._clean_worker.isRunning()
                 and getattr(self._clean_worker, '_paused', False)):
@@ -1129,11 +1169,17 @@ class MainWindow(QMainWindow):
             except ValueError as exc:
                 raise ValueError(f"Gain invalide: {exc}") from exc
             try:
-                cutoff = float(self.control_panel.input_cutoff.text())
+                cutoff_text = self.control_panel.input_cutoff.text().strip()
+                cutoff = float(cutoff_text) if cutoff_text else 0.0
                 if cutoff < 0:
                     raise ValueError(f"Cutoff doit être ≥ 0, obtenu: {cutoff}")
             except ValueError as exc:
                 raise ValueError(f"Cutoff invalide: {exc}") from exc
+
+            # Sauvegarder les params AVANT _apply_imaging_params pour détecter
+            # si un changement de grille/taper impose un nouvel invert.
+            _mapsize_before = self._last_mapsize_params
+            _uvtaper_before = self._last_uvtaper_params
 
             mapsize, cellsize, taper_val, uvmin_wav, uvmax_wav = self._apply_imaging_params()
 
@@ -1144,19 +1190,56 @@ class MainWindow(QMainWindow):
                 except ValueError:
                     pause_after = 0
 
-            self.session.imager.clrmod()
+            # Mode continuation : si les params d'imagerie n'ont pas changé ET
+            # qu'un résiduel valide existe déjà, on continue le CLEAN depuis
+            # l'état courant sans effacer le modèle ni réinverter.
+            # Mode fresh start : premier run, params changés, ou état incohérent.
+            _params_changed = (
+                self._last_mapsize_params != _mapsize_before or
+                self._last_uvtaper_params != _uvtaper_before
+            )
+            _can_continue = (
+                not _params_changed
+                and self.session.imager._current_map_type == "residual"
+                and self.session.imager._last_residual_map is not None
+            )
 
-            self.session.imager.invert(uvmin_wav, uvmax_wav)
+            if not _can_continue:
+                self.session.imager.clrmod()
+                self.session.imager.invert(uvmin_wav, uvmax_wav)
+                # Snapshot la dirty map pour que l'onglet Residual affiche
+                # l'état de départ immédiatement au lieu de l'ancien résiduel.
+                try:
+                    self.session.imager.snapshot_residual_from_current_map()
+                    self._refresh_residual_map()
+                except Exception:
+                    pass
+                # Sauvegarder la dirty map avant que CLEAN ne change l'état
+                try:
+                    _dirty_pkg = self.session.imager.get_map_package(cellsize=cellsize)
+                    if _dirty_pkg and _dirty_pkg.get('map_type') == 'dirty':
+                        _frozen = dict(_dirty_pkg)
+                        if hasattr(_dirty_pkg.get('data'), 'copy'):
+                            _frozen['data'] = _dirty_pkg['data'].copy()
+                        if isinstance(_dirty_pkg.get('extent'), list):
+                            _frozen['extent'] = list(_dirty_pkg['extent'])
+                        if isinstance(_dirty_pkg.get('info'), dict):
+                            _frozen['info'] = dict(_dirty_pkg['info'])
+                        self._last_dirty_package = _frozen
+                except Exception:
+                    pass
 
             self.control_panel.progress_bar.setValue(0)
             self.control_panel.lbl_progress.setText(f"0 / {niter}")
 
             cutoff_str = f", cutoff: {cutoff}" if cutoff > 0 else ""
+            mode_str = "continued" if _can_continue else "started"
             self.log_console.log(
-                f"CLEAN started — niter: {niter}, gain: {gain}{cutoff_str}, taper: {taper_val} Mλ"
+                f"CLEAN {mode_str} — niter: {niter}, gain: {gain}{cutoff_str}, taper: {taper_val} Mλ"
             )
 
-            self._clean_worker = CleanWorker(
+            self._clean_worker = CleanTimer(
+                parent=self,
                 imager=self.session.imager,
                 niter=niter,
                 gain=gain,
@@ -1164,10 +1247,6 @@ class MainWindow(QMainWindow):
                 chunk_size=50,
                 pause_after=pause_after,
             )
-            self._clean_worker.progress.connect(self._on_clean_progress)
-            self._clean_worker.paused.connect(self._on_clean_paused)
-            self._clean_worker.finished.connect(self._on_clean_finished)
-            self._clean_worker.error.connect(self._on_clean_error)
             self._set_ui_for_clean(True)
             self._clean_worker.start()
 
@@ -1203,10 +1282,10 @@ class MainWindow(QMainWindow):
                 peak_info = self.session.imager.peak()
                 self.log_console.log(
                     f"CLEAN terminé — Peak résiduel: {peak_info['flux']:.4f} Jy/beam"
-                    " — Cliquez 'Restore' pour la carte finale, ou relancez selfcal."
+                    " — Cliquez « Restore » pour la carte finale, ou relancez « Run Selfcal »."
                 )
             except Exception:
-                self.log_console.log("CLEAN terminé. Cliquez 'Restore' ou relancez selfcal.")
+                self.log_console.log("CLEAN terminé. Cliquez « Restore » pour la carte finale, ou relancez « Run Selfcal ».")
             if cutoff_reached:
                 self.log_console.log(
                     f"Cutoff atteint — le CLEAN ne peut plus progresser."
@@ -1229,6 +1308,7 @@ class MainWindow(QMainWindow):
         ctrl = self.control_panel
         ctrl.btn_compute.setEnabled(not running)
         ctrl.btn_apply_imaging.setEnabled(not running)
+        self.toolbar.action_load.setEnabled(not running)
         if running:
             ctrl.btn_compute_clean.setEnabled(False)
         elif cutoff_reached:
@@ -1267,14 +1347,19 @@ class MainWindow(QMainWindow):
             ctrl.btn_run_selfcal.setToolTip(
                 "Exécute selfflag + selflims + selftaper + selfcal → invert"
                 if ready else
-                "Lancez d'abord un CLEAN pour construire un modèle."
+                "Lancez d'abord « Start CLEAN » pour construire un modèle."
             )
         if hasattr(ctrl, 'lbl_selfcal_status'):
             ctrl.lbl_selfcal_status.setText(
-                "Modèle CLEAN prêt" if ready else "Aucun modèle — lancez CLEAN d'abord"
+                "Modèle CLEAN prêt" if ready else "Aucun modèle — lancez « Start CLEAN » d'abord"
             )
 
     def _run_restore(self) -> None:
+        # Si un CLEAN tourne encore, l'interrompre proprement avant de restaurer.
+        if self._clean_worker is not None:
+            self._clean_worker.abort()
+            self._clean_worker = None
+            self._set_ui_for_clean(False)
         try:
             self.session.imager.restore()
             self._refresh_clean_map()
@@ -1505,13 +1590,12 @@ class MainWindow(QMainWindow):
         except Exception as e:
             # Gérer spécifiquement le cas où aucune carte n'est disponible
             if "aucune carte" in str(e).lower() or "no map" in str(e).lower():
-                self.log_console.log("Peak window requires a map to be computed first. Please compute a Dirty Map or Clean Map first.")
-                QMessageBox.information(self, "Peak Window", 
-                    "A map must be computed before adding a peak window.\n\n"
-                    "Please:\n"
-                    "1. Compute a Dirty Map, or\n"
-                    "2. Compute a Clean Map\n\n"
-                    "Then try adding the peak window again.")
+                self.log_console.log("Peak window nécessite une carte. Cliquez d'abord « Make Dirty Map » ou lancez « Start CLEAN ».")
+                QMessageBox.information(self, "Peak Window",
+                    "Une carte doit être calculée avant d'ajouter une Peak Window.\n\n"
+                    "  1. Cliquez « Make Dirty Map », ou\n"
+                    "  2. Cliquez « Start CLEAN »\n\n"
+                    "Puis réessayez.")
             else:
                 err_msg = f"Failed to add peak window: {e}"
                 self.log_console.log_error(err_msg)
@@ -1845,6 +1929,8 @@ class MainWindow(QMainWindow):
             # ob_select remet g_if_beg=0/g_if_end=-1 → resync input
             nchan = self.session.obs.get_nchan()
             self.control_panel.set_if_range(self.session.obs.nif, nchan=nchan)
+            self._selected_ifs = None
+            self._channels_text = ""
 
             base_title = self.windowTitle().split(" [")[0]
             self.setWindowTitle(f"{base_title} [{actual_pol}]")
@@ -1988,9 +2074,8 @@ class MainWindow(QMainWindow):
             except ValueError:
                 raise ValueError(f"Valeur de canal invalide : '{tok}'")
 
-        parts = [p.strip() for p in text.split() if p.strip()]
-        if not parts:
-            parts = [p.strip() for p in text.split(",") if p.strip()]
+        # Normalise : remplace virgules par espaces, puis split sur espaces
+        parts = [p.strip().strip(",") for p in re.split(r"[\s,]+", text) if p.strip().strip(",")]
 
         pairs: list[tuple[int, int]] = []
         for part in parts:
@@ -2146,8 +2231,8 @@ class MainWindow(QMainWindow):
             ``True`` si le masque de flagging contient des modifications non exportées.
         """
         if self.plot_widget and self.plot_widget.editor:
-            return bool(self.session.obs.masque_flagges is not None
-                        and self.session.obs.masque_flagges.any())
+            return bool(self.session.obs.flag_mask is not None
+                        and self.session.obs.flag_mask.any())
         return False
 
     def closeEvent(self, event):
@@ -2186,7 +2271,7 @@ class MainWindow(QMainWindow):
         Synchronise l'UI depuis l'état de l'éditeur.
 
         Ignoré pendant _bulk_reloading (les deux widgets ne sont pas encore
-        tous les deux à jour — évite les IndexError de masque_flagges).
+        tous les deux à jour — évite les IndexError de flag_mask).
         """
         if self._bulk_reloading:
             return

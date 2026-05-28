@@ -1,0 +1,37 @@
+---
+title: "Workflows GUI"
+---
+
+Cette page décrit des workflows d'utilisation typiques de l'application PyQt6 : charger des données, explorer, flagger, imager, et exporter.
+
+## Workflow 1 — Première image (Dirty Map)
+
+1. Lancer l'application : voir [Interface graphique (PyQt6)](04_interface_gui.qmd).
+2. Charger un fichier via **File → Load FITS**.
+3. Sélectionner la polarisation dans le panneau de contrôle.
+4. Aller à l'onglet **Dirty Map**.
+5. Régler :
+   - `Map size`
+   - `Cell size`
+   - `Weighting`
+   - (optionnel) `Taper`
+6. Cliquer **Compute**.
+
+## Workflow 2 — Flagging interactif et sauvegarde
+
+1. Ouvrir l'onglet **UV**.
+2. Utiliser les outils d'édition (clics) pour flagger/déflagger.
+3. Vérifier le résultat sur **Radplot**.
+4. Sauvegarder une copie des données avec flags via la fonctionnalité d'export/sauvegarde si disponible.
+
+## Workflow 3 — Comparer pondérations
+
+1. Calculer une première carte en pondération naturelle.
+2. Recalculer en pondération uniforme.
+3. (optionnel) Activer un taper gaussien.
+4. Comparer : résolution / bruit / artefacts.
+
+## Bonnes pratiques
+
+- Travailler par étapes : charger → sélectionner → flagger → imager.
+- En cas de doute sur les unités et conventions : voir [Concepts & conventions](concepts_conventions.qmd).

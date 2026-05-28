@@ -48,6 +48,17 @@ with DifmapSession() as session:
 
 ---
 
+::: {.callout-note}
+## Quel parcours suivre ?
+
+Choisissez votre point d'entrée :
+
+- **Installer et vérifier rapidement** : [Installation](01_installation.qmd) → [Dépannage installation](troubleshooting_install.qmd)
+- **Chercheur (API Python)** : [Quick Start](02_quick_start.qmd) → [Concepts & conventions](concepts_conventions.qmd) → [Recettes & Patterns API](03_api_python.qmd) → [Référence API](/reference)
+- **Utilisateur (application GUI)** : [Interface graphique (PyQt6)](04_interface_gui.qmd)
+- **Développeur** : [Architecture](07_architecture.qmd) → [Implémentation technique](08_implementation.qmd) → [Contribuer](09_contribuer.qmd)
+:::
+
 ## Navigation
 
 ::: {.columns}

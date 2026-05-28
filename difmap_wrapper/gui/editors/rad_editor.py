@@ -486,7 +486,7 @@ class RadPlotEditor(BasePlotEditor):
                         (self.data["subarray"] == sub_actif)
                         & ((self.data["tel_a"] == ant_cible) | (self.data["tel_b"] == ant_cible))
                     )
-                    if not np.any(m_focus & ~self.obs.masque_flagges):
+                    if not np.any(m_focus & ~self.obs.flag_mask):
                         logger.warning("No data for %s:%s", sub_actif, vrai_nom)
                 else:
                     self.ax.set_title(
@@ -496,7 +496,7 @@ class RadPlotEditor(BasePlotEditor):
                     logger.info("Pas de visibilités pour %s dans le subarray %s.", vrai_nom, sub_actif)
 
         d_amp, d_phs = self._get_current_y_data()
-        mask = self.obs.masque_flagges
+        mask = self.obs.flag_mask
 
         def _apply(scat, x, y, label=None):
             if scat and scat.axes:
@@ -606,7 +606,7 @@ class RadPlotEditor(BasePlotEditor):
         
         mask_box = ((self.uv_radius >= xmin) & (self.uv_radius <= xmax)
                     & (y_data >= ymin) & (y_data <= ymax))
-        masque_final = mask_box & (~self.obs.masque_flagges)
+        masque_final = mask_box & (~self.obs.flag_mask)
         indices = np.where(masque_final)[0]
         
         if len(indices) > 0:
@@ -647,7 +647,7 @@ class RadPlotEditor(BasePlotEditor):
         
         if is_flag:
             # FLAGUER : sélectionner les points non-flaguées
-            masque_final = mask_box & (~self.obs.masque_flagges)
+            masque_final = mask_box & (~self.obs.flag_mask)
             indices = np.where(masque_final)[0]
             if len(indices) > 0:
                 self._flag_indices(indices)
@@ -655,12 +655,12 @@ class RadPlotEditor(BasePlotEditor):
                            extra={'difmap_level': 'success'})
         else:
             # DÉ-FLAGUER : sélectionner les points flaguées
-            masque_final = mask_box & self.obs.masque_flagges
+            masque_final = mask_box & self.obs.flag_mask
             indices = np.where(masque_final)[0]
             if len(indices) > 0:
                 self.obs.unflag_data(indices)
-                self.obs.masque_flagges[indices] = False
-                self.obs.historique_coupes.append(indices)
+                self.obs.flag_mask[indices] = False
+                self.obs.undo_history.append(indices)
                 self._update_colors()
                 logger.info(f"🔓 {len(indices)} points UNFLAG (souris droit)", 
                            extra={'difmap_level': 'success'})
@@ -697,7 +697,7 @@ class RadPlotEditor(BasePlotEditor):
         
         mask = ((self.uv_radius >= xmin) & (self.uv_radius <= xmax)
                 & (y_ref >= ymin) & (y_ref <= ymax)
-                & (~self.obs.masque_flagges) & (weight > 0))
+                & (~self.obs.flag_mask) & (weight > 0))
         indices = np.where(mask)[0]
         n = len(indices)
         
@@ -761,7 +761,7 @@ class RadPlotEditor(BasePlotEditor):
         
         mask = ((self.uv_radius >= xmin) & (self.uv_radius <= xmax)
                 & (y_ref >= ymin) & (y_ref <= ymax)
-                & (~self.obs.masque_flagges) & (weight > 0))
+                & (~self.obs.flag_mask) & (weight > 0))
         indices = np.where(mask)[0]
         n = len(indices)
         
@@ -828,7 +828,7 @@ class RadPlotEditor(BasePlotEditor):
         if strict and dist_sq[idx] > (0.015**2):
             return
             
-        if self.obs.masque_flagges[idx]:
+        if self.obs.flag_mask[idx]:
             return
             
         sub    = self.data.get("subarray", [0] * len(self.uv_radius))[idx]
@@ -906,7 +906,7 @@ class RadPlotEditor(BasePlotEditor):
         if dist_sq[idx] > (0.015**2):
             logger.warning("No point close enough to cursor.")
             return
-        if self.obs.masque_flagges[idx]:
+        if self.obs.flag_mask[idx]:
             logger.info("Point already flagged.")
             return
         self._flag_indices([idx])

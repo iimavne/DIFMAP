@@ -537,8 +537,9 @@ class Visualizer:
             0.5, -0.12, "\n".join(formatted_lines),
             transform=ax.transAxes,
             ha='center', va='top',
-            fontsize=7.5,
-            fontfamily='monospace',
+            fontsize=8.2,
+            fontfamily='DejaVu Sans Mono',
+            linespacing=1.10,
             color='black',
             clip_on=False,
             zorder=10,
@@ -604,6 +605,11 @@ class Visualizer:
         Returns
         -------
         matplotlib.axes.Axes
+
+        Examples
+        --------
+        >>> img = session.imager.make_clean_map(512, 0.1)
+        >>> Visualizer.plot_clean_map(img, contour_mode='log', contour_absmin=2.0)
         """
         from matplotlib.patches import Ellipse, Rectangle
 
@@ -619,6 +625,7 @@ class Visualizer:
         created_fig = ax is None
         if created_fig:
             fig, ax = plt.subplots(figsize=figsize)
+            fig.subplots_adjust(bottom=0.22)
 
         data = img_dict['data']
         info = img_dict.get('info', {})

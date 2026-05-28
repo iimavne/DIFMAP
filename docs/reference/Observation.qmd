@@ -28,16 +28,36 @@ et propose les opérations courantes sur les visibilités.
 
 | Name | Description |
 | --- | --- |
+| [available_polarizations](#difmap_wrapper.Observation.available_polarizations) | Retourne les polarisations disponibles pour l'observation courante. |
 | [flag_data](#difmap_wrapper.Observation.flag_data) | Marque les visibilités aux indices donnés comme exclues (flaguées). |
 | [get_data](#difmap_wrapper.Observation.get_data) | Retourne toutes les visibilités de la sélection active. |
+| [get_nchan](#difmap_wrapper.Observation.get_nchan) | Retourne le nombre de canaux par IF. |
+| [get_polarization](#difmap_wrapper.Observation.get_polarization) | Retourne la polarisation active (ex: ``'RR'``, ``'LL'``). Retourne ``'Unknown'`` si rien n'est chargé. |
+| [header](#difmap_wrapper.Observation.header) | Retourne le header complet de l'observation sous forme de texte. |
+| [ifs_from_pairs](#difmap_wrapper.Observation.ifs_from_pairs) | Retourne la liste 1-indexed des IFs couverts par des paires globales. |
+| [invalidate_cache](#difmap_wrapper.Observation.invalidate_cache) | Force un réextraction UV au prochain appel à get_data(). |
 | [notify_data_changed](#difmap_wrapper.Observation.notify_data_changed) | Notifie tous les éditeurs enregistrés que les données C ont changé. |
 | [nsub](#difmap_wrapper.Observation.nsub) | Retourne le nombre de sous-réseaux (subarrays) dans l'observation. |
+| [parse_select_syntax](#difmap_wrapper.Observation.parse_select_syntax) | Syntaxe originale difmap : indices de canaux globaux, 1-indexed, séparés |
 | [register_editor](#difmap_wrapper.Observation.register_editor) | Enregistre un éditeur Matplotlib comme observateur de ces données. |
 | [reset_flags](#difmap_wrapper.Observation.reset_flags) | Remet tous les flags à zéro (aucune visibilité exclue). |
 | [save_wobs](#difmap_wrapper.Observation.save_wobs) | Sauvegarde les données avec les flags actuels dans un nouveau fichier FITS. |
-| [select](#difmap_wrapper.Observation.select) | Sélectionne la polarisation, les IFs et les canaux à analyser. |
+| [select](#difmap_wrapper.Observation.select) | Sélectionne la polarisation et les IFs à analyser. |
+| [select_channels](#difmap_wrapper.Observation.select_channels) | Sélectionne des canaux par paires (index global, 1-indexed). |
+| [set_if_range](#difmap_wrapper.Observation.set_if_range) | Restreint l'extraction UV à la plage d'IFs ``[if_beg, if_end]`` |
 | [unflag_data](#difmap_wrapper.Observation.unflag_data) | Restaure les visibilités précédemment flaguées. |
 | [unregister_editor](#difmap_wrapper.Observation.unregister_editor) | Retire l'éditeur de la liste (appelé par cleanup()). |
+
+### available_polarizations { #difmap_wrapper.Observation.available_polarizations }
+
+```python
+Observation.available_polarizations()
+```
+
+Retourne les polarisations disponibles pour l'observation courante.
+
+La liste est extraite du header texte généré par le moteur Difmap,
+par exemple ``"RR"``, ``"RR LL"`` ou ``"RR, LL, RL, LR"``.
 
 ### flag_data { #difmap_wrapper.Observation.flag_data }
 
@@ -47,10 +67,8 @@ Observation.flag_data(indices)
 
 Marque les visibilités aux indices donnés comme exclues (flaguées).
 
-Le masque ``masque_flagges`` n'est **pas** mis à jour ici — c'est la
-responsabilité de l'éditeur graphique qui appelle cette méthode.
-Utilisez l'interface graphique ou ``BasePlotEditor._flag_indices()``
-pour une mise à jour cohérente.
+Met à jour simultanément l'état C (poids négatifs) et le masque
+Python ``masque_flagges`` pour garantir leur cohérence.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -106,6 +124,71 @@ pour choisir la polarisation et les IFs.
 11200 visibilités valides sur 11560
 ```
 
+### get_nchan { #difmap_wrapper.Observation.get_nchan }
+
+```python
+Observation.get_nchan()
+```
+
+Retourne le nombre de canaux par IF.
+
+### get_polarization { #difmap_wrapper.Observation.get_polarization }
+
+```python
+Observation.get_polarization()
+```
+
+Retourne la polarisation active (ex: ``'RR'``, ``'LL'``). Retourne ``'Unknown'`` si rien n'est chargé.
+
+### header { #difmap_wrapper.Observation.header }
+
+```python
+Observation.header()
+```
+
+Retourne le header complet de l'observation sous forme de texte.
+
+Équivalent de la commande interactive ``header`` de difmap.
+Inclut : mots-clés FITS, sous-réseaux, table des IFs, source,
+polarisations disponibles, dimensions et paramètres temporels.
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type   | Description                                           |
+|--------|--------|-------------------------------------------------------|
+|        | str    | Texte formaté du header, prêt à afficher ou à logger. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type             | Description                          |
+|--------|------------------|--------------------------------------|
+|        | DifmapStateError | Si aucune observation n'est chargée. |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> print(session.obs.header())
+UV FITS miscellaneous header keyword values:
+  OBSERVER = "..."
+  ...
+```
+
+### ifs_from_pairs { #difmap_wrapper.Observation.ifs_from_pairs }
+
+```python
+Observation.ifs_from_pairs(pairs, nchan, nif)
+```
+
+Retourne la liste 1-indexed des IFs couverts par des paires globales.
+
+### invalidate_cache { #difmap_wrapper.Observation.invalidate_cache }
+
+```python
+Observation.invalidate_cache()
+```
+
+Force un réextraction UV au prochain appel à get_data().
+
 ### notify_data_changed { #difmap_wrapper.Observation.notify_data_changed }
 
 ```python
@@ -148,6 +231,29 @@ La plupart des observations n'en ont qu'un seul.
 >>> print(session.obs.nsub())
 1
 ```
+
+### parse_select_syntax { #difmap_wrapper.Observation.parse_select_syntax }
+
+```python
+Observation.parse_select_syntax(text, nchan, nif)
+```
+
+Syntaxe originale difmap : indices de canaux globaux, 1-indexed, séparés
+par des virgules et pris **deux par deux** comme paires (bchan, echan).
+
+Un argument impair = canal unique (bchan == echan), comme difmap.
+Chaîne vide = sélectionner tout (retourne []).
+
+Exemples (nchan=64, nif=3 → total 192 canaux) :
+  "20, 25, 47, 65"  → [(20,25), (47,65)]
+  "50, 70"          → [(50,70)]  ← s'étend sur IF1 et IF2 automatiquement
+  "10"              → [(10,10)]  ← canal unique
+  ""                → []         ← tous les canaux
+
+Expressions supportées dans les valeurs :
+  ``nif``           → nombre d'IFs
+  ``nchan``         → canaux par IF
+  ``nif*nchan``     → dernier canal global
 
 ### register_editor { #difmap_wrapper.Observation.register_editor }
 
@@ -210,40 +316,83 @@ True
 Observation.select(pol='I', ifs=(1, 0), channels=(1, 0))
 ```
 
-Sélectionne la polarisation, les IFs et les canaux à analyser.
-
-Cette commande doit être appelée après ``session.observe()`` et avant
-tout accès aux données. Elle remet à zéro le masque de flagging.
+Sélectionne la polarisation et les IFs à analyser.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type         | Description                                                                                                                                                                                        | Default   |
-|----------|--------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
-| pol      | str          | Polarisation souhaitée : ``"I"``, ``"RR"``, ``"LL"``, ``"Q"``, etc. Si la polarisation demandée n'existe pas dans le fichier, le moteur bascule sur la plus proche disponible. Par défaut ``"I"``. | `'I'`     |
-| ifs      | tuple of int | ``(premier_if, dernier_if)``. ``0`` signifie "jusqu'au dernier". Par défaut ``(1, 0)`` = tous les IFs.                                                                                             | `(1, 0)`  |
-| channels | tuple of int | ``(premier_canal, dernier_canal)``. Par défaut ``(1, 0)`` = tous.                                                                                                                                  | `(1, 0)`  |
+| Name     | Type                 | Description                                                                                                                                                                                                                                                   | Default   |
+|----------|----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| pol      | Polarization         | Polarisation souhaitée. Par défaut ``"I"``.                                                                                                                                                                                                                   | `'I'`     |
+| ifs      | tuple or list of int | - ``(premier_if, dernier_if)`` : range contigu (0 = dernier IF).   Ex : ``(1, 0)`` = tous, ``(2, 3)`` = IFs 2 et 3. - ``[1, 3, 4]`` : liste d'IFs non-contigus (1-indexed).   Ex : ``[1, 3]`` = IF 1 et IF 3 seulement. Par défaut ``(1, 0)`` = tous les IFs. | `(1, 0)`  |
+| channels | tuple of int         | ``(premier_canal, dernier_canal)``. Par défaut ``(1, 0)`` = tous.                                                                                                                                                                                             | `(1, 0)`  |
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type   | Description                                                                                                        |
-|--------|--------|--------------------------------------------------------------------------------------------------------------------|
-|        | str    | La polarisation réellement sélectionnée par le moteur C (peut différer de ``pol`` si elle n'était pas disponible). |
-
-#### Raises {.doc-section .doc-section-raises}
-
-| Name   | Type             | Description                           |
-|--------|------------------|---------------------------------------|
-|        | DifmapStateError | Si aucune observation n'est chargée.  |
-|        | DifmapError      | Si la sélection échoue côté moteur C. |
+| Name   | Type   | Description                                              |
+|--------|--------|----------------------------------------------------------|
+|        | str    | La polarisation réellement sélectionnée par le moteur C. |
 
 #### Examples {.doc-section .doc-section-examples}
 
 ```python
 >>> session.obs.select(pol="RR")
-'RR'
->>> session.obs.select(pol="I", ifs=(1, 2))
-'I'
+>>> session.obs.select(pol="I", ifs=(2, 3))   # IFs 2→3
+>>> session.obs.select(pol="I", ifs=[1, 3])   # IFs 1 et 3
 ```
+
+### select_channels { #difmap_wrapper.Observation.select_channels }
+
+```python
+Observation.select_channels(pol, pairs)
+```
+
+Sélectionne des canaux par paires (index global, 1-indexed).
+
+Reproduit exactement ``uvsel_fn`` de difmap_src : construit un ``Chlist``
+et appelle ``ob_select``.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type               | Description                                                                                            | Default    |
+|--------|--------------------|--------------------------------------------------------------------------------------------------------|------------|
+| pol    | str                | Polarisation cible (ex: ``"I"``, ``"RR"``).                                                            | _required_ |
+| pairs  | list of (int, int) | Paires ``(bchan, echan)`` en index global ``cif * nchan + lchan``. Liste vide = tous les canaux / IFs. | _required_ |
+
+#### Examples {.doc-section .doc-section-examples}
+
+```python
+>>> # Sélectionner IF 1 entier (nchan=32) :
+>>> session.obs.select_channels("I", [(1, 32)])
+>>> # IF 1 et IF 3 (canaux 1–32 et 65–96) :
+>>> session.obs.select_channels("I", [(1, 32), (65, 96)])
+```
+
+### set_if_range { #difmap_wrapper.Observation.set_if_range }
+
+```python
+Observation.set_if_range(if_beg, if_end)
+```
+
+Restreint l'extraction UV à la plage d'IFs ``[if_beg, if_end]``
+**sans** relire le fichier scratch (pas de ``ob_select``).
+
+À utiliser quand seul le filtre IF change — beaucoup plus rapide que
+``select()``. Appeler ``get_data()`` ensuite pour obtenir les données
+filtrées.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type   | Description                                                | Default    |
+|--------|--------|------------------------------------------------------------|------------|
+| if_beg | int    | Premier IF souhaité (1-indexed). ``1`` = début.            | _required_ |
+| if_end | int    | Dernier IF souhaité (1-indexed). ``0`` = jusqu'au dernier. | _required_ |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type             | Description                          |
+|--------|------------------|--------------------------------------|
+|        | DifmapStateError | Si aucune observation n'est chargée. |
+|        | DifmapError      | Si l'appel C échoue.                 |
 
 ### unflag_data { #difmap_wrapper.Observation.unflag_data }
 
