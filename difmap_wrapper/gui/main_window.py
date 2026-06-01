@@ -1268,6 +1268,24 @@ class MainWindow(QMainWindow):
                 contour_custom=contour_custom
             )
 
+            # Mettre en cache le package dirty pour l'onglet All Maps.
+            # On copie les données ici (view C → numpy) pour qu'elles restent
+            # valides après un éventuel re-invert ou rechargement de fichier.
+            try:
+                frozen = dict(img_dict)
+                _data = img_dict.get('data')
+                if hasattr(_data, 'copy'):
+                    frozen['data'] = _data.copy()
+                _ext = img_dict.get('extent')
+                if isinstance(_ext, list):
+                    frozen['extent'] = list(_ext)
+                _info = img_dict.get('info')
+                if isinstance(_info, dict):
+                    frozen['info'] = dict(_info)
+                self._last_dirty_package = frozen
+            except Exception:
+                pass
+
             # Pré-rendre l'onglet Residual (identique à la dirty au départ) pour
             # éviter un onglet vide lors du premier switch.
             try:
