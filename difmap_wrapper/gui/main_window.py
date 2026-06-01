@@ -30,44 +30,49 @@ from .widgets.header_widget import HeaderWidget
 class SaveDialog(QDialog):
     """
     Dialogue de sauvegarde offrant deux modes :
-    - save  : préfixe → UV (.uvf), modèle (.mod), fenêtres (.win), carte (.fits), script (.par)
+    - save  : préfixe → UV (.uvf), modèle (.mod), fenêtres (.win), beam (.bfits), carte (.fits), script (.par)
     - wobs  : fichier FITS unique avec option do_shift
     """
 
     def __init__(self, parent=None, suggested_prefix: str = "session"):
         super().__init__(parent)
         self.setWindowTitle("Sauvegarder")
-        self.setMinimumWidth(440)
+        self.setMinimumWidth(480)
         self.setStyleSheet(DesignSystem.get_full_app_style())
         self.result_mode = None    # "save" | "wobs"
         self.result_prefix = ""
         self.result_filepath = ""
         self.result_do_shift = False
+        self._suggested_prefix = suggested_prefix
 
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
         # ── Mode save ────────────────────────────────────────────
         grp_save = QGroupBox("save  —  sauvegarde complète")
-        grp_save.setCheckable(False)
         vbox_save = QVBoxLayout(grp_save)
 
         lbl_save_info = QLabel(
-            "Génère : <b>prefix.uvf</b> (UV), <b>.mod</b> (modèle), "
-            "<b>.win</b> (fenêtres), <b>.fits</b> (carte), <b>.par</b> (script)."
+            "Génère : <b>.uvf</b> (UV), <b>.mod</b> (modèle), "
+            "<b>.win</b> (fenêtres), <b>.bfits</b> (beam), <b>.fits</b> (carte), <b>.par</b> (script)."
         )
         lbl_save_info.setWordWrap(True)
         vbox_save.addWidget(lbl_save_info)
 
-        row_prefix = QHBoxLayout()
-        row_prefix.addWidget(QLabel("Préfixe :"))
-        self._input_prefix = QLineEdit(suggested_prefix)
-        row_prefix.addWidget(self._input_prefix)
-        vbox_save.addLayout(row_prefix)
+        row_path = QHBoxLayout()
+        self._input_prefix = QLineEdit()
+        self._input_prefix.setPlaceholderText("chemin/préfixe…")
+        self._input_prefix.setReadOnly(True)
+        row_path.addWidget(self._input_prefix)
+        btn_browse_save = QPushButton("Parcourir…")
+        btn_browse_save.clicked.connect(self._browse_save_prefix)
+        row_path.addWidget(btn_browse_save)
+        vbox_save.addLayout(row_path)
 
-        btn_do_save = QPushButton("Sauvegarder (save)")
-        btn_do_save.clicked.connect(self._accept_save)
-        vbox_save.addWidget(btn_do_save)
+        self._btn_do_save = QPushButton("Sauvegarder (save)")
+        self._btn_do_save.setEnabled(False)
+        self._btn_do_save.clicked.connect(self._accept_save)
+        vbox_save.addWidget(self._btn_do_save)
         layout.addWidget(grp_save)
 
         # ── Mode wobs ────────────────────────────────────────────
@@ -91,19 +96,35 @@ class SaveDialog(QDialog):
         btn_cancel.clicked.connect(self.reject)
         layout.addWidget(btn_cancel)
 
+    def _browse_save_prefix(self):
+        """Ouvre un QFileDialog pour choisir chemin + préfixe (sans extension)."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Choisir le préfixe de sauvegarde",
+            self._suggested_prefix,
+            "Préfixe difmap (*)"
+        )
+        if not path:
+            return
+        # Retirer toute extension que l'utilisateur aurait pu taper
+        base = path
+        for ext in ('.uvf', '.mod', '.cmod', '.win', '.bfits', '.fits', '.mtab', '.par'):
+            if base.lower().endswith(ext):
+                base = base[:-len(ext)]
+                break
+        self._input_prefix.setText(base)
+        self._btn_do_save.setEnabled(True)
+
     def _accept_save(self):
         prefix = self._input_prefix.text().strip()
         if not prefix:
-            QMessageBox.warning(self, "Préfixe vide", "Entrez un préfixe pour les fichiers.")
             return
         self.result_mode = "save"
         self.result_prefix = prefix
         self.accept()
 
     def _accept_wobs(self):
-        parent = self.parent()
         filepath, _ = QFileDialog.getSaveFileName(
-            self, "Save UV data (wobs)", "", "FITS (*.fits)"
+            self, "Save UV data (wobs)", self._suggested_prefix, "FITS (*.fits)"
         )
         if not filepath:
             return
@@ -926,15 +947,12 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Aucune donnée", "Chargez un fichier FITS d'abord.")
             return
 
-        suggested = os.path.splitext(
-            os.path.basename(self.session.obs._native.get_source().strip() or "session")
-        )[0] if hasattr(self.session.obs._native, 'get_source') else "session"
-
         try:
-            src = self.session.obs.source or "session"
-            suggested = src.strip().replace(" ", "_") or "session"
+            src = (self.session.obs.source or "session").strip().replace(" ", "_") or "session"
         except Exception:
-            suggested = "session"
+            src = "session"
+        # Préfixe complet = répertoire courant + nom de source
+        suggested = os.path.join(os.getcwd(), src)
 
         dlg = SaveDialog(parent=self, suggested_prefix=suggested)
         if dlg.exec() != QDialog.DialogCode.Accepted:
@@ -945,7 +963,7 @@ class MainWindow(QMainWindow):
             try:
                 self.session.save(prefix)
                 self.log_console.log(
-                    f"Sauvegarde complète → {prefix}.uvf / .mod / .win / .fits / .par"
+                    f"Sauvegarde complète → {prefix}.uvf / .mod / .win / .bfits / .fits / .par"
                 )
             except Exception as e:
                 self.log_console.log(f"Erreur save : {e}")

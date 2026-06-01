@@ -8664,13 +8664,128 @@ int save_native_wobs(const char* filepath, int do_shift) {
     return 0;
 }
 
-int native_save(const char *prefix) {
-    static Descriptor filearg = {'c', 0, NO_DEL, 1, {1,1,1}, NULL};
-    Descriptor *invals = &filearg;
-    char *cptr = (char *)prefix;
+/* Safe par-file writer: subset of wrtpars() that guards NULL-prone state
+   (mappar.ctab, vflags/rflags/pflags/tflags) absent in the GUI context. */
+static int native_wrtpars_safe(const char *parname, const char *basename) {
+    FILE *fp;
+    int waserr = 0;
     if (!vlbob) return -1;
-    VOIDPTR(&filearg) = &cptr;
-    return save_fn(&invals, 1, NULL);
+    fp = fopen(parname, "w");
+    if (!fp) return -1;
+    lprintf(stdout, "Writing difmap environment to: %s\n", parname);
+    waserr = waserr || lprintf(fp, "! Command file created by difmap GUI\n") < 0;
+    waserr = waserr || lprintf(fp, "mapunits %s\n", mapunits(U_NAME)) < 0;
+    if (basename)
+        waserr = waserr || lprintf(fp, "get %s\n", basename) < 0;
+    if (vlbmap)
+        waserr = waserr || lprintf(fp, "mapsize %d,%g, %d,%g\n",
+            vlbmap->nx, radtoxy(vlbmap->xinc),
+            vlbmap->ny, radtoxy(vlbmap->yinc)) < 0;
+    if (ob_ready(vlbob, OB_SELECT, NULL)) {
+        Chlist *cl = vlbob->stream.cl;
+        int ir;
+        waserr = waserr || lprintf(fp, "select %s",
+            Stokes_name(vlbob->stream.pol.type)) < 0;
+        for (ir = 0; ir < cl->nrange; ir++)
+            waserr = waserr || lprintf(fp, ", %d, %d",
+                cl->range[ir].ca + 1, cl->range[ir].cb + 1) < 0;
+        waserr = waserr || lprintf(fp, "\n") < 0;
+    }
+    waserr = waserr || lprintf(fp, "uvtaper %g, %g\n",
+        invpar.gauval, wavtouv(invpar.gaurad)) < 0;
+    waserr = waserr || lprintf(fp, "uvrange %g, %g\n",
+        wavtouv(invpar.uvmin), wavtouv(invpar.uvmax)) < 0;
+    waserr = waserr || lprintf(fp, "uvweight %g, %g, %s\n",
+        invpar.uvbin, invpar.errpow, invpar.dorad ? "true" : "false") < 0;
+    waserr = waserr || lprintf(fp, "integer niter; niter=%d\n", clnpar.niter) < 0;
+    waserr = waserr || lprintf(fp, "float gain; gain=%g\n", clnpar.gain) < 0;
+    waserr = waserr || lprintf(fp, "float cutoff; cutoff=%g\n", clnpar.cutoff) < 0;
+    waserr = waserr || lprintf(fp, "selftaper %g, %g\n",
+        slfpar.gauval, wavtouv(slfpar.gaurad)) < 0;
+    waserr = waserr || lprintf(fp, "selflims %g, %g, %s\n",
+        slfpar.maxamp, slfpar.maxphs * rtod,
+        slfpar.clip ? "true" : "false") < 0;
+    waserr = waserr || lprintf(fp, "selfflag %s, %d, %d\n",
+        slfpar.doflag ? "true" : "false",
+        slfpar.p_mintel, slfpar.a_mintel) < 0;
+    fclose(fp);
+    return waserr ? -1 : 0;
+}
+
+int native_save(const char *prefix) {
+    static Descriptor fa_mod  = {'c', 0, NO_DEL, 1, {1,1,1}, NULL};
+    static Descriptor fa_bool = {'c', 0, NO_DEL, 1, {1,1,1}, NULL};
+    static Descriptor fa_win  = {'c', 0, NO_DEL, 1, {1,1,1}, NULL};
+    static Descriptor fa_mtab = {'c', 0, NO_DEL, 1, {1,1,1}, NULL};
+    Descriptor *iv_mod[2]  = {&fa_mod,  &fa_bool};
+    Descriptor *iv_win[1]  = {&fa_win};
+    Descriptor *iv_mtab[1] = {&fa_mtab};
+    char fname[1024];
+    char *cptr;
+    int hasmod, hascmod, hasmtab;
+    char docont = 1;
+
+    if (!vlbob) return -1;
+
+    /* 1. UV FITS (wobs) */
+    snprintf(fname, sizeof(fname), "%s.uvf", prefix);
+    if (save_native_wobs(fname, 0) != 0) return -1;
+
+    /* 2. Model .mod (wmodel) */
+    hasmod = (vlbob->model  && vlbob->model->ncmp  > 0) ||
+             (vlbob->newmod && vlbob->newmod->ncmp  > 0);
+    if (hasmod) {
+        snprintf(fname, sizeof(fname), "%s.mod", prefix);
+        cptr = fname;
+        VOIDPTR(&fa_mod) = &cptr;
+        wmodel_fn(iv_mod, 1, NULL);
+    }
+
+    /* 3. Continuum model .cmod (wmodel docont=true) */
+    hascmod = (vlbob->cmodel  && vlbob->cmodel->ncmp  > 0) ||
+              (vlbob->cnewmod && vlbob->cnewmod->ncmp > 0);
+    if (hascmod) {
+        snprintf(fname, sizeof(fname), "%s.cmod", prefix);
+        cptr = fname;
+        VOIDPTR(&fa_mod)  = &cptr;
+        VOIDPTR(&fa_bool) = &docont;
+        wmodel_fn(iv_mod, 2, NULL);
+    }
+
+    /* 4. Windows .win (wwins) */
+    if (vlbwins && vlbwins->nwin > 0) {
+        snprintf(fname, sizeof(fname), "%s.win", prefix);
+        cptr = fname;
+        VOIDPTR(&fa_win) = &cptr;
+        wwins_fn(iv_win, 1, NULL);
+    }
+
+    /* 5. Dirty beam .bfits (wbeam) */
+    if (vlbmap && vlbmap->dobeam == 0) {
+        snprintf(fname, sizeof(fname), "%s.bfits", prefix);
+        native_wbeam(fname);
+    }
+
+    /* 6. Clean map .fits (wmap) */
+    if (vlbmap && vlbmap->domap == MAP_IS_CLEAN && hasmod) {
+        snprintf(fname, sizeof(fname), "%s.fits", prefix);
+        native_wmap(fname);
+    }
+
+    /* 7. Model table .mtab (write_models) */
+    hasmtab = vlbob->mtab && num_ModelTable_entries(vlbob->mtab) > 0;
+    if (hasmtab) {
+        snprintf(fname, sizeof(fname), "%s.mtab", prefix);
+        cptr = fname;
+        VOIDPTR(&fa_mtab) = &cptr;
+        write_models_fn(iv_mtab, 1, NULL);
+    }
+
+    /* 8. Parameter restore script .par */
+    snprintf(fname, sizeof(fname), "%s.par", prefix);
+    native_wrtpars_safe(fname, prefix);
+
+    return 0;
 }
 
 
