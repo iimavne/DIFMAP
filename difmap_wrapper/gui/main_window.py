@@ -5,8 +5,11 @@ import select as _select
 import numpy as np
 import difmap_native
 
-from PyQt6.QtWidgets import QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox, QGridLayout, QApplication
-from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
+from PyQt6.QtWidgets import (QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox,
+                             QGridLayout, QApplication, QDialog, QVBoxLayout, QHBoxLayout,
+                             QGroupBox, QLabel, QLineEdit, QPushButton, QCheckBox, QRadioButton,
+                             QButtonGroup)
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QCursor
 
 from difmap_wrapper import DifmapSession
@@ -24,68 +27,173 @@ from .utils import SignalRouter
 from .widgets.header_widget import HeaderWidget
 
 
+class SaveDialog(QDialog):
+    """
+    Dialogue de sauvegarde offrant deux modes :
+    - save  : préfixe → UV (.uvf), modèle (.mod), fenêtres (.win), carte (.fits), script (.par)
+    - wobs  : fichier FITS unique avec option do_shift
+    """
 
-class CleanWorker(QThread):
-    """Exécute le CLEAN difmap en arrière-plan, itération par chunk."""
-    progress = pyqtSignal(int, int)   # (done, total)
-    paused   = pyqtSignal(int, int)   # (done, total) when a conditional breakpoint is reached
-    finished = pyqtSignal()
-    error    = pyqtSignal(str)
+    def __init__(self, parent=None, suggested_prefix: str = "session"):
+        super().__init__(parent)
+        self.setWindowTitle("Sauvegarder")
+        self.setMinimumWidth(440)
+        self.setStyleSheet(DesignSystem.get_full_app_style())
+        self.result_mode = None    # "save" | "wobs"
+        self.result_prefix = ""
+        self.result_filepath = ""
+        self.result_do_shift = False
 
-    def __init__(self, imager, niter, gain, cutoff, chunk_size=50, pause_after=0):
-        super().__init__()
-        self._imager     = imager
-        self._niter      = niter
-        self._gain       = gain
-        self._cutoff     = cutoff
-        self._chunk_size = chunk_size
-        self._pause_after = pause_after   # 0 = no conditional breakpoint
-        self._done   = 0
-        self._paused = False
-        self._abort  = False
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+
+        # ── Mode save ────────────────────────────────────────────
+        grp_save = QGroupBox("save  —  sauvegarde complète")
+        grp_save.setCheckable(False)
+        vbox_save = QVBoxLayout(grp_save)
+
+        lbl_save_info = QLabel(
+            "Génère : <b>prefix.uvf</b> (UV), <b>.mod</b> (modèle), "
+            "<b>.win</b> (fenêtres), <b>.fits</b> (carte), <b>.par</b> (script)."
+        )
+        lbl_save_info.setWordWrap(True)
+        vbox_save.addWidget(lbl_save_info)
+
+        row_prefix = QHBoxLayout()
+        row_prefix.addWidget(QLabel("Préfixe :"))
+        self._input_prefix = QLineEdit(suggested_prefix)
+        row_prefix.addWidget(self._input_prefix)
+        vbox_save.addLayout(row_prefix)
+
+        btn_do_save = QPushButton("Sauvegarder (save)")
+        btn_do_save.clicked.connect(self._accept_save)
+        vbox_save.addWidget(btn_do_save)
+        layout.addWidget(grp_save)
+
+        # ── Mode wobs ────────────────────────────────────────────
+        grp_wobs = QGroupBox("wobs  —  données UV uniquement")
+        vbox_wobs = QVBoxLayout(grp_wobs)
+
+        lbl_wobs_info = QLabel("Exporte les visibilités dans un fichier UVFITS random-groups.")
+        lbl_wobs_info.setWordWrap(True)
+        vbox_wobs.addWidget(lbl_wobs_info)
+
+        self._chk_shift = QCheckBox("do_shift  (décaler le centre de pointage)")
+        vbox_wobs.addWidget(self._chk_shift)
+
+        btn_do_wobs = QPushButton("Sauvegarder (wobs)…")
+        btn_do_wobs.clicked.connect(self._accept_wobs)
+        vbox_wobs.addWidget(btn_do_wobs)
+        layout.addWidget(grp_wobs)
+
+        # ── Annuler ───────────────────────────────────────────────
+        btn_cancel = QPushButton("Annuler")
+        btn_cancel.clicked.connect(self.reject)
+        layout.addWidget(btn_cancel)
+
+    def _accept_save(self):
+        prefix = self._input_prefix.text().strip()
+        if not prefix:
+            QMessageBox.warning(self, "Préfixe vide", "Entrez un préfixe pour les fichiers.")
+            return
+        self.result_mode = "save"
+        self.result_prefix = prefix
+        self.accept()
+
+    def _accept_wobs(self):
+        parent = self.parent()
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Save UV data (wobs)", "", "FITS (*.fits)"
+        )
+        if not filepath:
+            return
+        self.result_mode = "wobs"
+        self.result_filepath = filepath
+        self.result_do_shift = self._chk_shift.isChecked()
+        self.accept()
+
+
+class CleanTimer:
+    """Exécute le CLEAN difmap par chunks sur le thread principal via QTimer.
+
+    Toutes les appels C (native_clean) se font sur le thread Qt principal —
+    le moteur difmap utilise des variables globales non thread-safe.
+    Les callbacks (progress/paused/finished/error) sont appelés directement.
+    """
+
+    def __init__(self, parent, imager, niter, gain, cutoff, chunk_size=50, pause_after=0):
+        self._parent      = parent
+        self._imager      = imager
+        self._niter       = niter
+        self._gain        = gain
+        self._cutoff      = cutoff
+        self._chunk_size  = chunk_size
+        self._pause_after = pause_after
+        self._done        = 0
+        self._paused      = False
+        self._abort       = False
         self._cutoff_reached = False
+        self._timer = QTimer(parent)
+        self._timer.setInterval(0)
+        self._timer.timeout.connect(self._step)
+
+    def isRunning(self) -> bool:
+        return self._timer.isActive() or self._paused
 
     def request_pause(self):
         self._paused = True
+        self._timer.stop()
 
     def request_resume(self):
         self._paused = False
+        self._timer.start()
 
     def abort(self):
         self._abort  = True
         self._paused = False
+        self._timer.stop()
 
-    def run(self):
-        try:
-            while self._done < self._niter and not self._abort:
-                while self._paused and not self._abort:
-                    self.msleep(50)
-                if self._abort:
-                    break
-                chunk = min(self._chunk_size, self._niter - self._done)
-                if self._pause_after > 0:
-                    since_last = self._done % self._pause_after
-                    to_bp = (self._pause_after - since_last) if since_last else self._pause_after
-                    chunk = min(chunk, to_bp)
-                self._imager.clean(chunk, self._gain, self._cutoff)
-                self._done += chunk
-                self.progress.emit(self._done, self._niter)
+    def start(self):
+        self._timer.start()
 
-                if self._cutoff > 0:
-                    try:
-                        peak_info = self._imager.peak()
-                        if peak_info and float(peak_info.get('flux', 0.0)) <= float(self._cutoff):
-                            self._cutoff_reached = True
-                            break
-                    except Exception:
-                        pass
-                if self._pause_after > 0 and self._done % self._pause_after == 0 and self._done < self._niter:
-                    self._paused = True
-                    self.paused.emit(self._done, self._niter)
+    def _step(self):
+        if self._done >= self._niter or self._abort:
+            self._timer.stop()
             if not self._abort:
-                self.finished.emit()
+                self._parent._on_clean_finished()
+            return
+
+        chunk = min(self._chunk_size, self._niter - self._done)
+        if self._pause_after > 0:
+            since_last = self._done % self._pause_after
+            to_bp = (self._pause_after - since_last) if since_last else self._pause_after
+            chunk = min(chunk, to_bp)
+
+        try:
+            self._imager.clean(chunk, self._gain, self._cutoff)
         except Exception as exc:
-            self.error.emit(str(exc))
+            self._timer.stop()
+            self._parent._on_clean_error(str(exc))
+            return
+
+        self._done += chunk
+        self._parent._on_clean_progress(self._done, self._niter)
+
+        if self._cutoff > 0:
+            try:
+                peak_info = self._imager.peak()
+                if peak_info and float(peak_info.get('flux', 0.0)) <= float(self._cutoff):
+                    self._cutoff_reached = True
+                    self._timer.stop()
+                    self._parent._on_clean_finished()
+                    return
+            except Exception:
+                pass
+
+        if self._pause_after > 0 and self._done % self._pause_after == 0 and self._done < self._niter:
+            self._paused = True
+            self._timer.stop()
+            self._parent._on_clean_paused(self._done, self._niter)
 
 
 
@@ -200,6 +308,7 @@ class MainWindow(QMainWindow):
         self._clean_worker = None
         self._last_mapsize_params = None   # (mapsize, cellsize) last sent to C
         self._last_uvtaper_params = None   # (taper_amp, taper_val) last sent to C
+        self._force_clean_reset   = True   # True = next CLEAN must do clrmod+invert
 
         self._selected_ifs: list[int] | None = None
         self._channels_text: str = ""
@@ -263,6 +372,10 @@ class MainWindow(QMainWindow):
 
     def _load_file_logic(self, filepath: str) -> None:
         """Charge un fichier UVFITS sur le thread principal (difmap/PGPLOT/X11 non thread-safe)."""
+        if self._clean_worker is not None:
+            self._clean_worker.abort()
+            self._clean_worker = None
+            self._set_ui_for_clean(False)
         try:
             filename = os.path.basename(filepath)
             self.log_console.clear_log()
@@ -283,6 +396,7 @@ class MainWindow(QMainWindow):
             self._last_clean_package  = None
             self._last_mapsize_params = None
             self._last_uvtaper_params = None
+            self._force_clean_reset   = True
             self._set_selfcal_ready(False)
 
             available_pols = self.session.obs.available_polarizations()
@@ -400,6 +514,12 @@ class MainWindow(QMainWindow):
             else:
                 self.plot_widget.reload_data(self.data, self.session.obs)
 
+            # Ctrl+S → dialogue save/wobs complet
+            for _w in (self.plot_widget, self.radplot_widget):
+                _ed = getattr(_w, 'editor', None) if _w else None
+                if _ed is not None:
+                    _ed.full_save_callback = self._show_save_dialog
+
             self.radplot_widget.plot_data(
                 data=self.data,
                 observation=self.session.obs,
@@ -447,12 +567,7 @@ class MainWindow(QMainWindow):
 
         tb.action_load.triggered.connect(self._on_load_triggered)
 
-        def handle_save():
-            editor = self._get_active_editor()
-            if editor:
-                editor.save_callback = self._handle_save_dialog
-                editor.action_save()
-        tb.action_save.triggered.connect(handle_save)
+        tb.action_save.triggered.connect(self._show_save_dialog)
 
         tb.action_help.triggered.connect(self._show_help_dialog)
         tb.action_exit.triggered.connect(self.close)
@@ -805,6 +920,50 @@ class MainWindow(QMainWindow):
         )
         return filename
 
+    def _show_save_dialog(self):
+        """Ouvre le dialogue de sauvegarde (save / wobs) et exécute l'action choisie."""
+        if not self.session.uv_loaded:
+            QMessageBox.information(self, "Aucune donnée", "Chargez un fichier FITS d'abord.")
+            return
+
+        suggested = os.path.splitext(
+            os.path.basename(self.session.obs._native.get_source().strip() or "session")
+        )[0] if hasattr(self.session.obs._native, 'get_source') else "session"
+
+        try:
+            src = self.session.obs.source or "session"
+            suggested = src.strip().replace(" ", "_") or "session"
+        except Exception:
+            suggested = "session"
+
+        dlg = SaveDialog(parent=self, suggested_prefix=suggested)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        if dlg.result_mode == "save":
+            prefix = dlg.result_prefix
+            try:
+                self.session.save(prefix)
+                self.log_console.log(
+                    f"Sauvegarde complète → {prefix}.uvf / .mod / .win / .fits / .par"
+                )
+            except Exception as e:
+                self.log_console.log(f"Erreur save : {e}")
+                QMessageBox.critical(self, "Save Error", str(e))
+
+        elif dlg.result_mode == "wobs":
+            filepath = dlg.result_filepath
+            do_shift = dlg.result_do_shift
+            try:
+                self.session.obs.save_wobs(filepath, do_shift=do_shift)
+                self.log_console.log(
+                    f"wobs → {os.path.basename(filepath)}"
+                    + (" (do_shift=True)" if do_shift else "")
+                )
+            except Exception as e:
+                self.log_console.log(f"Erreur wobs : {e}")
+                QMessageBox.critical(self, "wobs Error", str(e))
+
     def _show_help_dialog(self):
         """
         Affiche une boîte de dialogue récapitulant tous les raccourcis clavier.
@@ -878,7 +1037,7 @@ class MainWindow(QMainWindow):
         <ul>
           <li>Les points flaggués sont masqués (état conservé par l'Observation).</li>
           <li>Annulation : <code>u</code> ou <code>Ctrl+Z</code>.</li>
-          <li>Sauvegarde : <code>Ctrl+S</code> exporte les visibilités.</li>
+          <li>Sauvegarde : <code>Ctrl+S</code> ouvre le dialogue save / wobs.</li>
         </ul>
         """
 
@@ -915,7 +1074,7 @@ class MainWindow(QMainWindow):
           <tr><td><b>F</b></td><td>Flagging interactif (gauche=flag, droit=unflag)</td></tr>
           <tr><td><b>Z</b></td><td>Zoom box</td></tr>
           <tr><td><b>u / Ctrl+Z</b></td><td>Annuler</td></tr>
-          <tr><td><b>Ctrl+S</b></td><td>Sauvegarder (export FITS)</td></tr>
+          <tr><td><b>Ctrl+S</b></td><td>Ouvrir le dialogue save / wobs</td></tr>
         </table>
 
         <h3>Radplot</h3>
@@ -1106,7 +1265,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Imaging Error", err_msg)
 
     def _start_clean(self):
-        """Lance ou reprend le CLEAN de façon asynchrone via CleanWorker (QThread)."""
+        """Lance ou reprend le CLEAN sur le thread principal via CleanTimer (QTimer)."""
         if (self._clean_worker is not None
                 and self._clean_worker.isRunning()
                 and getattr(self._clean_worker, '_paused', False)):
@@ -1128,12 +1287,11 @@ class MainWindow(QMainWindow):
                     raise ValueError(f"Gain doit être dans ]0, 1], obtenu: {gain}")
             except ValueError as exc:
                 raise ValueError(f"Gain invalide: {exc}") from exc
-            try:
-                cutoff = float(self.control_panel.input_cutoff.text())
-                if cutoff < 0:
-                    raise ValueError(f"Cutoff doit être ≥ 0, obtenu: {cutoff}")
-            except ValueError as exc:
-                raise ValueError(f"Cutoff invalide: {exc}") from exc
+
+            cutoff_text = self.control_panel.input_cutoff.text().strip()
+            cutoff = float(cutoff_text) if cutoff_text else 0.0
+            if cutoff < 0:
+                raise ValueError(f"Cutoff doit être ≥ 0, obtenu: {cutoff}")
 
             mapsize, cellsize, taper_val, uvmin_wav, uvmax_wav = self._apply_imaging_params()
 
@@ -1144,19 +1302,35 @@ class MainWindow(QMainWindow):
                 except ValueError:
                     pause_after = 0
 
-            self.session.imager.clrmod()
+            # Continuation mode : si pas de reset forcé ET qu'on a déjà un résiduel,
+            # on continue le CLEAN depuis le résiduel existant sans repartir de zéro.
+            _can_continue = (
+                not self._force_clean_reset
+                and self.session.imager._current_map_type == "residual"
+                and self.session.imager._last_residual_map is not None
+            )
 
-            self.session.imager.invert(uvmin_wav, uvmax_wav)
+            if not _can_continue:
+                self.session.imager.clrmod()
+                self.session.imager.invert(uvmin_wav, uvmax_wav)
+                try:
+                    self.session.imager.snapshot_residual_from_current_map()
+                    self._refresh_residual_map()
+                except Exception:
+                    pass
+                self._force_clean_reset = False
 
             self.control_panel.progress_bar.setValue(0)
             self.control_panel.lbl_progress.setText(f"0 / {niter}")
 
+            mode_str   = "continued" if _can_continue else "started"
             cutoff_str = f", cutoff: {cutoff}" if cutoff > 0 else ""
             self.log_console.log(
-                f"CLEAN started — niter: {niter}, gain: {gain}{cutoff_str}, taper: {taper_val} Mλ"
+                f"CLEAN {mode_str} — niter: {niter}, gain: {gain}{cutoff_str}, taper: {taper_val} Mλ"
             )
 
-            self._clean_worker = CleanWorker(
+            self._clean_worker = CleanTimer(
+                parent=self,
                 imager=self.session.imager,
                 niter=niter,
                 gain=gain,
@@ -1164,10 +1338,6 @@ class MainWindow(QMainWindow):
                 chunk_size=50,
                 pause_after=pause_after,
             )
-            self._clean_worker.progress.connect(self._on_clean_progress)
-            self._clean_worker.paused.connect(self._on_clean_paused)
-            self._clean_worker.finished.connect(self._on_clean_finished)
-            self._clean_worker.error.connect(self._on_clean_error)
             self._set_ui_for_clean(True)
             self._clean_worker.start()
 
@@ -1229,6 +1399,7 @@ class MainWindow(QMainWindow):
         ctrl = self.control_panel
         ctrl.btn_compute.setEnabled(not running)
         ctrl.btn_apply_imaging.setEnabled(not running)
+        self.toolbar.action_load.setEnabled(not running)
         if running:
             ctrl.btn_compute_clean.setEnabled(False)
         elif cutoff_reached:
@@ -1275,6 +1446,10 @@ class MainWindow(QMainWindow):
             )
 
     def _run_restore(self) -> None:
+        if self._clean_worker is not None:
+            self._clean_worker.abort()
+            self._clean_worker = None
+            self._set_ui_for_clean(False)
         try:
             self.session.imager.restore()
             self._refresh_clean_map()
@@ -1382,7 +1557,7 @@ class MainWindow(QMainWindow):
             self.log_console.log("Re-invert post-selfcal…")
             mapsize, cellsize, taper_val, uvmin_wav, uvmax_wav = self._apply_imaging_params()
             self.session.imager.invert(uvmin_wav, uvmax_wav)
-            self._last_uvtaper_params = None  # force re-apply taper au prochain CLEAN
+            self._force_clean_reset = True  # post-selfcal : prochain CLEAN repart de zéro
 
             self._refresh_residual_map()
             self._refresh_dirty_map()

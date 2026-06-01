@@ -8656,12 +8656,21 @@ int unflag_native_data(int *indices, int num_indices) {
     return 0;
 }
 
-int save_native_wobs(const char* filepath) {
+int save_native_wobs(const char* filepath, int do_shift) {
     if (vlbob == NULL) return -1;
-    if (uvf_write(vlbob, filepath, 0) != 0) {
+    if (uvf_write(vlbob, filepath, do_shift) != 0) {
         return -1;
     }
     return 0;
+}
+
+int native_save(const char *prefix) {
+    static Descriptor filearg = {'c', 0, NO_DEL, 1, {1,1,1}, NULL};
+    Descriptor *invals = &filearg;
+    char *cptr = (char *)prefix;
+    if (!vlbob) return -1;
+    VOIDPTR(&filearg) = &cptr;
+    return save_fn(&invals, 1, NULL);
 }
 
 

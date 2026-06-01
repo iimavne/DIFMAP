@@ -172,6 +172,21 @@ class DifmapSession(metaclass=_SingletonMeta):
         self.obs.historique_coupes.clear()
         self.obs.invalidate_cache()
 
+    def save(self, prefix: str) -> None:
+        """
+        Sauvegarde complète (commande save difmap) : données UV (.uvf), modèle (.mod),
+        fenêtres CLEAN (.win), carte restaurée (.fits) et fichier de paramètres (.par).
+
+        Parameters
+        ----------
+        prefix : str
+            Préfixe de base pour tous les fichiers générés. Exemple : ``"session_01"``.
+        """
+        if not self.uv_loaded:
+            from ..utils.exceptions import DifmapStateError
+            raise DifmapStateError("Aucune observation chargée — appelez observe() d'abord.")
+        self._native.save(prefix)
+
     def cleanup(self) -> None:
         """
         Libère les ressources et permet de créer une nouvelle session.

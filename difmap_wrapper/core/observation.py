@@ -544,9 +544,9 @@ class Observation:
         self.notify_data_changed()
         return result
 
-    def save_wobs(self, filepath: str) -> bool:
+    def save_wobs(self, filepath: str, do_shift: bool = False) -> bool:
         """
-        Sauvegarde les données avec les flags actuels dans un nouveau fichier FITS.
+        Sauvegarde les données UV dans un fichier UVFITS (commande wobs difmap).
 
         Si l'extension ``'.fits'`` est absente du nom, elle est ajoutée automatiquement.
 
@@ -554,19 +554,16 @@ class Observation:
         ----------
         filepath : str
             Chemin de destination. Exemple : ``"sortie_editee.fits"``.
+        do_shift : bool, optional
+            Si True, décale le centre de pointage dans le fichier de sortie.
 
         Returns
         -------
         bool
             ``True`` si la sauvegarde a réussi.
-
-        Examples
-        --------
-        >>> session.obs.save_wobs("data/source_flagged.fits")
-        True
         """
         if not filepath.lower().endswith('.fits'):
             filepath += '.fits'
-        logger.info("Sauvegarde en cours via Difmap vers : %s", filepath)
-        self._native.save_wobs(filepath)
+        logger.info("Sauvegarde wobs vers : %s (do_shift=%s)", filepath, do_shift)
+        self._native.save_wobs(filepath, do_shift)
         return True

@@ -66,7 +66,8 @@ cdef extern from "difmap_api.h":
     int native_wbeam(const char* filename)
     int native_wdmap(const char* filename)
     int flag_native_data(int *indices, int num_indices)
-    int save_native_wobs(const char* filepath)
+    int save_native_wobs(const char* filepath, int do_shift)
+    int native_save(const char* prefix)
     int unflag_native_data(int *indices, int num_indices)
 
     # Statistiques du pic et bruit

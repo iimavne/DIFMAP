@@ -856,16 +856,14 @@ class BasePlotEditor:
 
     def action_save(self, event=None):
         """
-        Sauvegarde les visibilités dans un fichier FITS via ``save_callback``. ``Ctrl+S``.
+        Ouvre le dialogue de sauvegarde (save / wobs). ``Ctrl+S``.
 
-        Appelle ``save_callback`` pour obtenir le chemin de destination,
-        puis ``obs.save_wobs()`` pour écrire le fichier.
-
-        Parameters
-        ----------
-        event : matplotlib.backend_bases.KeyEvent, optional
-            Événement clavier (ignoré).
+        Si ``full_save_callback`` est défini il est appelé directement (délègue au
+        dialogue de la MainWindow). Sinon, repli sur l'ancien comportement wobs.
         """
+        if callable(getattr(self, 'full_save_callback', None)):
+            self.full_save_callback()
+            return
         path_origine = getattr(self.obs, 'filepath', "data.fits")
         if self.save_callback:
             nom_final = self.save_callback(path_origine)
