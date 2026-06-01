@@ -2,58 +2,48 @@
 
 class DifmapError(Exception):
     """
-    Exception de base pour toutes les erreurs liées au moteur C de Difmap.
-    
-    Cette exception est levée lorsque le code natif (C/Cython) rencontre 
-    un problème interne qu'il ne peut pas résoudre (ex: échec d'allocation 
-    mémoire, erreur mathématique dans la FFT, fichier FITS introuvable). 
-    C'est la classe parente de toutes les exceptions spécifiques du paquet.
+    Exception de base pour toutes les erreurs du moteur C de Difmap.
+
+    Levée quand le code natif (C/Cython) échoue : allocation mémoire,
+    FFT invalide, fichier FITS corrompu, argument hors plage. Toutes
+    les exceptions du paquet en héritent — un seul ``except DifmapError``
+    suffit pour tout intercepter.
 
     Examples
     --------
-    Interception d'une erreur critique du moteur lors de l'automatisation 
-    d'un pipeline de traitement :
-
-    ```python
-    from difmap_wrapper import DifmapSession
-    from difmap_wrapper.exceptions import DifmapError
-
-    with DifmapSession() as session:
-        try:
-            # Tentative de chargement d'un fichier corrompu ou inexistant
-            session.load_observation("donnees_corrompues.fits")
-            
-        except DifmapError as e:
-            print(f"Alerte : Le moteur C a rejeté l'opération. Détail : {e}")
-            # Le script peut continuer à analyser la galaxie suivante 
-            # sans s'arrêter net.
-    ```
+    >>> from difmap_wrapper import DifmapSession
+    >>> from difmap_wrapper.exceptions import DifmapError
+    >>> with DifmapSession() as session:
+    ...     try:
+    ...         session.observe("fichier_inexistant.fits")
+    ...     except DifmapError as e:
+    ...         print(f"Erreur moteur : {e}")
     """
     pass
 
+
 class DifmapStateError(DifmapError):
     """
-    Levée lorsqu'une action est tentée dans le mauvais ordre.
-    
-    Le moteur Difmap fonctionne comme un automate d'état strict. Cette 
-    erreur est levée par la surcouche Python pour prévenir les crashs 
-    violents (segfaults) du moteur C en bloquant les appels illogiques.
-    
+    Levée quand une opération est appelée dans le mauvais ordre.
+
+    Le moteur C est un automate d'état strict. Cette exception bloque
+    les appels illogiques côté Python avant qu'ils n'atteignent le C
+    et causent un segfault. Elle hérite de ``DifmapError``.
+
+    Cas typiques :
+    - ``invert()`` appelé avant ``mapsize()``
+    - ``get_map()`` appelé avant ``invert()``
+    - ``select()`` appelé avant ``observe()``
+    - Tentative de créer une deuxième ``DifmapSession`` dans le même processus
+
     Examples
     --------
-    Typiquement levée si vous essayez de générer une image sans avoir 
-    chargé de données UV au préalable :
-    
-    ```python
-    from difmap_wrapper import DifmapSession
-    from difmap_wrapper.exceptions import DifmapStateError
-    
-    with DifmapSession() as session:
-        try:
-            # Oups, on a oublié session.load_observation() !
-            session.create_image()
-        except DifmapStateError as e:
-            print(f"Erreur d'état bloquée proprement : {e}")
-    ```
+    >>> from difmap_wrapper import DifmapSession
+    >>> from difmap_wrapper.exceptions import DifmapStateError
+    >>> with DifmapSession() as session:
+    ...     try:
+    ...         session.imager.invert()   # observe() non appelé → DifmapStateError
+    ...     except DifmapStateError as e:
+    ...         print(f"Ordre incorrect : {e}")
     """
     pass

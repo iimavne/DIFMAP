@@ -1,10 +1,36 @@
 ---
-title: "Utilisation Api Python"
+title: "Utilisation API Python"
 ---
 
-Ce guide présente les utilisation courants de l'API Python sous forme de script prêt à l'emploi. Pour la référence exhaustive (signatures, paramètres, types de retour), cf. (/reference).
+Ce guide présente des cas d'usage courants de l'API Python sous forme de scripts prêts à l'emploi.
+
+- Pour les conventions (unités, indices, ordre d'appel) : voir [Concepts & conventions](concepts_conventions.qmd).
+- Pour démarrer rapidement : voir [Quick Start](02_quick_start.qmd).
+- Pour les signatures exhaustives : voir la [Référence API](/reference).
 
 ---
+
+## Quand utiliser quoi ?
+
+| Besoin | Méthode / objet recommandé | Pourquoi |
+|:------|:---------------------------|:--------|
+| Produire une Dirty Map rapidement | `session.imager.make_dirty_map(...)` | Façade "one-liner" (sélection + grille + FFT) |
+| Contrôler la pondération / taper | `mapsize()` → `uvweight()` → `uvtaper()` → `invert()` | Contrôle total des paramètres |
+| Inspecter les visibilités brutes | `session.obs.get_data()` | Accès direct aux tableaux NumPy |
+| Flagging programmatique | `session.obs.flag_data(indices)` | Met à jour l'état C et le masque Python |
+| Sauvegarder des données flaguées | `session.obs.save_wobs(filepath)` | Exporte un nouveau FITS/UVFITS |
+
+::: {.callout-note}
+## Indices et flags
+
+- indices de visibilités (flagging) : **0-based**
+- IF/canaux : **1-indexed**, avec `0` signifiant "jusqu'au dernier" (convention Difmap)
+- une visibilité est considérée valide si `weight > 0`, flaguée si `weight <= 0`
+:::
+
+## Principe éditorial
+
+Cette page explique le *pourquoi* et le *quand* (décisions, pièges). Les scripts complets sont dans les tutoriels, et les détails des arguments dans la Référence API.
 
 ## Structure de base — le bloc `with`
 
@@ -40,6 +66,8 @@ with DifmapSession() as session:
 
 `make_dirty_map` enchaîne `select → mapsize → invert` automatiquement. Utilisez-le quand vous n'avez pas besoin de contrôler la pondération.
 
+Pour une version "pipeline" (contrôle total), voir [Tutoriel 1 — Produire une Dirty Map](tutorials/01_dirty_map.qmd).
+
 ---
 
 ## Recette 2 — Pipeline avec pondération et taper
@@ -65,6 +93,11 @@ Les trois pondérations standard :
 | Naturelle | `0.0` | `-2.0` | Meilleure sensibilité, résolution réduite |
 | Uniforme | `2.0` | `0.0` | Meilleure résolution, bruit plus élevé |
 | Briggs | `2.0` | `-1.0` | Compromis résolution/sensibilité |
+
+Si tu hésites, commence par :
+
+- naturelle pour maximiser le SNR
+- uniforme si tu cherches de la résolution angulaire
 
 ---
 
@@ -108,47 +141,45 @@ with DifmapSession() as session:
     session.observe("data/source.uvfits")
 
     for pol in ["RR", "LL"]:
-        pol_reelle = session.obs.select(pol=pol)
-        img = session.imager.make_dirty_map(size=512, cellsize=0.1)
-        session.vis.plot_image(img, title=f"Dirty Map — {pol_reelle}")
+        img = session.imager.make_dirty_map(size=512, cellsize=0.1, pol=pol)
+        session.vis.plot_image(img, title=f"Dirty Map — {pol}")
 ```
 
-`select()` remet à zéro le masque de flagging à chaque appel.
+`make_dirty_map` appelle `select()` en interne — pas besoin de l'appeler manuellement. Passer `pol=` directement garantit que la sélection et l'imagerie utilisent la même polarisation.
 
 ---
 
-## Recette 5 — Extraire les données et afficher manuellement
+## Recette 5 — Afficher manuellement avec Matplotlib
+
+Si `Visualizer.plot_image()` ne suffit pas (figure multi-panneaux, colorbar personnalisée, annotations), utilisez `get_map_package()` directement et passez `extent` à `imshow()`.
 
 ```python
 import matplotlib.pyplot as plt
+from difmap_wrapper import DifmapSession
 
 with DifmapSession() as session:
     session.observe("data/source.uvfits")
     session.obs.select(pol="I")
-    img = session.imager.make_dirty_map(512, 0.1)
+    session.imager.mapsize(512, 0.1)
+    session.imager.invert()
+    img = session.imager.get_map_package(cellsize=0.1)
 
-# Structure du dictionnaire img :
-# img["data"]      → np.ndarray (ny, nx), Jy/beam
-# img["beam_data"] → np.ndarray (ny, nx), PSF
-# img["extent"]    → [left, right, bottom, top] en mas (prêt pour imshow)
-# img["info"]      → {"nx", "ny", "cellsize", "bmaj", "bmin", "bpa"}
-
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-
-ax1.imshow(img["data"], extent=img["extent"], origin="lower", cmap="inferno")
-ax1.set_title(f"Dirty Map — bmaj={img['info']['bmaj']:.2f} mas")
-ax1.set_xlabel("Décalage RA (mas)")
-ax1.set_ylabel("Décalage Dec (mas)")
-
-ax2.imshow(img["beam_data"], extent=img["extent"], origin="lower", cmap="gray")
-ax2.set_title("Dirty Beam (PSF)")
-
-plt.colorbar(ax1.images[0], ax=ax1, label="Jy/beam")
-plt.tight_layout()
+fig, ax = plt.subplots(figsize=(8, 8))
+im = ax.imshow(img["data"], extent=img["extent"], origin="lower", cmap="inferno")
+ax.set_xlabel("Décalage RA (mas)")
+ax.set_ylabel("Décalage Dec (mas)")
+plt.colorbar(im, ax=ax, label="Intensité (Jy/beam)")
 plt.show()
 ```
 
-L'`extent` utilise la convention radioastronomique : l'axe RA est inversé (RA croît vers la gauche). Il est calculé avec une correction de demi-pixel pour une astrométrie exacte — voir [Implémentation technique](08_implementation.qmd#correction-astrométrique-du-demi-pixel).
+Deux points à ne pas oublier :
+
+- `extent` est fourni en mas, centré sur la phase center — ne pas recalculer.
+- `origin="lower"` est obligatoire : sans lui, l'axe Dec est inversé.
+
+Pourquoi ne pas utiliser directement `img["data"]` avec les indices Python ? Parce que l'axe RA de Difmap croît vers la gauche (convention radio) — `extent` corrige cela automatiquement.
+
+Pour les détails sur la correction de demi-pixel intégrée dans `extent` : [Implémentation technique](08_implementation.qmd#correction-astrométrique-du-demi-pixel).
 
 ---
 
@@ -169,15 +200,12 @@ with DifmapSession() as session:
 
     if len(idx) > 0:
         session.obs.flag_data(idx)
-        session.obs.masque_flagges[idx] = True   # synchroniser le masque Python
         print(f"{len(idx)} visibilités flaguées (seuil {seuil:.3f} Jy)")
 
     session.obs.save_wobs("data/source_clean.fits")
 ```
 
-::: {.callout-important}
-`flag_data()` modifie la mémoire C mais ne met **pas** à jour `masque_flagges` automatiquement. Synchronisez-le manuellement quand vous appelez `flag_data()` directement. L'interface graphique le fait automatiquement.
-:::
+Pour aller plus loin (critères, IF/canaux, cas limites), voir [Tutoriel 2 — Flagging programmatique](tutorials/02_flagging_programmatique.qmd).
 
 ---
 
@@ -219,25 +247,30 @@ with DifmapSession() as session:
 
 ## Recette 9 — Intégration avec Matplotlib (axe existant)
 
+Toutes les méthodes de `Visualizer` acceptent un paramètre `ax=` pour s'insérer dans une figure existante. Utile pour les figures multi-panneaux.
+
 ```python
-fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+import matplotlib.pyplot as plt
+from difmap_wrapper import DifmapSession
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
 with DifmapSession() as session:
     session.observe("data/source.uvfits")
     session.obs.select(pol="I")
 
-    session.vis.uvplot(ax=axes[0], color="steelblue", s=1, alpha=0.4)
-    session.vis.radplot(ax=axes[1], color="navy", s=0.5)
+    # Panneau gauche : couverture UV
+    session.vis.uvplot(ax=axes[0])
 
-    img = session.imager.make_dirty_map(512, 0.1)
-    axes[2].imshow(img["data"], extent=img["extent"], origin="lower", cmap="magma")
-    axes[2].set_title("Dirty Map")
+    # Panneau droit : dirty map
+    img = session.imager.make_dirty_map(size=512, cellsize=0.1)
+    session.vis.plot_image(img, ax=axes[1], cmap="inferno")
 
 plt.tight_layout()
 plt.show()
 ```
 
-`uvplot()` et `radplot()` acceptent un axe existant via le paramètre `ax=` et retournent l'axe pour chaîner les opérations.
+Sans `ax=`, chaque méthode crée sa propre figure. Avec `ax=`, elle dessine dans l'axe fourni sans toucher au reste de la figure.
 
 ---
 

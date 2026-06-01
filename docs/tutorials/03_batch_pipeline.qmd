@@ -1,0 +1,54 @@
+---
+title: "Tutoriel 3 — Traitement batch (processus)"
+---
+
+Ce tutoriel montre comment traiter plusieurs fichiers en parallèle en respectant la contrainte du moteur C (un état global par processus).
+
+## Objectif
+
+- Définir une fonction worker picklable (niveau module)
+- Lancer le batch avec `DifmapBatchManager`
+- Récupérer des résultats dans le même ordre que les entrées
+
+## Exemple : extraire une statistique simple par fichier
+
+Créer un module `worker.py` :
+
+```python
+from difmap_wrapper import DifmapSession
+
+def extract_mean_amp(filepath: str) -> dict:
+    with DifmapSession() as session:
+        session.observe(filepath)
+        session.obs.select(pol="I")
+        data = session.obs.get_data()
+        ok = data["weight"] > 0
+        amp = data["amp"][ok]
+        return {
+            "file": filepath,
+            "n": int(ok.sum()),
+            "mean_amp": float(amp.mean()) if len(amp) else float("nan"),
+        }
+```
+
+Puis dans `main.py` :
+
+```python
+import glob
+from difmap_wrapper.manager import DifmapBatchManager
+from worker import extract_mean_amp
+
+files = glob.glob("data/*.uvfits")
+
+manager = DifmapBatchManager(max_workers=4)
+results = manager.run_batch(extract_mean_amp, files)
+
+for r in results:
+    print(r)
+```
+
+## Points d'attention
+
+- La fonction worker doit être picklable : pas de lambda, pas de fonction locale.
+- Ajuster `max_workers` en fonction de la RAM.
+- Pour les motivations techniques : voir [Traitement batch parallèle](../05_batch.qmd).

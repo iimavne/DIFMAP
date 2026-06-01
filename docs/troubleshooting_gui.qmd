@@ -1,0 +1,30 @@
+---
+title: "Dépannage GUI"
+---
+
+Cette page regroupe les problèmes les plus fréquents lors de l'utilisation de l'application PyQt6.
+
+## L'application ne démarre pas
+
+### Erreurs de plugin Qt
+
+Symptômes typiques :
+
+- message de type "Could not load the Qt platform plugin".
+
+Pistes :
+
+- vérifier que `PyQt6` est installé dans l'environnement actif
+- vérifier que l'exécution se fait dans un environnement graphique (pas headless)
+
+## Affichage lent / interface peu réactive
+
+- réduire la taille de `Map size`
+- limiter le nombre de points affichés (si options disponibles)
+
+## Problèmes Matplotlib
+
+Si les figures ne s'affichent pas correctement :
+
+- vérifier le backend Matplotlib
+- tester le lancement depuis un terminal pour voir les logs

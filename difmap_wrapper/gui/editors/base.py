@@ -55,7 +55,7 @@ class BasePlotEditor:
         self.save_callback = save_callback
         self.sync_callback = sync_callback
 
-        if self.obs.masque_flagges is None:
+        if self.obs.flag_mask is None:
             self.obs.reset_flags(len(data["u"]))
 
         self.flag_all_channels = False
@@ -199,29 +199,29 @@ class BasePlotEditor:
         self.obs.register_editor(self)
 
     @property
-    def masque_flagges(self) -> np.ndarray:
+    def flag_mask(self) -> np.ndarray:
         """
-        Masque booléen des visibilités flaggées, délégué à :attr:`Observation.masque_flagges`.
+        Masque booléen des visibilités flaggées, délégué à :attr:`Observation.flag_mask`.
 
         Returns
         -------
         numpy.ndarray
             Tableau booléen de longueur N (True = flaggé).
         """
-        return self.obs.masque_flagges
+        return self.obs.flag_mask
 
-    @masque_flagges.setter
-    def masque_flagges(self, value: np.ndarray) -> None:
+    @flag_mask.setter
+    def flag_mask(self, value: np.ndarray) -> None:
         """
         Parameters
         ----------
         value : numpy.ndarray
             Nouveau masque booléen à assigner à l'Observation.
         """
-        self.obs.masque_flagges = value
+        self.obs.flag_mask = value
 
     @property
-    def historique_coupes(self) -> list:
+    def undo_history(self) -> list:
         """
         Historique des indices flaggés (liste de tableaux), délégué à l'Observation.
 
@@ -230,17 +230,17 @@ class BasePlotEditor:
         list of numpy.ndarray
             Chaque entrée contient les indices d'une opération de flagging.
         """
-        return self.obs.historique_coupes
+        return self.obs.undo_history
 
-    @historique_coupes.setter
-    def historique_coupes(self, value: list) -> None:
+    @undo_history.setter
+    def undo_history(self, value: list) -> None:
         """
         Parameters
         ----------
         value : list
             Nouvel historique à assigner à l'Observation.
         """
-        self.obs.historique_coupes = value
+        self.obs.undo_history = value
 
     def cleanup(self) -> None:
         """
@@ -834,7 +834,7 @@ class BasePlotEditor:
         """
         Annule la dernière opération de flagging. Touche ``U`` ou ``Ctrl+Z``.
 
-        Dépile le dernier tableau d'indices depuis ``historique_coupes``,
+        Dépile le dernier tableau d'indices depuis ``undo_history``,
         appelle ``obs.unflag_data()`` et met à jour les couleurs.
 
         Parameters
@@ -842,12 +842,12 @@ class BasePlotEditor:
         event : matplotlib.backend_bases.KeyEvent, optional
             Événement clavier (ignoré).
         """
-        if not self.obs.historique_coupes:
+        if not self.obs.undo_history:
             logger.warning("Aucune opération à annuler.")
             return
-        derniers_morts = self.obs.historique_coupes.pop()
+        derniers_morts = self.obs.undo_history.pop()
         self.obs.unflag_data(derniers_morts)
-        self.obs.masque_flagges[derniers_morts] = False
+        self.obs.flag_mask[derniers_morts] = False
         self._update_colors()
         logger.info("Restauration de %d visibilités.", len(derniers_morts),
                     extra={'difmap_level': 'success'})
@@ -1243,8 +1243,8 @@ class BasePlotEditor:
             return
         indices_np = np.array(indices, dtype=np.int32)
         self.obs.flag_data(indices_np)
-        self.obs.masque_flagges[indices_np] = True
-        self.obs.historique_coupes.append(indices_np)
+        self.obs.flag_mask[indices_np] = True
+        self.obs.undo_history.append(indices_np)
         self._update_colors()
         if self.sync_callback:
             self.sync_callback()

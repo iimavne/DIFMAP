@@ -207,7 +207,7 @@ Sans correction, toute mesure de position est décalée de **0.5 pixel** = `0.5 
 La correction est appliquée dans `get_map_package()` :
 
 ```python
-# difmap_wrapper/imaging.py
+# difmap_wrapper/core/imaging.py
 def get_map_package(self, cellsize: float) -> dict:
     nx = hdr.get('NX', 512)
     ny = hdr.get('NY', 512)

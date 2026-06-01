@@ -143,7 +143,7 @@ class UVPlotEditor(BasePlotEditor):
 
         mask_main = (u_data >= u_min) & (u_data <= u_max) & (v_data >= v_min) & (v_data <= v_max)
         mask_conj = (-u_data >= u_min) & (-u_data <= u_max) & (-v_data >= v_min) & (-v_data <= v_max)
-        masque_final = (mask_main | mask_conj) & (~self.obs.masque_flagges)
+        masque_final = (mask_main | mask_conj) & (~self.obs.flag_mask)
         indices = np.where(masque_final)[0]
 
         if len(indices) > 0:
@@ -176,7 +176,7 @@ class UVPlotEditor(BasePlotEditor):
 
         if is_flag:
             # FLAGUER : sélectionner les points non-flaguées
-            masque_final = masque_intersection & (~self.obs.masque_flagges)
+            masque_final = masque_intersection & (~self.obs.flag_mask)
             indices = np.where(masque_final)[0]
             if len(indices) > 0:
                 self._flag_indices(indices)
@@ -184,12 +184,12 @@ class UVPlotEditor(BasePlotEditor):
                            extra={'difmap_level': 'success'})
         else:
             # DÉ-FLAGUER : sélectionner les points flaguées
-            masque_final = masque_intersection & self.obs.masque_flagges
+            masque_final = masque_intersection & self.obs.flag_mask
             indices = np.where(masque_final)[0]
             if len(indices) > 0:
                 self.obs.unflag_data(indices)
-                self.obs.masque_flagges[indices] = False
-                self.obs.historique_coupes.append(indices)
+                self.obs.flag_mask[indices] = False
+                self.obs.undo_history.append(indices)
                 self._update_colors()
                 logger.info(f"🔓 {len(indices)} points UNFLAG (souris droit)", 
                            extra={'difmap_level': 'success'})
@@ -209,13 +209,13 @@ class UVPlotEditor(BasePlotEditor):
         """
         if len(indices) == 0:
             return
-        indices_valides = [i for i in indices if not self.obs.masque_flagges[i]]
+        indices_valides = [i for i in indices if not self.obs.flag_mask[i]]
         if not indices_valides:
             return
         indices_np = np.array(indices_valides, dtype=np.int32)
         self.obs.flag_data(indices_np)
-        self.obs.masque_flagges[indices_np] = True
-        self.obs.historique_coupes.append(indices_np)
+        self.obs.flag_mask[indices_np] = True
+        self.obs.undo_history.append(indices_np)
         self._update_colors()
         logger.info(
             f"✂ {len(indices_np)} visibilités flaggées depuis le Radplot.",
@@ -329,7 +329,7 @@ class UVPlotEditor(BasePlotEditor):
         - Layer 2 (scatter) : points non-flaguués focalisés → PLOT_FOCUS.
         Points flaguués : absents des deux layers (invisibles).
         """
-        flagged   = self.obs.masque_flagges
+        flagged   = self.obs.flag_mask
         u         = self.data["u"] / 1e6
         v         = self.data["v"] / 1e6
         sub_actif = self.liste_subarrays[self.index_subarray_actuel]
@@ -431,7 +431,7 @@ class UVPlotEditor(BasePlotEditor):
                 return
 
         idx = np.argmin(dist_main) if min_m < min_c else np.argmin(dist_conj)
-        if self.obs.masque_flagges[idx]:
+        if self.obs.flag_mask[idx]:
             return
 
         sub   = self.data.get("subarray", [0] * len(u_d))[idx]

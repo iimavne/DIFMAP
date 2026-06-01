@@ -198,6 +198,7 @@ class MapPlotWidget(BasePlotWidget):
     _map_title: str = "Map"
     _cmap: str = "inferno"
     _map_type: str = "dirty"  # "dirty" | "clean" | "residual"
+    _placeholder_hint: str = "Lancez l'imagerie pour afficher une carte"
 
     _NAV_TOOLS = [
         ("Navigate [R]", "NAVIGATE"),
@@ -454,7 +455,7 @@ class MapPlotWidget(BasePlotWidget):
             spine.set_visible(False)
         self.ax.text(
             0.5, 0.5,
-            f"{self._map_title}\n\nAucune carte calculée\nCliquez « Compute » pour lancer l'imagerie",
+            f"{self._map_title}\n\nAucune carte calculée\n{self._placeholder_hint}",
             transform=self.ax.transAxes,
             ha='center', va='center',
             color='#3A5060', fontsize=9,
@@ -713,6 +714,7 @@ class DirtyMapPlotWidget(MapPlotWidget):
     _map_title = "Dirty Map"
     _cmap = "inferno"
     _map_type = "dirty"
+    _placeholder_hint = "Cliquez « Make Dirty Map » pour calculer"
 
     def __init__(self, parent=None, show_annotations: bool = True, show_tools: bool = True):
         super().__init__(
@@ -751,6 +753,7 @@ class ResidualMapPlotWidget(MapPlotWidget):
     _map_title = "Residual Map"
     _cmap = "inferno"
     _map_type = "residual"
+    _placeholder_hint = "Lancez « Start CLEAN » pour calculer"
 
     def __init__(self, parent=None, show_annotations: bool = True, show_tools: bool = True):
         super().__init__(
@@ -790,6 +793,7 @@ class CleanMapPlotWidget(MapPlotWidget):
     _map_title = "Clean Map"
     _cmap = "inferno"
     _map_type = "clean"
+    _placeholder_hint = "Lancez « Start CLEAN » puis « Restore »"
 
     def __init__(self, parent=None, show_annotations: bool = True, show_tools: bool = True):
         super().__init__(

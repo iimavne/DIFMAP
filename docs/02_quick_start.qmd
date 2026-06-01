@@ -2,27 +2,35 @@
 title: "Quick Start"
 ---
 
-Ce guide couvre les cas d'usage les plus courants en quelques exemples progressifs. Pour la documentation exhaustive de chaque méthode, voir [API Python](03_api_python.qmd).
+Ce guide sert de point d'entrée.
+Il vous montre le flux minimal (charger → sélectionner → imager → afficher).
+Il vous indique aussi où trouver les détails.
 
-## En cinq lignes
+- Pour les unités, indices et conventions : voir [Concepts & conventions](concepts_conventions.qmd).
+- Pour des scripts complets reproductibles : voir les [Tutoriels A→Z](tutorials/01_dirty_map.qmd).
+- Pour les signatures/arguments/exemples officiels : voir la [Référence API](/reference).
+
+## En quatre lignes
+
+Objectif : produire une première image, sans régler tous les paramètres.
 
 ```python
 from difmap_wrapper import DifmapSession
 
 with DifmapSession() as session:
     session.observe("data/source.uvfits")
-    session.obs.select(pol="I")
-    img = session.imager.make_dirty_map(size=512, cellsize=0.1)
+    img = session.imager.make_dirty_map(size=512, cellsize=0.1, pol="I")
     session.vis.plot_image(img, cmap="inferno")
 ```
 
-`make_dirty_map` enchaîne `select → mapsize → uvweight → invert` en un seul appel. Le bloc `with` garantit la libération de la mémoire C même si une exception se produit.
+`make_dirty_map` enchaîne `select → mapsize → invert` en un seul appel — inutile d'appeler `select()` séparément.
+Le bloc `with` garantit le nettoyage même si une exception se produit.
 
 ---
 
 ## Les trois sous-objets
 
-`DifmapSession` expose trois sous-objets. Toutes les opérations passent par eux.
+Vous utilisez toujours ces trois objets.
 
 | Attribut | Type | Rôle |
 |:---------|:-----|:-----|
@@ -30,42 +38,36 @@ with DifmapSession() as session:
 | `session.imager` | `DifmapImager` | Grille d'image, pondération UV, FFT, récupération de l'image |
 | `session.vis` | `Visualizer` | Graphiques statiques Matplotlib (UV, radplot, carte) |
 
----
+Schéma du flux le plus courant :
 
-## Charger et explorer les visibilités
-
-```python
-import numpy as np
-from difmap_wrapper import DifmapSession
-
-with DifmapSession() as session:
-    session.observe("data/source.uvfits")
-    session.obs.select(pol="RR")
-
-    data = session.obs.get_data()
-
-    # Clés disponibles dans le dictionnaire
-    # 'u', 'v'       → coordonnées UV en longueurs d'onde (λ)
-    # 'amp'          → amplitude en Jansky
-    # 'phase'        → phase en degrés, dans [-180, 180]
-    # 'modamp', 'modphs' → amplitude/phase du modèle courant
-    # 'weight'       → poids statistique (≤ 0 = visibilité flaguée)
-    # 'tel_a', 'tel_b'   → indices des antennes de la baseline
-    # 'subarray'     → indice du sous-réseau
-    # 'if_no'        → indice de la fréquence IF
-    # 'time'         → temps UTC en jours juliens
-
-    bonnes = data["weight"] > 0
-    print(f"{bonnes.sum()} visibilités valides sur {len(bonnes)}")
-    print(f"Source : {session.obs.source}")
-
-    uv_radius = np.sqrt(data["u"]**2 + data["v"]**2) / 1e6
-    print(f"Rayon UV max : {uv_radius.max():.1f} Mλ")
+```text
+DifmapSession
+  ├─ obs    : observe() → select() → (flag/save)
+  ├─ imager : mapsize() → (uvweight/uvtaper) → invert() → get_map_package()
+  └─ vis    : uvplot()/radplot()/plot_image()
 ```
 
 ---
 
+## Charger et explorer les visibilités
+
+Objectif : comprendre ce que contient le fichier (UV, amplitude/phase, flags).
+
+`session.obs.get_data()` renvoie un dictionnaire de tableaux NumPy.
+
+- `u`, `v` : coordonnées UV en longueurs d'onde (λ)
+- `amp`, `phase` : amplitude (Jy) et phase (degrés)
+- `weight` : poids statistique (≤ 0 = flaggé)
+
+Pour un exemple complet d'analyse (filtrage, stats, plots), voir :
+
+- [Tutoriel 2 — Flagging programmatique](tutorials/02_flagging_programmatique.qmd)
+
+---
+
 ## Graphiques de visibilités
+
+Objectif : vérifier rapidement la couverture UV et repérer des données aberrantes.
 
 ```python
 with DifmapSession() as session:
@@ -80,64 +82,59 @@ with DifmapSession() as session:
 
 ## Pipeline d'imagerie étape par étape
 
-Pour un contrôle total des paramètres (pondération, taper) :
+Objectif : garder la main sur la pondération et le taper.
 
-```python
-with DifmapSession() as session:
-    session.observe("data/source.uvfits")
-    session.obs.select(pol="I")
+Si vous voulez contrôler la pondération/taper, la séquence est :
 
-    session.imager.mapsize(512, 0.1)                                      # grille 512×512, 0.1 mas/px
-    session.imager.uvweight(bin_size=2.0, err_power=0.0)                  # pondération uniforme
-    session.imager.uvtaper(gaussian_value=0.3, gaussian_radius_wav=50e6)  # taper à 50 Mλ (optionnel)
-    session.imager.invert()
+1. `mapsize(size, cellsize)`
+2. `uvweight(...)` (optionnel)
+3. `uvtaper(...)` (optionnel)
+4. `invert()`
+5. `get_map_package(cellsize=...)`
 
-    img = session.imager.get_map_package(cellsize=0.1)
-    session.vis.plot_image(img, cmap="viridis")
-```
+Le package retourné par `get_map_package()` contient l'image (`data`), le faisceau (`beam_data`) et un `extent` déjà prêt pour Matplotlib.
 
-`size × cellsize` définit le champ de vue total : ici 512 × 0.1 = **51.2 mas**.
+Pour un script complet, voir :
 
-Le dictionnaire retourné par `get_map_package()` :
-
-| Clé | Type | Contenu |
-|:----|:-----|:--------|
-| `'data'` | `np.ndarray (ny, nx)` | Dirty Map en Jy/beam |
-| `'beam_data'` | `np.ndarray (ny, nx)` | Faisceau synthétique (PSF) |
-| `'extent'` | `list [left, right, bottom, top]` | Limites en mas, prêtes pour `imshow()` |
-| `'info'` | `dict` | `nx`, `ny`, `cellsize`, `bmaj`, `bmin`, `bpa` |
+- [Tutoriel 1 — Produire une Dirty Map](tutorials/01_dirty_map.qmd)
 
 ---
 
 ## Afficher l'image manuellement avec Matplotlib
 
+Objectif : tracer vous-même l'image, sans passer par `Visualizer`.
+
+`get_map_package()` retourne un dictionnaire avec `data` (tableau NumPy 2D) et `extent` (tuple `[xmin, xmax, ymin, ymax]` en mas, prêt pour `imshow`).
+
 ```python
 import matplotlib.pyplot as plt
+from difmap_wrapper import DifmapSession
 
 with DifmapSession() as session:
     session.observe("data/source.uvfits")
     session.obs.select(pol="I")
-    img = session.imager.make_dirty_map(size=512, cellsize=0.1)
+    session.imager.mapsize(512, 0.1)
+    session.imager.invert()
+    img = session.imager.get_map_package(cellsize=0.1)
 
-fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-
-# Dirty Map
-axes[0].imshow(img["data"], extent=img["extent"], origin="lower", cmap="inferno")
-axes[0].set_title("Dirty Map")
-axes[0].set_xlabel("Décalage RA (mas)")
-axes[0].set_ylabel("Décalage Dec (mas)")
-
-# Faisceau synthétique (PSF)
-axes[1].imshow(img["beam_data"], extent=img["extent"], origin="lower", cmap="gray")
-axes[1].set_title("Dirty Beam (PSF)")
-
-plt.tight_layout()
+fig, ax = plt.subplots(figsize=(8, 8))
+ax.imshow(img["data"], extent=img["extent"], origin="lower", cmap="inferno")
+ax.set_xlabel("Décalage RA (mas)")
+ax.set_ylabel("Décalage Dec (mas)")
+plt.colorbar(ax.images[0], ax=ax, label="Intensité (Jy/beam)")
 plt.show()
 ```
+
+`origin="lower"` est requis : sans lui, l'axe Dec est inversé.
+`extent` est déjà en mas, centré sur la phase center — pas besoin de conversion.
+
+Voir aussi la [Référence API](/reference/DifmapImager.html) pour `get_map_package` et `get_cropped_map`.
 
 ---
 
 ## Gestion des erreurs
+
+Objectif : distinguer une erreur d'usage (séquence) d'une erreur du moteur.
 
 ```python
 from difmap_wrapper.exceptions import DifmapStateError, DifmapError
@@ -161,6 +158,8 @@ with DifmapSession() as session:
 ---
 
 ## Le singleton : une session par processus
+
+Objectif : éviter l'erreur "Une instance est déjà active".
 
 Le moteur C utilise des variables globales `static`. **Une seule `DifmapSession` peut être active à la fois par processus.**
 
@@ -188,25 +187,19 @@ Pour traiter plusieurs fichiers **en parallèle**, voir [Traitement batch](05_ba
 
 ## Utilisation dans un notebook
 
+Objectif : éviter un état incohérent si vous relancez des cellules.
+
 ```python
-# Cellule 1 : imports
 from difmap_wrapper import DifmapSession
-import matplotlib.pyplot as plt
-%matplotlib inline
 
-# Cellule 2 : chargement (relancer le kernel si DifmapStateError)
-session = DifmapSession()
-session.observe("data/source.uvfits")
-session.obs.select(pol="I")
-
-# Cellule 3 : imagerie
-img = session.imager.make_dirty_map(512, 0.1)
-session.vis.plot_image(img)
-
-# Cellule 4 : nettoyage (important si vous relancez des cellules)
-session.cleanup()
+with DifmapSession() as session:
+    session.observe("data/source.uvfits")
+    session.obs.select(pol="I")
+    img = session.imager.make_dirty_map(512, 0.1)
+    session.vis.plot_image(img)
 ```
 
 ::: {.callout-tip}
-Dans un notebook, préférez le bloc `with` dans chaque cellule plutôt qu'une session persistante entre cellules. Cela évite l'erreur `DifmapStateError: Une instance est déjà active` après une interruption.
+Dans un notebook, préférez un bloc `with` par étape (chargement, imagerie, export).
+Cela limite les erreurs après une interruption.
 :::

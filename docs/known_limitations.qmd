@@ -1,0 +1,33 @@
+---
+title: "Limitations connues"
+---
+
+Cette page liste les limitations actuelles du projet, afin d'éviter les erreurs d'usage et de cadrer les contributions.
+
+## Systèmes supportés
+
+- Linux uniquement (Ubuntu 22.04+ recommandé)
+- macOS et Windows non supportés
+
+## Parallélisme
+
+Le moteur C de Difmap maintient un état global (variables `static`).
+
+- une seule `DifmapSession` par processus
+- pas de multi-threading sûr au niveau du moteur (risque de corruption mémoire)
+- parallélisme via processus OS (voir [Traitement batch parallèle](05_batch.qmd))
+
+## Conventions d'index
+
+- indices de visibilités : 0-based (NumPy)
+- IF/canaux : 1-indexed (convention Difmap), avec `0` signifiant "jusqu'au dernier"
+
+## Limitations GUI
+
+L'interface graphique dépend de PyQt6 et d'un environnement graphique fonctionnel.
+
+- environnements headless non supportés pour l'usage GUI
+
+## Format des données
+
+Les formats et variations UVFITS supportés dépendent des capacités du moteur Difmap embarqué. En cas de fichier non supporté, l'erreur remonte via les exceptions du wrapper.

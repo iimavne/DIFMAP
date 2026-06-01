@@ -168,8 +168,8 @@ class DifmapSession(metaclass=_SingletonMeta):
         self.imager._current_uvweight = None
         self.imager._current_selfcal_taper = None
         self.imager.active_windows = []
-        self.obs.masque_flagges = None
-        self.obs.historique_coupes.clear()
+        self.obs.flag_mask = None
+        self.obs.undo_history.clear()
         self.obs.invalidate_cache()
 
     def cleanup(self) -> None:

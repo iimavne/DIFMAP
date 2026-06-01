@@ -19,7 +19,7 @@ class Observation:
 
     Attributes
     ----------
-    masque_flagges : np.ndarray of bool or None
+    flag_mask : np.ndarray of bool or None
         Tableau de la taille du nombre de visibilités. ``True`` = point exclu.
         Initialisé automatiquement au premier appel à ``get_data()`` ou ``select()``.
 
@@ -36,8 +36,8 @@ class Observation:
         self._native = difmap_native
 
         # C3 : Propriété des données de flagging — centralisée ici
-        self.masque_flagges: np.ndarray | None = None
-        self.historique_coupes: list = []
+        self.flag_mask: np.ndarray | None = None
+        self.undo_history: list = []
 
         # Cache get_data() : évite de réappeler l_extract_uv() si rien n'a changé
         self._cached_raw_data: dict | None = None
@@ -92,8 +92,8 @@ class Observation:
         n_visibilities : int
             Nombre total de visibilités dans le jeu de données courant.
         """
-        self.masque_flagges = np.zeros(n_visibilities, dtype=bool)
-        self.historique_coupes = []
+        self.flag_mask = np.zeros(n_visibilities, dtype=bool)
+        self.undo_history = []
 
     def get_data(self) -> dict:
         """
@@ -146,12 +146,12 @@ class Observation:
             self._data_dirty = False
         data = self._cached_raw_data
         n = len(data.get('u', []))
-        if self.masque_flagges is None or len(self.masque_flagges) != n:
-            if self.masque_flagges is not None and len(self.masque_flagges) != n:
+        if self.flag_mask is None or len(self.flag_mask) != n:
+            if self.flag_mask is not None and len(self.flag_mask) != n:
                 logger.warning(
                     "Taille du masque de flagging (%d) incohérente avec les données UV (%d) — "
                     "réinitialisation du masque. Les flags précédents sont perdus.",
-                    len(self.masque_flagges), n
+                    len(self.flag_mask), n
                 )
             self.reset_flags(n)
         return data
@@ -162,13 +162,40 @@ class Observation:
 
     @property
     def source(self) -> str:
-        """Nom de la source astronomique active. Retourne ``'Inconnue'`` si rien n'est chargé."""
+        """
+        Nom de la source astronomique active.
+
+        Extrait directement depuis le header FITS chargé en mémoire C.
+        Retourne ``'Inconnue'`` si aucune observation n'est active.
+
+        Examples
+        --------
+        >>> session.observe("data/M87.uvfits")
+        >>> print(session.obs.source)
+        'M87'
+        """
         if not self._session.uv_loaded:
             return "Inconnue"
         return self._native.get_source()
 
     def get_polarization(self) -> str:
-        """Retourne la polarisation active (ex: ``'RR'``, ``'LL'``). Retourne ``'Unknown'`` si rien n'est chargé."""
+        """
+        Retourne la polarisation actuellement sélectionnée par le moteur C.
+
+        Reflète l'état réel après le dernier appel à ``select()``.
+        Retourne ``'Unknown'`` si aucune observation n'est active.
+
+        Returns
+        -------
+        str
+            Chaîne de polarisation, ex. ``'RR'``, ``'LL'``, ``'I'``.
+
+        Examples
+        --------
+        >>> session.obs.select(pol="RR")
+        >>> print(session.obs.get_polarization())
+        'RR'
+        """
         return self._native.get_polarization()
 
     def nsub(self) -> int:
@@ -247,13 +274,26 @@ class Observation:
         if is_list:
             if self._native.select_ifs(pol, ifs) != 0:
                 raise DifmapError(f"Échec de la sélection IFs {ifs} (Pol: {pol})")
+            # channels=(1,0) signifie "tous les canaux" — ne pas appeler select_channels
+            # dans ce cas car select_ifs a déjà tout sélectionné.
+            if channels != (1, 0):
+                nchan = max(1, self._native.get_nchan())
+                echan_eff = channels[1] if channels[1] != 0 else nchan
+                pairs = [
+                    ((cif - 1) * nchan + channels[0], (cif - 1) * nchan + echan_eff)
+                    for cif in ifs
+                ]
+                if self._native.select_channels(pol, pairs) != 0:
+                    raise DifmapError(
+                        f"Échec de select_channels pour IFs {ifs}, canaux {channels} (Pol: {pol})"
+                    )
         else:
             if self._native.select(pol, ifs[0], ifs[1], channels[0], channels[1]) != 0:
                 raise DifmapError(f"Échec de la sélection (Pol: {pol})")
 
-        # Réinitialisation du masque (comme on l'a corrigé tout à l'heure)
-        self.masque_flagges = None
-        self.historique_coupes.clear()
+        # Réinitialisation du masque 
+        self.flag_mask = None
+        self.undo_history.clear()
         self.invalidate_cache()
 
         # On demande au C sur quelle polarisation il est vraiment ---
@@ -273,7 +313,24 @@ class Observation:
         return pol_reelle # On retourne la vraie valeur à l'interface
 
     def get_nchan(self) -> int:
-        """Retourne le nombre de canaux par IF."""
+        """
+        Retourne le nombre de canaux par IF.
+
+        Utile pour calculer les indices globaux de canaux passés à
+        ``select_channels()`` et ``parse_select_syntax()``.
+        Retourne ``0`` si aucune observation n'est chargée.
+
+        Returns
+        -------
+        int
+            Nombre de canaux par fréquence intermédiaire (IF).
+
+        Examples
+        --------
+        >>> session.observe("data/source.uvfits")
+        >>> print(session.obs.get_nchan())
+        32
+        """
         if not self._session.uv_loaded:
             return 0
         return self._native.get_nchan()
@@ -302,31 +359,57 @@ class Observation:
         """
         if not self._session.uv_loaded:
             raise DifmapStateError("Aucune observation chargée.")
+        if self.flag_mask is not None and self.flag_mask.any():
+            logger.warning(
+                "select_channels() : %d flags actifs perdus suite au changement de sélection.",
+                int(self.flag_mask.sum()),
+            )
         if self._native.select_channels(pol.upper(), pairs) != 0:
             raise DifmapError(f"Échec de select_channels (Pol: {pol}, pairs: {pairs})")
-        self.masque_flagges = None
-        self.historique_coupes.clear()
+        self.flag_mask = None
+        self.undo_history.clear()
         self.invalidate_cache()
 
     @staticmethod
     def parse_select_syntax(text: str, nchan: int, nif: int) -> list:
         """
-        Syntaxe originale difmap : indices de canaux globaux, 1-indexed, séparés
-        par des virgules et pris **deux par deux** comme paires (bchan, echan).
+        Convertit une chaîne de sélection de canaux (syntaxe difmap) en paires d'indices.
 
-        Un argument impair = canal unique (bchan == echan), comme difmap.
-        Chaîne vide = sélectionner tout (retourne []).
+        Les indices sont globaux, 1-indexed, séparés par des virgules et lus deux
+        par deux comme ``(bchan, echan)``. Un nombre impair de valeurs = le dernier
+        canal est utilisé seul (``bchan == echan``). Chaîne vide = tous les canaux.
 
-        Exemples (nchan=64, nif=3 → total 192 canaux) :
-          "20, 25, 47, 65"  → [(20,25), (47,65)]
-          "50, 70"          → [(50,70)]  ← s'étend sur IF1 et IF2 automatiquement
-          "10"              → [(10,10)]  ← canal unique
-          ""                → []         ← tous les canaux
+        Parameters
+        ----------
+        text : str
+            Chaîne de sélection, ex. ``"20, 25, 47, 65"`` ou ``"1, nif*nchan"``.
+        nchan : int
+            Nombre de canaux par IF (obtenu via ``get_nchan()``).
+        nif : int
+            Nombre d'IFs (obtenu via la propriété ``nif``).
 
-        Expressions supportées dans les valeurs :
-          ``nif``           → nombre d'IFs
-          ``nchan``         → canaux par IF
-          ``nif*nchan``     → dernier canal global
+        Returns
+        -------
+        list of (int, int)
+            Liste de paires ``(bchan, echan)`` en indice global 1-indexed.
+            Liste vide = sélectionner tous les canaux.
+
+        Raises
+        ------
+        ValueError
+            Si un indice de canal est hors plage ou si la syntaxe est invalide.
+
+        Examples
+        --------
+        >>> # nchan=64, nif=3 → total 192 canaux
+        >>> Observation.parse_select_syntax("20, 25, 47, 65", nchan=64, nif=3)
+        [(20, 25), (47, 65)]
+        >>> Observation.parse_select_syntax("10", nchan=64, nif=3)
+        [(10, 10)]
+        >>> Observation.parse_select_syntax("", nchan=64, nif=3)
+        []
+        >>> Observation.parse_select_syntax("1, nif*nchan", nchan=64, nif=3)
+        [(1, 192)]
         """
         text = text.strip()
         if not text:
@@ -374,7 +457,28 @@ class Observation:
 
     @staticmethod
     def ifs_from_pairs(pairs: list, nchan: int, nif: int) -> list[int]:
-        """Retourne la liste 1-indexed des IFs couverts par des paires globales."""
+        """
+        Retourne la liste triée des IFs couverts par des paires de canaux globaux.
+
+        Parameters
+        ----------
+        pairs : list of (int, int)
+            Paires ``(bchan, echan)`` en indice global 1-indexed.
+        nchan : int
+            Nombre de canaux par IF.
+        nif : int
+            Nombre total d'IFs.
+
+        Returns
+        -------
+        list of int
+            IFs concernés, triés, 1-indexed.
+
+        Examples
+        --------
+        >>> Observation.ifs_from_pairs([(1, 32), (65, 96)], nchan=32, nif=4)
+        [1, 3]
+        """
         nchan = max(1, nchan)
         ifs = set()
         for bchan, echan in pairs:
@@ -386,19 +490,18 @@ class Observation:
 
     def set_if_range(self, if_beg: int, if_end: int) -> None:
         """
-        Restreint l'extraction UV à la plage d'IFs ``[if_beg, if_end]``
-        **sans** relire le fichier scratch (pas de ``ob_select``).
+        Restreint l'extraction UV à une plage d'IFs sans recharger les données.
 
-        À utiliser quand seul le filtre IF change — beaucoup plus rapide que
-        ``select()``. Appeler ``get_data()`` ensuite pour obtenir les données
-        filtrées.
+        Plus rapide que ``select()`` quand seul le filtre IF change : ne relit
+        pas le fichier scratch, ne remet pas la polarisation à zéro.
+        Appeler ``get_data()`` ensuite pour obtenir les données filtrées.
 
         Parameters
         ----------
         if_beg : int
-            Premier IF souhaité (1-indexed). ``1`` = début.
+            Premier IF souhaité (1-indexed). ``1`` = premier IF.
         if_end : int
-            Dernier IF souhaité (1-indexed). ``0`` = jusqu'au dernier.
+            Dernier IF souhaité (1-indexed). ``0`` = jusqu'au dernier IF.
 
         Raises
         ------
@@ -406,18 +509,35 @@ class Observation:
             Si aucune observation n'est chargée.
         DifmapError
             Si l'appel C échoue.
+
+        Examples
+        --------
+        >>> session.obs.select(pol="I")          # sélection initiale complète
+        >>> session.obs.set_if_range(2, 3)       # restreindre aux IFs 2 et 3
+        >>> data = session.obs.get_data()
         """
         if not self._session.uv_loaded:
             raise DifmapStateError("Aucune observation chargée.")
         if self._native.set_if_range(if_beg, if_end) != 0:
             raise DifmapError(f"Échec de set_if_range({if_beg}, {if_end})")
-        self.masque_flagges = None
-        self.historique_coupes.clear()
+        self.flag_mask = None
+        self.undo_history.clear()
         self.invalidate_cache()
 
     @property
     def nif(self) -> int:
-        """Nombre total d'IFs dans l'observation courante (0 si rien de chargé)."""
+        """
+        Nombre total d'IFs dans l'observation courante.
+
+        Retourne ``0`` si aucune observation n'est active. Utile pour construire
+        les arguments de ``select()`` ou calculer les indices de canaux globaux.
+
+        Examples
+        --------
+        >>> session.observe("data/source.uvfits")
+        >>> print(session.obs.nif)
+        4
+        """
         if not self._session.uv_loaded:
             return 0
         return self._native.get_nif()
@@ -453,10 +573,22 @@ class Observation:
 
     def available_polarizations(self) -> list[str]:
         """
-        Retourne les polarisations disponibles pour l'observation courante.
+        Retourne les polarisations présentes dans le fichier chargé.
 
-        La liste est extraite du header texte généré par le moteur Difmap,
-        par exemple ``"RR"``, ``"RR LL"`` ou ``"RR, LL, RL, LR"``.
+        La liste est extraite du header texte du moteur C. Elle peut contenir
+        une ou plusieurs valeurs parmi ``"RR"``, ``"LL"``, ``"RL"``, ``"LR"``,
+        ``"I"``, ``"Q"``, ``"U"``, ``"V"``. Retourne ``[]`` si rien n'est chargé.
+
+        Returns
+        -------
+        list of str
+            Polarisations disponibles, dans l'ordre du fichier.
+
+        Examples
+        --------
+        >>> session.observe("data/source.uvfits")
+        >>> session.obs.available_polarizations()
+        ['RR', 'LL']
         """
         if not self._session.uv_loaded:
             return []
@@ -465,11 +597,12 @@ class Observation:
         if not match:
             return []
 
+        _VALID = {"I", "Q", "U", "V", "RR", "LL", "RL", "LR", "XX", "YY", "XY", "YX"}
         tokens = [tok.strip().upper() for tok in re.split(r"[\s,]+", match.group(1)) if tok.strip()]
         seen = set()
         values = []
         for tok in tokens:
-            if tok not in seen:
+            if tok in _VALID and tok not in seen:
                 seen.add(tok)
                 values.append(tok)
         return values
@@ -479,7 +612,7 @@ class Observation:
         Marque les visibilités aux indices donnés comme exclues (flaguées).
 
         Met à jour simultanément l'état C (poids négatifs) et le masque
-        Python ``masque_flagges`` pour garantir leur cohérence.
+        Python ``flag_mask`` pour garantir leur cohérence.
 
         Parameters
         ----------
@@ -502,22 +635,25 @@ class Observation:
         result = self._native.flag_data(indices_c)
         # Mise à jour du cache en place : l_extract_uv filtre wt<=0, donc une
         # ré-extraction réduirait la taille du tableau et réinitialiserait
-        # masque_flagges. On applique wt = -|wt| dans la copie Python pour que
-        # la taille reste stable et masque_flagges reste cohérent.
+        # flag_mask. On applique wt = -|wt| dans la copie Python pour que
+        # la taille reste stable et flag_mask reste cohérent.
         if self._cached_raw_data is not None:
             wgt = self._cached_raw_data.get('weight')
             if wgt is not None:
                 valid = indices_c[(indices_c >= 0) & (indices_c < len(wgt))]
                 wgt[valid] = -np.abs(wgt[valid])
-        if self.masque_flagges is not None:
-            valid = indices_c[(indices_c >= 0) & (indices_c < len(self.masque_flagges))]
-            self.masque_flagges[valid] = True
+        if self.flag_mask is not None:
+            valid = indices_c[(indices_c >= 0) & (indices_c < len(self.flag_mask))]
+            self.flag_mask[valid] = True
         self.notify_data_changed()
         return result
 
     def unflag_data(self, indices) -> int:
         """
         Restaure les visibilités précédemment flaguées.
+
+        Met à jour simultanément l'état C (poids positifs) et le masque
+        Python ``flag_mask``. Inverse exact de ``flag_data()``.
 
         Parameters
         ----------
@@ -527,7 +663,14 @@ class Observation:
         Returns
         -------
         int
-            Nombre de visibilités restaurées.
+            Nombre de visibilités effectivement restaurées.
+
+        Examples
+        --------
+        >>> session.obs.flag_data([10, 11, 12])
+        3
+        >>> session.obs.unflag_data([11])   # rétablir uniquement la visibilité 11
+        1
         """
         indices_c = np.asarray(indices, dtype=np.int32)
         if len(indices_c) == 0:
@@ -538,9 +681,9 @@ class Observation:
             if wgt is not None:
                 valid = indices_c[(indices_c >= 0) & (indices_c < len(wgt))]
                 wgt[valid] = np.abs(wgt[valid])
-        if self.masque_flagges is not None:
-            valid = indices_c[(indices_c >= 0) & (indices_c < len(self.masque_flagges))]
-            self.masque_flagges[valid] = False
+        if self.flag_mask is not None:
+            valid = indices_c[(indices_c >= 0) & (indices_c < len(self.flag_mask))]
+            self.flag_mask[valid] = False
         self.notify_data_changed()
         return result
 

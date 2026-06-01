@@ -1,0 +1,45 @@
+---
+title: "Tutoriel 2 — Flagging programmatique"
+---
+
+Ce tutoriel montre comment repérer des visibilités aberrantes et les flagger proprement.
+
+## Objectif
+
+- Extraire les visibilités (`get_data()`)
+- Construire un critère de flagging
+- Flaguer et sauvegarder un nouveau fichier FITS/UVFITS
+
+## Exemple : flagging par seuil sur l'amplitude
+
+```python
+import numpy as np
+from difmap_wrapper import DifmapSession
+
+with DifmapSession() as session:
+    session.observe("data/source.uvfits")
+    session.obs.select(pol="I")
+
+    data = session.obs.get_data()
+
+    # Garder uniquement les visibilités valides pour définir le seuil
+    ok = data["weight"] > 0
+    amp = data["amp"][ok]
+
+    seuil = np.median(amp) + 5.0 * amp.std()
+
+    # Indices 0-based dans le tableau original
+    idx = np.where(data["amp"] > seuil)[0].astype(np.int32)
+
+    if len(idx) > 0:
+        n = session.obs.flag_data(idx)
+        print(f"{n} visibilités flaguées")
+
+    session.obs.save_wobs("data/source_flagged.uvfits")
+```
+
+## Notes
+
+- Les indices de visibilités sont **0-based** (NumPy).
+- Une visibilité flaguée correspond à `weight <= 0`.
+- Les conventions IF/canaux (1-indexed) sont détaillées dans [Concepts & conventions](../concepts_conventions.qmd).

@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>difmap_smartedit</title>
+<title>difmap_smartedit - Workflows GUI</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -19,40 +19,6 @@ ul.task-list li input[type="checkbox"] {
   width: 0.8em;
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
-}
-/* CSS for syntax highlighting */
-pre > code.sourceCode { white-space: pre; position: relative; }
-pre > code.sourceCode > span { line-height: 1.25; }
-pre > code.sourceCode > span:empty { height: 1.2em; }
-.sourceCode { overflow: visible; }
-code.sourceCode > span { color: inherit; text-decoration: inherit; }
-div.sourceCode { margin: 1em 0; }
-pre.sourceCode { margin: 0; }
-@media screen {
-div.sourceCode { overflow: auto; }
-}
-@media print {
-pre > code.sourceCode { white-space: pre-wrap; }
-pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
-}
-pre.numberSource code
-  { counter-reset: source-line 0; }
-pre.numberSource code > span
-  { position: relative; left: -4em; counter-increment: source-line; }
-pre.numberSource code > span > a:first-child::before
-  { content: counter(source-line);
-    position: relative; left: -1em; text-align: right; vertical-align: baseline;
-    border: none; display: inline-block;
-    -webkit-touch-callout: none; -webkit-user-select: none;
-    -khtml-user-select: none; -moz-user-select: none;
-    -ms-user-select: none; user-select: none;
-    padding: 0 4px; width: 4em;
-  }
-pre.numberSource { margin-left: 3em;  padding-left: 4px; }
-div.sourceCode
-  {   }
-@media screen {
-pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
 </style>
 
@@ -144,7 +110,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./index.html">Accueil</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./04_interface_gui.html">Utilisateur — Interface graphique</a></li><li class="breadcrumb-item"><a href="./gui_workflows.html">Workflows GUI</a></li></ol></nav>
         <a class="flex-grow-1" role="button" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="" onclick="window.quartoOpenSearch();">
@@ -154,7 +120,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </nav>
 </header>
 <!-- content -->
-<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-full page-navbar">
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
   <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
         <div class="mt-2 flex-shrink-0 align-items-center">
@@ -166,7 +132,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <ul class="list-unstyled mt-1">
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./index.html" class="sidebar-item-text sidebar-link active">
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Accueil</span></a>
   </div>
 </li>
@@ -187,6 +153,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="./troubleshooting_install.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Dépannage installation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="./02_quick_start.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Quick Start</span></a>
   </div>
@@ -196,7 +168,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
             <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="true">
- <span class="menu-text">Guide utilisateur</span></a>
+ <span class="menu-text">Chercheur — API Python</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
@@ -204,14 +176,72 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./03_api_python.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Recettes &amp; Patterns API</span></a>
+  <a href="./concepts_conventions.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Concepts &amp; conventions</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="./03_api_python.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Recettes &amp; Patterns API</span></a>
+  </div>
+</li>
+          <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-expanded="false">
+ <span class="menu-text">Tutoriels A→Z</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth2 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tutorials/01_dirty_map.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tutoriel 1 — Produire une Dirty Map</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tutorials/02_flagging_programmatique.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tutoriel 2 — Flagging programmatique</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tutorials/03_batch_pipeline.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tutoriel 3 — Traitement batch (processus)</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="true">
+ <span class="menu-text">Utilisateur — Interface graphique</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="./04_interface_gui.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Interface graphique (PyQt6)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./gui_workflows.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Workflows GUI</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./troubleshooting_gui.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Dépannage GUI</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -223,18 +253,78 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       </ul>
   </li>
         <li class="sidebar-item sidebar-item-section">
-      <span class="sidebar-item-text sidebar-link text-start">
- <span class="menu-text">Référence API</span></span>
-  </li>
-        <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="true">
- <span class="menu-text">Internals</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-expanded="true" aria-label="Toggle section">
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" aria-expanded="true">
+ <span class="menu-text">Référence API</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
-      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth1 show">  
+      <ul id="quarto-sidebar-section-5" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a href="./reference/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Function reference</span></a>
+          <a class="sidebar-item-toggle text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" aria-expanded="false" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-6" class="collapse list-unstyled sidebar-section depth2 ">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/DifmapBatchManager.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapBatchManager</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/DifmapError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/DifmapImager.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapImager</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/DifmapSession.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapSession</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/DifmapStateError.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">DifmapStateError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Observation.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Observation</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/Visualizer.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Visualizer</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-7" aria-expanded="true">
+ <span class="menu-text">Développeur</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-7" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-7" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="./06_contexte.html" class="sidebar-item-text sidebar-link">
@@ -259,6 +349,29 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
  <span class="menu-text">Contribuer</span></a>
   </div>
 </li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./doc_build_release.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Build / tests / génération doc</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-8" aria-expanded="true">
+ <span class="menu-text">Limitations</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-8" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-8" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./known_limitations.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Limitations connues</span></a>
+  </div>
+</li>
       </ul>
   </li>
     </ul>
@@ -266,19 +379,29 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </nav>
 <div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
-    
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#workflow-1-première-image-dirty-map" id="toc-workflow-1-première-image-dirty-map" class="nav-link active" data-scroll-target="#workflow-1-première-image-dirty-map">Workflow 1 — Première image (Dirty Map)</a></li>
+  <li><a href="#workflow-2-flagging-interactif-et-sauvegarde" id="toc-workflow-2-flagging-interactif-et-sauvegarde" class="nav-link" data-scroll-target="#workflow-2-flagging-interactif-et-sauvegarde">Workflow 2 — Flagging interactif et sauvegarde</a></li>
+  <li><a href="#workflow-3-comparer-pondérations" id="toc-workflow-3-comparer-pondérations" class="nav-link" data-scroll-target="#workflow-3-comparer-pondérations">Workflow 3 — Comparer pondérations</a></li>
+  <li><a href="#bonnes-pratiques" id="toc-bonnes-pratiques" class="nav-link" data-scroll-target="#bonnes-pratiques">Bonnes pratiques</a></li>
+  </ul>
+</nav>
+    </div>
 <!-- main -->
-<main class="content column-page-right" id="quarto-document-content">
+<main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default">
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./04_interface_gui.html">Utilisateur — Interface graphique</a></li><li class="breadcrumb-item"><a href="./gui_workflows.html">Workflows GUI</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">difmap_smartedit</h1>
-<p class="subtitle lead">Wrapper Python pour Difmap — imagerie VLBI moderne</p>
+<h1 class="title">Workflows GUI</h1>
 </div>
 
 
 
-<div class="quarto-title-meta column-page-right">
+<div class="quarto-title-meta">
 
     
   
@@ -290,104 +413,48 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </header>
 
 
-<p><strong>Difmap</strong> (Caltech, 1994) est le moteur de référence pour l’imagerie radio-interférométrique VLBI : déconvolution CLEAN, auto-calibration, modélisation de sources. Ses algorithmes C/Fortran (~100 000 lignes) sont validés par trente ans de publications.</p>
-<p>Ce projet lui ajoute une couche Python complète sans toucher à ses mathématiques :</p>
-<div class="columns">
-<div class="column" style="width:31%;">
-<p><strong>API Python native</strong> Accès direct à la mémoire du moteur C via Cython. Zéro écriture disque, zéro copie de données. <code>DifmapSession</code>, <code>Observation</code>, <code>DifmapImager</code>, <code>Visualizer</code>.</p>
-</div><div class="column" style="width:4%;">
-
-</div><div class="column" style="width:31%;">
-<p><strong>Interface PyQt6</strong> Application de bureau avec onglets UV/Radplot/Map, flagging interactif au clic, navigation antenne, console de log intégrée.</p>
-</div><div class="column" style="width:4%;">
-
-</div><div class="column" style="width:31%;">
-<p><strong>Traitement batch parallèle</strong> <code>DifmapBatchManager</code> distribue des pipelines sur N processus OS indépendants, contournant le singleton C par isolation mémoire.</p>
-</div>
-</div>
-<hr>
-<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> difmap_wrapper <span class="im">import</span> DifmapSession</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> DifmapSession() <span class="im">as</span> session:</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    session.observe(<span class="st">"data/source.uvfits"</span>)</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    session.obs.select(pol<span class="op">=</span><span class="st">"I"</span>)</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    img <span class="op">=</span> session.imager.make_dirty_map(size<span class="op">=</span><span class="dv">512</span>, cellsize<span class="op">=</span><span class="fl">0.1</span>)</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    session.vis.plot_image(img, cmap<span class="op">=</span><span class="st">"inferno"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<hr>
-<section id="navigation" class="level2">
-<h2 class="anchored" data-anchor-id="navigation">Navigation</h2>
-<div class="columns">
-<div class="column" style="width:22%;">
-<section id="installation" class="level3">
-<h3 class="anchored" data-anchor-id="installation"><a href="./01_installation.html">Installation →</a></h3>
-<p>Prérequis système, compilation Meson, environnement virtuel, mode développeur, Jupyter/VS Code.</p>
+<p>Cette page décrit des workflows d’utilisation typiques de l’application PyQt6 : charger des données, explorer, flagger, imager, et exporter.</p>
+<section id="workflow-1-première-image-dirty-map" class="level2">
+<h2 class="anchored" data-anchor-id="workflow-1-première-image-dirty-map">Workflow 1 — Première image (Dirty Map)</h2>
+<ol type="1">
+<li>Lancer l’application : voir <a href="./04_interface_gui.html">Interface graphique (PyQt6)</a>.</li>
+<li>Charger un fichier via <strong>File → Load FITS</strong>.</li>
+<li>Sélectionner la polarisation dans le panneau de contrôle.</li>
+<li>Aller à l’onglet <strong>Dirty Map</strong>.</li>
+<li>Régler :
+<ul>
+<li><code>Map size</code></li>
+<li><code>Cell size</code></li>
+<li><code>Weighting</code></li>
+<li>(optionnel) <code>Taper</code></li>
+</ul></li>
+<li>Cliquer <strong>Compute</strong>.</li>
+</ol>
 </section>
-</div><div class="column" style="width:3%;">
-
-</div><div class="column" style="width:22%;">
-<section id="quick-start" class="level3">
-<h3 class="anchored" data-anchor-id="quick-start"><a href="./02_quick_start.html">Quick Start →</a></h3>
-<p>Charger un fichier, sélectionner une polarisation, produire une Dirty Map et l’afficher. En cinq lignes.</p>
+<section id="workflow-2-flagging-interactif-et-sauvegarde" class="level2">
+<h2 class="anchored" data-anchor-id="workflow-2-flagging-interactif-et-sauvegarde">Workflow 2 — Flagging interactif et sauvegarde</h2>
+<ol type="1">
+<li>Ouvrir l’onglet <strong>UV</strong>.</li>
+<li>Utiliser les outils d’édition (clics) pour flagger/déflagger.</li>
+<li>Vérifier le résultat sur <strong>Radplot</strong>.</li>
+<li>Sauvegarder une copie des données avec flags via la fonctionnalité d’export/sauvegarde si disponible.</li>
+</ol>
 </section>
-</div><div class="column" style="width:3%;">
-
-</div><div class="column" style="width:22%;">
-<section id="recettes-patterns" class="level3">
-<h3 class="anchored" data-anchor-id="recettes-patterns"><a href="./03_api_python.html">Recettes &amp; Patterns →</a></h3>
-<p>Patterns d’utilisation courants : pipelines, boucles multi-polarisations, flagging programmatique, intégration Matplotlib, gestion d’erreurs.</p>
+<section id="workflow-3-comparer-pondérations" class="level2">
+<h2 class="anchored" data-anchor-id="workflow-3-comparer-pondérations">Workflow 3 — Comparer pondérations</h2>
+<ol type="1">
+<li>Calculer une première carte en pondération naturelle.</li>
+<li>Recalculer en pondération uniforme.</li>
+<li>(optionnel) Activer un taper gaussien.</li>
+<li>Comparer : résolution / bruit / artefacts.</li>
+</ol>
 </section>
-</div><div class="column" style="width:3%;">
-
-</div><div class="column" style="width:22%;">
-<section id="interface-graphique" class="level3">
-<h3 class="anchored" data-anchor-id="interface-graphique"><a href="./04_interface_gui.html">Interface graphique →</a></h3>
-<p>Lancement, onglets, panneau de contrôle, raccourcis clavier, architecture des signaux.</p>
-</section>
-</div>
-</div>
-<div class="columns">
-<div class="column" style="width:22%;">
-<section id="traitement-batch" class="level3">
-<h3 class="anchored" data-anchor-id="traitement-batch"><a href="./05_batch.html">Traitement batch →</a></h3>
-<p><code>DifmapBatchManager</code> — traitement de N fichiers en parallèle, gestion des erreurs worker, limitations RAM.</p>
-</section>
-</div><div class="column" style="width:3%;">
-
-</div><div class="column" style="width:22%;">
-<section id="architecture" class="level3">
-<h3 class="anchored" data-anchor-id="architecture"><a href="./07_architecture.html">Architecture →</a></h3>
-<p>Les 3 couches du wrapper (moteur C, binding Cython, API Python), bypass de SPHERE, build system.</p>
-</section>
-</div><div class="column" style="width:3%;">
-
-</div><div class="column" style="width:22%;">
-<section id="implémentation" class="level3">
-<h3 class="anchored" data-anchor-id="implémentation"><a href="./08_implementation.html">Implémentation →</a></h3>
-<p>Façade C, zéro-copie via Memoryviews, correction astrométrique du demi-pixel, hiérarchie d’exceptions.</p>
-</section>
-</div><div class="column" style="width:3%;">
-
-</div><div class="column" style="width:22%;">
-<section id="contribuer" class="level3">
-<h3 class="anchored" data-anchor-id="contribuer"><a href="./09_contribuer.html">Contribuer →</a></h3>
-<p>Ajouter une fonction C, recompiler, lancer les tests, conventions de nommage.</p>
-</section>
-</div>
-</div>
-<hr>
-<div class="columns">
-<div class="column" style="width:20%;">
-<p><strong>Version</strong> <code>2.5.0</code></p>
-</div><div class="column" style="width:20%;">
-<p><strong>Python</strong> <code>≥ 3.8</code> (Linux)</p>
-</div><div class="column" style="width:20%;">
-<p><strong>Moteur</strong> Difmap 2.5q</p>
-</div><div class="column" style="width:20%;">
-<p><strong>Build</strong> Meson + Ninja</p>
-</div><div class="column" style="width:20%;">
-<p><strong>Dépendances</strong> NumPy ≥ 2, Cython ≥ 3, PyQt6, Matplotlib, Astropy</p>
-</div>
-</div>
+<section id="bonnes-pratiques" class="level2">
+<h2 class="anchored" data-anchor-id="bonnes-pratiques">Bonnes pratiques</h2>
+<ul>
+<li>Travailler par étapes : charger → sélectionner → flagger → imager.</li>
+<li>En cas de doute sur les unités et conventions : voir <a href="./concepts_conventions.html">Concepts &amp; conventions</a>.</li>
+</ul>
 
 
 </section>
