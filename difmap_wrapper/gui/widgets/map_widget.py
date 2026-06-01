@@ -298,6 +298,15 @@ class MapPlotWidget(BasePlotWidget):
 
         lay.addStretch()
 
+        lay.addWidget(self._make_separator())
+        _export_btn = QToolButton()
+        _export_btn.setText("Export PNG")
+        _export_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        _export_btn.setToolTip("Exporter la figure en PNG")
+        _default_fn = f"{getattr(self, '_map_type', None) or 'map'}.png"
+        _export_btn.clicked.connect(lambda checked=False, fn=_default_fn: self._export_png(fn))
+        lay.addWidget(_export_btn)
+
     def _make_tool_dropdown(self, items: list[tuple[str, str]]) -> QToolButton:
         btn = QToolButton()
         btn.setCheckable(True)

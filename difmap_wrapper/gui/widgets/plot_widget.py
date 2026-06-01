@@ -196,6 +196,14 @@ class UVPlotWidget(BasePlotWidget):
 
         lay.addStretch()
 
+        lay.addWidget(_make_separator())
+        _export_btn = QToolButton()
+        _export_btn.setText("Export PNG")
+        _export_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        _export_btn.setToolTip("Exporter la couverture UV en PNG")
+        _export_btn.clicked.connect(lambda checked=False: self._export_png("uv_coverage.png"))
+        lay.addWidget(_export_btn)
+
         # Sélectionner Navigate par défaut
         self._set_active_tool_btn("PAN")
 

@@ -212,6 +212,14 @@ class RadPlotWidget(BasePlotWidget):
         lay.addWidget(view_btn)
         lay.addStretch()
 
+        lay.addWidget(_make_separator())
+        _export_btn = QToolButton()
+        _export_btn.setText("Export PNG")
+        _export_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        _export_btn.setToolTip("Exporter le radplot en PNG")
+        _export_btn.clicked.connect(lambda checked=False: self._export_png("radplot.png"))
+        lay.addWidget(_export_btn)
+
     # ── Gestion des boutons ──────────────────────────────────────
 
     def _update_btn_visuals(self, mode: str) -> None:

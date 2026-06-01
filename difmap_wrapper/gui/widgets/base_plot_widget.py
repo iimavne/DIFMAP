@@ -126,4 +126,24 @@ class BasePlotWidget(QWidget):
         """Retourne le Canvas PyQt."""
         return self.canvas
 
+    def _export_png(self, default_filename: str = "figure.png") -> None:
+        """Ouvre une boîte de dialogue et exporte la figure courante en PNG."""
+        from PyQt6.QtWidgets import QFileDialog
+        filepath, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export PNG",
+            default_filename,
+            "PNG Images (*.png);;All Files (*)",
+        )
+        if not filepath:
+            return
+        if not filepath.lower().endswith(".png"):
+            filepath += ".png"
+        self.fig.savefig(
+            filepath,
+            dpi=150,
+            bbox_inches="tight",
+            facecolor=self.fig.get_facecolor(),
+        )
+
 
