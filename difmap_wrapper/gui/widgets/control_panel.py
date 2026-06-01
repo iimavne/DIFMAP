@@ -214,6 +214,41 @@ class ToggleSwitch(QPushButton):
         p.end()
 
 
+class LabeledToggle(QWidget):
+    """Switch iOS-style avec label intégré — label à gauche, switch à droite.
+
+    Drop-in replacement de QCheckBox pour les lignes autonomes.
+    setVisible / setEnabled / blockSignals / setChecked / isChecked / toggled
+    se comportent exactement comme sur QCheckBox.
+    """
+    toggled = pyqtSignal(bool)
+
+    def __init__(self, label_text, parent=None):
+        super().__init__(parent)
+        h = QHBoxLayout(self)
+        h.setContentsMargins(0, 2, 0, 2)
+        h.setSpacing(8)
+        self._lbl = QLabel(label_text)
+        self._lbl.setStyleSheet(
+            f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; background: transparent;"
+        )
+        self._sw = ToggleSwitch()
+        self._sw.toggled.connect(self.toggled)
+        h.addWidget(self._lbl)
+        h.addStretch()
+        h.addWidget(self._sw)
+
+    def setChecked(self, v: bool) -> None:
+        self._sw.setChecked(v)
+
+    def isChecked(self) -> bool:
+        return self._sw.isChecked()
+
+    def setToolTip(self, text: str) -> None:
+        super().setToolTip(text)
+        self._sw.setToolTip(text)
+
+
 class CollapsibleSection(QWidget):
     """
     Section accordéon déroulante remplaçant le ``QGroupBox`` standard.
@@ -673,12 +708,12 @@ class ControlPanel(QDockWidget):
         layout.addWidget(self.sep_display)
 
         # ── Checkboxes UV / Radplot ────────────────────────────────
-        self.chk_conjugate = QCheckBox("Conjugate points  [%]")
+        self.chk_conjugate = LabeledToggle("Conjugate points  [%]")
         self.chk_conjugate.setChecked(True)
-        self.chk_model     = QCheckBox("Model overlay  [M]")
-        self.chk_residuals = QCheckBox("Residuals (Data − Model)  [−]")
+        self.chk_model     = LabeledToggle("Model overlay  [M]")
+        self.chk_residuals = LabeledToggle("Residuals (Data − Model)  [−]")
         self.chk_crosshair = QCheckBox("Full-screen crosshair  [+]")
-        self.chk_errors    = QCheckBox("Error plot (1/√w)  [E]")
+        self.chk_errors    = LabeledToggle("Error plot (1/√w)  [E]")
 
         # chk_crosshair existe (pour les liaisons internes) mais n'est plus dans le panel —
         # il est remplacé par le bouton Crosshair [+] de la toolbar UV.
@@ -702,10 +737,7 @@ class ControlPanel(QDockWidget):
         h_uv_hdr = QHBoxLayout()
         lbl_uv = QLabel("Limite plan UV")
         lbl_uv.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
-        self.chk_uv_limit = QPushButton("OFF")
-        self.chk_uv_limit.setCheckable(True)
-        self.chk_uv_limit.setChecked(False)
-        self.chk_uv_limit.setStyleSheet(toggle_style)
+        self.chk_uv_limit = ToggleSwitch()
         self.chk_uv_limit.setToolTip("Activer les limites manuelles du plan UV")
         h_uv_hdr.addWidget(lbl_uv)
         h_uv_hdr.addStretch()
@@ -810,7 +842,6 @@ class ControlPanel(QDockWidget):
         self.input_vmax_uv.editingFinished.connect(_on_field_v)
 
         def _on_uv_toggle(checked):
-            self.chk_uv_limit.setText("ON" if checked else "OFF")
             for w in (self.input_umin, self.input_umax, self.input_vmin_uv, self.input_vmax_uv,
                       self._slider_u, self._slider_v):
                 w.setEnabled(checked)
@@ -832,10 +863,7 @@ class ControlPanel(QDockWidget):
         h_rad_hdr = QHBoxLayout()
         lbl_rad_lim = QLabel("Limite Radplot")
         lbl_rad_lim.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
-        self.chk_rad_limit = QPushButton("OFF")
-        self.chk_rad_limit.setCheckable(True)
-        self.chk_rad_limit.setChecked(False)
-        self.chk_rad_limit.setStyleSheet(toggle_style)
+        self.chk_rad_limit = ToggleSwitch()
         self.chk_rad_limit.setToolTip("Activer les limites manuelles du Radplot")
         h_rad_hdr.addWidget(lbl_rad_lim)
         h_rad_hdr.addStretch()
@@ -943,7 +971,6 @@ class ControlPanel(QDockWidget):
         _sync_rad_boxes()
 
         def _on_rad_toggle(checked):
-            self.chk_rad_limit.setText("ON" if checked else "OFF")
             for w in _rad_fields_list:
                 w.setEnabled(checked)
             for rs in _rad_sliders:
@@ -1129,9 +1156,7 @@ class ControlPanel(QDockWidget):
         h_uvf_hdr = QHBoxLayout(); h_uvf_hdr.setSpacing(6)
         lbl_uvf = QLabel("UV Filtering")
         lbl_uvf.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
-        self.chk_uv_filter = QPushButton("OFF")
-        self.chk_uv_filter.setCheckable(True); self.chk_uv_filter.setChecked(False)
-        self.chk_uv_filter.setStyleSheet(toggle_style)
+        self.chk_uv_filter = ToggleSwitch()
         self.chk_uv_filter.setToolTip("Activer le filtre de plage UV (uvrange) en Mλ")
         h_uvf_hdr.addWidget(lbl_uvf); h_uvf_hdr.addStretch(); h_uvf_hdr.addWidget(self.chk_uv_filter)
         ip.addLayout(h_uvf_hdr)
@@ -1387,14 +1412,14 @@ class ControlPanel(QDockWidget):
 
         # ── Show Windows — visible uniquement sous CLEAN ──────────
         cc.addWidget(self._thin_sep())
-        self.chk_show_windows = QCheckBox("Show Windows  [W]")
+        self.chk_show_windows = LabeledToggle("Show Windows  [W]")
         self.chk_show_windows.setChecked(True)
         self.chk_show_windows.setToolTip(
             "Afficher les rectangles des fenêtres CLEAN sur la carte résiduelle"
         )
         cc.addWidget(self.chk_show_windows)
 
-        self.chk_show_model_map = QCheckBox("Show Model Components  [M]")
+        self.chk_show_model_map = LabeledToggle("Show Model Components  [M]")
         self.chk_show_model_map.setToolTip("Afficher les composantes CLEAN sur la carte")
         self.chk_show_model_map.setChecked(False)
         cc.addWidget(self.chk_show_model_map)
@@ -1467,7 +1492,11 @@ class ControlPanel(QDockWidget):
         self.input_sc_solint.setToolTip("Intervalle de solution en minutes — 0 = une solution par intégration")
         lbl_solint_unit = QLabel("min")
         lbl_solint_unit.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
-        self.chk_sc_float_amp = QCheckBox("dofloat")
+        lbl_dofloat = QLabel("dofloat")
+        lbl_dofloat.setStyleSheet(
+            f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;"
+        )
+        self.chk_sc_float_amp = ToggleSwitch()
         self.chk_sc_float_amp.setToolTip(
             "Corrections d'amplitude non contraintes (flottantes)\n"
             "Disponible uniquement en mode Amplitude + Phase"
@@ -1488,6 +1517,7 @@ class ControlPanel(QDockWidget):
         h_sol_float.addWidget(self.input_sc_solint)
         h_sol_float.addWidget(lbl_solint_unit)
         h_sol_float.addStretch()
+        h_sol_float.addWidget(lbl_dofloat)
         h_sol_float.addWidget(self.chk_sc_float_amp)
         vsc.addLayout(h_sol_float)
         sc.addWidget(frm_sc)
@@ -1496,9 +1526,14 @@ class ControlPanel(QDockWidget):
         frm_sf, vsf = _cmd_frame("selfflag")
 
         h_doflag = QHBoxLayout(); h_doflag.setSpacing(6)
-        self.chk_sc_doflag = QCheckBox("doflag")
+        lbl_doflag_text = QLabel("doflag")
+        lbl_doflag_text.setStyleSheet(
+            f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;"
+        )
+        self.chk_sc_doflag = ToggleSwitch()
         self.chk_sc_doflag.setChecked(True)
         self.chk_sc_doflag.setToolTip("Flaguer automatiquement les solutions jugées mauvaises")
+        h_doflag.addWidget(lbl_doflag_text)
         h_doflag.addWidget(self.chk_sc_doflag)
         h_doflag.addStretch()
         vsf.addLayout(h_doflag)
@@ -1561,11 +1596,16 @@ class ControlPanel(QDockWidget):
         vsl.addLayout(h_lims)
 
         h_clip = QHBoxLayout(); h_clip.setSpacing(6)
-        self.chk_sc_clip = QCheckBox("clip")
+        lbl_clip_text = QLabel("clip")
+        lbl_clip_text.setStyleSheet(
+            f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;"
+        )
+        self.chk_sc_clip = ToggleSwitch()
         self.chk_sc_clip.setToolTip(
             "Clipper les solutions hors limites (maxphs / maxamp)\n"
             "Actif uniquement si maxphs > 0 ou maxamp > 0"
         )
+        h_clip.addWidget(lbl_clip_text)
         h_clip.addWidget(self.chk_sc_clip)
         h_clip.addStretch()
         vsl.addLayout(h_clip)
@@ -1728,7 +1768,6 @@ class ControlPanel(QDockWidget):
 
         # ── Connexions internes ───────────────────────────────────
         def _on_uvf_toggle(checked):
-            self.chk_uv_filter.setText("ON" if checked else "OFF")
             for w in (self.input_uvfilter_min, self.input_uvfilter_max):
                 w.setEnabled(checked)
 
