@@ -262,7 +262,7 @@ class MainWindow(QMainWindow):
         self.addToolBar(self.toolbar)
         self.menuBar().setVisible(False)  # remplacé par la toolbar unifiée
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea,  self.control_panel)
-        self.control_panel.setMinimumWidth(330)
+        self.control_panel.setMinimumWidth(370)
         self.control_panel.setMaximumWidth(520)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.log_console)
 

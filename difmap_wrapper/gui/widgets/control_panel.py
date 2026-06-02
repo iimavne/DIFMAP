@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QComboBox, QLineEdit, QCheckBox,
                              QScrollArea, QSlider, QPushButton, QMessageBox,
                              QColorDialog, QSpinBox, QFrame, QProgressBar,
-                             QGridLayout)
+                             QGridLayout, QToolButton)
 from PyQt6.QtGui import QColor, QPainter, QBrush, QPen
 from PyQt6.QtCore import pyqtSignal, QRect
 from PyQt6.QtCore import Qt
@@ -378,14 +378,27 @@ class ControlPanel(QDockWidget):
         self.setWidget(scroll)
 
     def set_uv_data_range(self, umin: float, umax: float, vmin: float, vmax: float) -> None:
-        """Cale les sliders UV sur la plage réelle des données (en Mλ, signée)."""
+        """Cale les sliders UV et affiche les vraies valeurs comme placeholder."""
         self._slider_u.set_data_range(umin, umax)
         self._slider_v.set_data_range(vmin, vmax)
+        def _f(v): return f"{v:.2f}"
+        # U inversé : inp_umin ↔ positif (umax), inp_umax ↔ négatif (umin)
+        self.input_umin.setPlaceholderText(_f(umax))
+        self.input_umax.setPlaceholderText(_f(umin))
+        self.input_vmin_uv.setPlaceholderText(_f(vmin))
+        self.input_vmax_uv.setPlaceholderText(_f(vmax))
 
     def set_rad_data_range(self, uv_max: float, amp_max: float) -> None:
-        """Cale les sliders Radplot sur la plage réelle des données."""
+        """Cale les sliders Radplot et affiche les vraies valeurs comme placeholder."""
         self._slider_rad_uv.set_data_range(0.0, uv_max)
         self._slider_rad_amp.set_data_range(0.0, amp_max)
+        def _f(v): return f"{v:.2f}"
+        self.input_rad_uvmin.setPlaceholderText(_f(0.0))
+        self.input_rad_uvmax.setPlaceholderText(_f(uv_max))
+        self.input_rad_ampmin.setPlaceholderText(_f(0.0))
+        self.input_rad_ampmax.setPlaceholderText(_f(amp_max))
+        self.input_rad_phsmin.setPlaceholderText("-180.00")
+        self.input_rad_phsmax.setPlaceholderText("180.00")
         # Phase : toujours −180 / +180
 
     def set_available_polarizations(self, polarizations: list[str], current: str | None = None) -> None:
@@ -750,11 +763,7 @@ class ControlPanel(QDockWidget):
         grid.setSpacing(6)
 
         def _make_uv_axis(axis: str, invert: bool = False):
-            """Retourne (slider, inp_min, inp_max) pour un axe U ou V.
-
-            invert=True : axe visuel inversé (←max … min→), labels et champs swappés
-            pour que la gauche corresponde toujours à ce qui est à gauche du plot UV.
-            """
+            """Retourne (slider, inp_min, inp_max, reset_btn) pour un axe U ou V."""
             h_ax = QHBoxLayout(); h_ax.setContentsMargins(0, 0, 0, 0); h_ax.setSpacing(0)
             lbl_ax = QLabel(f"{axis}  (Mλ)")
             lbl_ax.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
@@ -769,22 +778,46 @@ class ControlPanel(QDockWidget):
             rs.setEnabled(False)
             grid.addWidget(rs)
 
-            inp_min = QLineEdit(); inp_min.setPlaceholderText("auto"); inp_min.setStyleSheet(field_style); inp_min.setEnabled(False)
+            inp_min = QLineEdit(); inp_min.setPlaceholderText("—"); inp_min.setStyleSheet(field_style); inp_min.setEnabled(False)
             inp_min.setToolTip(f"Limite {axis} minimum (Mλ)")
-            inp_max = QLineEdit(); inp_max.setPlaceholderText("auto"); inp_max.setStyleSheet(field_style); inp_max.setEnabled(False)
+            inp_max = QLineEdit(); inp_max.setPlaceholderText("—"); inp_max.setStyleSheet(field_style); inp_max.setEnabled(False)
             inp_max.setToolTip(f"Limite {axis} maximum (Mλ)")
+
+            rst = QToolButton(); rst.setText("↺"); rst.setFixedWidth(32)
+            rst.setToolTip(f"Réinitialiser l'axe {axis}")
+            rst.setEnabled(False)
+            rst.clicked.connect(lambda checked=False, _rs=rs, _a=inp_min, _b=inp_max: [
+                _a.setText(""), _b.setText(""),
+                _rs.set_values(_rs._min, _rs._max),
+                _emit_uv_limits_checked()
+            ])
 
             row = QHBoxLayout(); row.setSpacing(4)
             lbl_l = QLabel("min"); lbl_l.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};"); lbl_l.setFixedWidth(22)
             lbl_r = QLabel("max"); lbl_r.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};"); lbl_r.setFixedWidth(22)
             row.addWidget(lbl_l); row.addWidget(inp_min)
-            row.addSpacing(6)
+            row.addSpacing(4)
             row.addWidget(lbl_r); row.addWidget(inp_max)
+            row.addWidget(rst)
             grid.addLayout(row)
-            return rs, inp_min, inp_max
+            return rs, inp_min, inp_max, rst
 
-        self._slider_u, self.input_umin, self.input_umax = _make_uv_axis("U", invert=True)
-        self._slider_v, self.input_vmin_uv, self.input_vmax_uv = _make_uv_axis("V")
+        self._slider_u, self.input_umin, self.input_umax, self._rst_u = _make_uv_axis("U", invert=True)
+        self._slider_v, self.input_vmin_uv, self.input_vmax_uv, self._rst_v = _make_uv_axis("V")
+
+        rst_all_uv = QToolButton(); rst_all_uv.setText("↺  Reset all")
+        rst_all_uv.setEnabled(False)
+        def _reset_all_uv():
+            for f in (self.input_umin, self.input_umax,
+                      self.input_vmin_uv, self.input_vmax_uv):
+                f.setText("")
+            self._slider_u.set_values(self._slider_u._min, self._slider_u._max)
+            self._slider_v.set_values(self._slider_v._min, self._slider_v._max)
+            self._emit_uv_limits()
+        rst_all_uv.clicked.connect(_reset_all_uv)
+        self._rst_all_uv = rst_all_uv
+        row_rst = QHBoxLayout(); row_rst.addStretch(); row_rst.addWidget(rst_all_uv)
+        grid.addLayout(row_rst)
 
         _uv_sec.addWidget(self._uv_limit_box)
         layout.addWidget(self._uv_limits_section)
@@ -843,7 +876,8 @@ class ControlPanel(QDockWidget):
 
         def _on_uv_toggle(checked):
             for w in (self.input_umin, self.input_umax, self.input_vmin_uv, self.input_vmax_uv,
-                      self._slider_u, self._slider_v):
+                      self._slider_u, self._slider_v,
+                      self._rst_u, self._rst_v, self._rst_all_uv):
                 w.setEnabled(checked)
             self._emit_uv_limits()
 
@@ -877,6 +911,7 @@ class ControlPanel(QDockWidget):
 
         _rad_sliders: list = []
         _rad_fields_list: list = []
+        _rad_rst_btns: list = []
 
         def _fmt_r(v: float) -> str:
             return f"{v:.2f}" if v != int(v) else str(int(v))
@@ -890,7 +925,7 @@ class ControlPanel(QDockWidget):
 
         def _make_rad_block(parent_layout, title: str, sl_min: float, sl_max: float,
                             tip_min: str, tip_max: str, invert: bool = False):
-            """Crée label + RangeSlider + champs min/max. Retourne (slider, inp_min, inp_max)."""
+            """Crée label + RangeSlider + champs min/max + reset. Retourne (slider, inp_min, inp_max, reset_btn)."""
             lbl = QLabel(title)
             lbl.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; font-weight: bold;")
             parent_layout.addWidget(lbl)
@@ -902,12 +937,24 @@ class ControlPanel(QDockWidget):
 
             row = QHBoxLayout(); row.setSpacing(4)
             la = QLabel("min"); la.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};"); la.setFixedWidth(24)
-            ia = QLineEdit(); ia.setPlaceholderText("auto"); ia.setStyleSheet(field_style); ia.setToolTip(tip_min); ia.setEnabled(False)
+            ia = QLineEdit(); ia.setPlaceholderText("—"); ia.setStyleSheet(field_style); ia.setToolTip(tip_min); ia.setEnabled(False)
             lb = QLabel("max"); lb.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};"); lb.setFixedWidth(24)
-            ib = QLineEdit(); ib.setPlaceholderText("auto"); ib.setStyleSheet(field_style); ib.setToolTip(tip_max); ib.setEnabled(False)
+            ib = QLineEdit(); ib.setPlaceholderText("—"); ib.setStyleSheet(field_style); ib.setToolTip(tip_max); ib.setEnabled(False)
+
+            rst = QToolButton(); rst.setText("↺"); rst.setFixedWidth(32)
+            rst.setToolTip(f"Réinitialiser {title}")
+            rst.setEnabled(False)
+            rst.clicked.connect(lambda checked=False, _rs=rs, _a=ia, _b=ib: [
+                _a.setText(""), _b.setText(""),
+                _rs.set_values(_rs._min, _rs._max),
+                self._emit_rad_limits() if self.chk_rad_limit.isChecked() else None
+            ])
+
             row.addWidget(la); row.addWidget(ia); row.addSpacing(4); row.addWidget(lb); row.addWidget(ib)
+            row.addWidget(rst)
             parent_layout.addLayout(row)
             _rad_fields_list.extend([ia, ib])
+            _rad_rst_btns.append(rst)
 
             def _on_slider(lo, hi, _ia=ia, _ib=ib):
                 _ia.blockSignals(True); _ib.blockSignals(True)
@@ -926,25 +973,38 @@ class ControlPanel(QDockWidget):
             rs.range_changed.connect(_on_slider)
             ia.editingFinished.connect(_on_fields)
             ib.editingFinished.connect(_on_fields)
-            return rs, ia, ib
+            return rs, ia, ib, rst
 
         # ── UV Radius (toujours visible) ──────────────────────────
-        self._slider_rad_uv, self.input_rad_uvmin, self.input_rad_uvmax = _make_rad_block(
+        self._slider_rad_uv, self.input_rad_uvmin, self.input_rad_uvmax, _ = _make_rad_block(
             _rlb, "UV Radius (Mλ)", 0.0, 1000.0, "UV radius minimum (Mλ)", "UV radius maximum (Mλ)")
 
         # ── Amplitude (mode 1 ou 3) ───────────────────────────────
         self._rad_amp_box = QWidget()
         _amp_l = QVBoxLayout(self._rad_amp_box); _amp_l.setContentsMargins(0, 0, 0, 0); _amp_l.setSpacing(4)
-        self._slider_rad_amp, self.input_rad_ampmin, self.input_rad_ampmax = _make_rad_block(
+        self._slider_rad_amp, self.input_rad_ampmin, self.input_rad_ampmax, _ = _make_rad_block(
             _amp_l, "Amplitude (Jy)", 0.0, 2.0, "Amplitude minimum (Jy)", "Amplitude maximum (Jy)")
         _rlb.addWidget(self._rad_amp_box)
 
         # ── Phase (mode 2 ou 3) ───────────────────────────────────
         self._rad_phs_box = QWidget()
         _phs_l = QVBoxLayout(self._rad_phs_box); _phs_l.setContentsMargins(0, 0, 0, 0); _phs_l.setSpacing(4)
-        self._slider_rad_phs, self.input_rad_phsmin, self.input_rad_phsmax = _make_rad_block(
+        self._slider_rad_phs, self.input_rad_phsmin, self.input_rad_phsmax, _ = _make_rad_block(
             _phs_l, "Phase (°)", -180.0, 180.0, "Phase minimum (°)", "Phase maximum (°)")
         _rlb.addWidget(self._rad_phs_box)
+
+        rst_all_rad = QToolButton(); rst_all_rad.setText("↺  Reset all")
+        rst_all_rad.setEnabled(False)
+        def _reset_all_rad():
+            for f in _rad_fields_list:
+                f.setText("")
+            for rs in _rad_sliders:
+                rs.set_values(rs._min, rs._max)
+            self._emit_rad_limits()
+        rst_all_rad.clicked.connect(_reset_all_rad)
+        self._rst_all_rad = rst_all_rad
+        row_rst_rad = QHBoxLayout(); row_rst_rad.addStretch(); row_rst_rad.addWidget(rst_all_rad)
+        _rlb.addLayout(row_rst_rad)
 
         _rad_sec.addWidget(self._rad_limit_box)
         layout.addWidget(self._rad_limits_section)
@@ -975,6 +1035,9 @@ class ControlPanel(QDockWidget):
                 w.setEnabled(checked)
             for rs in _rad_sliders:
                 rs.setEnabled(checked)
+            for rb in _rad_rst_btns:
+                rb.setEnabled(checked)
+            self._rst_all_rad.setEnabled(checked)
             self._emit_rad_limits()
 
         self.chk_rad_limit.toggled.connect(_on_rad_toggle)
@@ -1014,7 +1077,7 @@ class ControlPanel(QDockWidget):
         lbl_size.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
         lbl_size.setFixedWidth(52)
         self.lbl_slider_size = lbl_size
-        self.lbl_slider_size_val = QLabel("5 %")
+        self.lbl_slider_size_val = QLabel("20 %")
         self.lbl_slider_size_val.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
         self.lbl_slider_size_val.setAlignment(Qt.AlignmentFlag.AlignRight)
         h_size.addWidget(lbl_size)
@@ -1024,7 +1087,7 @@ class ControlPanel(QDockWidget):
         self.slider_size = QSlider(Qt.Orientation.Horizontal)
         self.slider_size.setMinimum(1)
         self.slider_size.setMaximum(100)
-        self.slider_size.setValue(5)
+        self.slider_size.setValue(20)
         self.slider_size.setToolTip("Marker size (1–100 %)")
         self.slider_size.valueChanged.connect(
             lambda v: self.lbl_slider_size_val.setText(f"{v} %")

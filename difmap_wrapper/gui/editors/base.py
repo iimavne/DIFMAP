@@ -134,7 +134,7 @@ class BasePlotEditor:
         self._last_mouse = None  # (inaxes, xdata, ydata)
         self.original_limits = (self.ax.get_xlim(), self.ax.get_ylim())
         self._view_history: list[dict] = []
-        self.marker_size_pct = 5   # pourcentage courant (1–100)
+        self.marker_size_pct = 20  # pourcentage courant (1–100)
         self._SIZE_MIN = 0.35  # pts² à 1 %
         self._SIZE_MAX = 26.0  # pts² à 100 %
 
