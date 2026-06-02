@@ -91,11 +91,15 @@ class RadPlotEditor(BasePlotEditor):
             )
             self.rs_flag_phase.set_active(False)
 
+            self._set_selector_props(self.rs_flag_phase, self._selection_props_edit)
+
             self.rs_stats_phase = RectangleSelector(
                 self.ax_phase, on_select_phase_stats, useblit=True, button=[1],
                 minspanx=5, minspany=5, spancoords="pixels", interactive=False,
             )
             self.rs_stats_phase.set_active(False)
+
+            self._set_selector_props(self.rs_stats_phase, self._selection_props_other)
 
         if self.ax_err:
             def on_select_err_flag(eclick, erelease, ax=self.ax_err):
@@ -112,11 +116,15 @@ class RadPlotEditor(BasePlotEditor):
             )
             self.rs_flag_err.set_active(False)
 
+            self._set_selector_props(self.rs_flag_err, self._selection_props_edit)
+
             self.rs_stats_err = RectangleSelector(
                 self.ax_err, on_select_err_stats, useblit=True, button=[1],
                 minspanx=5, minspany=5, spancoords="pixels", interactive=False,
             )
             self.rs_stats_err.set_active(False)
+
+            self._set_selector_props(self.rs_stats_err, self._selection_props_other)
 
         self.uv_radius = np.sqrt(self.data["u"]**2 + self.data["v"]**2) / 1e6
         self.amp    = self.data.get("amp",    np.zeros_like(self.uv_radius))
@@ -174,15 +182,19 @@ class RadPlotEditor(BasePlotEditor):
         flag_active = (self.mode == EditorMode.INTERACTIVE_FLAG)
         if self.rs_flag_phase:
             self.rs_flag_phase.set_active(flag_active)
+            self._set_selector_props(self.rs_flag_phase, self._selection_props_edit if flag_active else self._selection_props_other)
         if self.rs_flag_err:
             self.rs_flag_err.set_active(flag_active)
+            self._set_selector_props(self.rs_flag_err, self._selection_props_edit if flag_active else self._selection_props_other)
 
         # RectangleSelectors statistiques (ax_phase, ax_err) — STATS et STATS_V
         stats_active = self.mode in (EditorMode.STATS, EditorMode.STATS_V)
         if self.rs_stats_phase:
             self.rs_stats_phase.set_active(stats_active)
+            self._set_selector_props(self.rs_stats_phase, self._selection_props_other)
         if self.rs_stats_err:
             self.rs_stats_err.set_active(stats_active)
+            self._set_selector_props(self.rs_stats_err, self._selection_props_other)
 
         # SpanSelectors zoom Y
         zoom_y_active = (self.mode == EditorMode.ZOOM_Y)
@@ -613,6 +625,36 @@ class RadPlotEditor(BasePlotEditor):
             logger.info(f"✂ {len(indices)} points supprimés.", extra={'difmap_level': 'success'})
             self._flag_indices(indices)
 
+    def apply_unflag(self, x1, y1, x2, y2):
+        """Unflag dans une boîte sur l'axe actif (amplitude ou phase)."""
+        xmin, xmax = min(x1, x2), max(x1, x2)
+        ymin, ymax = min(y1, y2), max(y1, y2)
+
+        d_amp, d_phs = self._get_current_y_data()
+        is_phase = (hasattr(self, '_last_pressed_axis')
+                    and self.axis_type.get(self._last_pressed_axis) == "phase")
+        y_data = d_phs if is_phase else d_amp
+
+        mask_box = ((self.uv_radius >= xmin) & (self.uv_radius <= xmax)
+                    & (y_data >= ymin) & (y_data <= ymax))
+        masque_final = mask_box & self.obs.masque_flagges
+        indices = np.where(masque_final)[0]
+
+        if len(indices) == 0:
+            return
+
+        try:
+            self.obs.historique_reflag.clear()
+        except Exception:
+            pass
+
+        self.obs.unflag_data(indices)
+        self.obs.masque_flagges[indices] = False
+        self._update_colors()
+        logger.info(f"🔓 {len(indices)} points UNFLAG (boîte)", extra={'difmap_level': 'success'})
+        if self.sync_callback:
+            self.sync_callback()
+
     def _apply_interactive_flag(self, x1, y1, x2, y2, is_flag: bool):
         """
         Flagging interactif sur le Radplot avec détection bouton de souris.
@@ -658,9 +700,12 @@ class RadPlotEditor(BasePlotEditor):
             masque_final = mask_box & self.obs.masque_flagges
             indices = np.where(masque_final)[0]
             if len(indices) > 0:
+                try:
+                    self.obs.historique_reflag.clear()
+                except Exception:
+                    pass
                 self.obs.unflag_data(indices)
                 self.obs.masque_flagges[indices] = False
-                self.obs.historique_coupes.append(indices)
                 self._update_colors()
                 logger.info(f"🔓 {len(indices)} points UNFLAG (souris droit)", 
                            extra={'difmap_level': 'success'})

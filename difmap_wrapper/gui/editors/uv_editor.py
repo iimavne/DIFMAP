@@ -153,6 +153,35 @@ class UVPlotEditor(BasePlotEditor):
             )
             self._flag_indices(indices)
 
+    def apply_unflag(self, x1, y1, x2, y2):
+        """Unflagge les visibilités flaggées dans la boîte, conjugués inclus."""
+        u_min, u_max = min(x1, x2), max(x1, x2)
+        v_min, v_max = min(y1, y2), max(y1, y2)
+
+        u_data = self.data["u"] / 1e6
+        v_data = self.data["v"] / 1e6
+
+        mask_main = (u_data >= u_min) & (u_data <= u_max) & (v_data >= v_min) & (v_data <= v_max)
+        mask_conj = (-u_data >= u_min) & (-u_data <= u_max) & (-v_data >= v_min) & (-v_data <= v_max)
+        masque_intersection = mask_main | mask_conj
+        masque_final = masque_intersection & self.obs.masque_flagges
+        indices = np.where(masque_final)[0]
+
+        if len(indices) == 0:
+            return
+
+        try:
+            self.obs.historique_reflag.clear()
+        except Exception:
+            pass
+
+        self.obs.unflag_data(indices)
+        self.obs.masque_flagges[indices] = False
+        self._update_colors()
+        logger.info(f"🔓 {len(indices)} points UNFLAG (boîte)", extra={'difmap_level': 'success'})
+        if self.sync_callback:
+            self.sync_callback()
+
     def _apply_interactive_flag(self, x1, y1, x2, y2, is_flag: bool):
         """
         Flagging interactif sur le plan UV avec détection du bouton de souris.
@@ -187,9 +216,12 @@ class UVPlotEditor(BasePlotEditor):
             masque_final = masque_intersection & self.obs.masque_flagges
             indices = np.where(masque_final)[0]
             if len(indices) > 0:
+                try:
+                    self.obs.historique_reflag.clear()
+                except Exception:
+                    pass
                 self.obs.unflag_data(indices)
                 self.obs.masque_flagges[indices] = False
-                self.obs.historique_coupes.append(indices)
                 self._update_colors()
                 logger.info(f"🔓 {len(indices)} points UNFLAG (souris droit)", 
                            extra={'difmap_level': 'success'})
@@ -213,6 +245,10 @@ class UVPlotEditor(BasePlotEditor):
         if not indices_valides:
             return
         indices_np = np.array(indices_valides, dtype=np.int32)
+        try:
+            self.obs.historique_reflag.clear()
+        except Exception:
+            pass
         self.obs.flag_data(indices_np)
         self.obs.masque_flagges[indices_np] = True
         self.obs.historique_coupes.append(indices_np)

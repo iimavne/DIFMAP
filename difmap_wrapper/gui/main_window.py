@@ -1089,7 +1089,6 @@ class MainWindow(QMainWindow):
         <table>
           <tr><td width="160"><b>A</b></td><td>Flagger le point le plus proche</td></tr>
           <tr><td><b>C</b></td><td>Flagger une zone rectangulaire</td></tr>
-          <tr><td><b>F</b></td><td>Flagging interactif (gauche=flag, droit=unflag)</td></tr>
           <tr><td><b>Z</b></td><td>Zoom box</td></tr>
           <tr><td><b>u / Ctrl+Z</b></td><td>Annuler</td></tr>
           <tr><td><b>Ctrl+S</b></td><td>Ouvrir le dialogue save / wobs</td></tr>
@@ -2461,15 +2460,15 @@ class MainWindow(QMainWindow):
                 if 'show_help' in state_dict:
                     QTimer.singleShot(0, self._show_help_dialog)
                 if 'inspect_active' in state_dict:
-                    # Synchronise le combo de la toolbar locale
-                    for widget in [self.plot_widget, self.radplot_widget]:
-                        if widget and hasattr(widget, 'sync_inspect_state'):
-                            widget.sync_inspect_state(state_dict['inspect_active'])
+                    pass
 
                 if 'active_tool' in state_dict:
+                    pass
+
+                if 'edit_tool' in state_dict:
                     for widget in [self.plot_widget, self.radplot_widget]:
-                        if widget and hasattr(widget, 'sync_tool_state'):
-                            widget.sync_tool_state(state_dict['active_tool'])
+                        if widget and hasattr(widget, 'sync_edit_tool_state'):
+                            widget.sync_edit_tool_state(state_dict.get('edit_tool'))
 
                 if state_dict.get('_refresh_layout'):
                     # Apply all layout-affecting state changes to the widget BEFORE

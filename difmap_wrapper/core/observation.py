@@ -38,6 +38,7 @@ class Observation:
         # C3 : Propriété des données de flagging — centralisée ici
         self.masque_flagges: np.ndarray | None = None
         self.historique_coupes: list = []
+        self.historique_reflag: list = []
 
         # Cache get_data() : évite de réappeler l_extract_uv() si rien n'a changé
         self._cached_raw_data: dict | None = None
@@ -94,6 +95,7 @@ class Observation:
         """
         self.masque_flagges = np.zeros(n_visibilities, dtype=bool)
         self.historique_coupes = []
+        self.historique_reflag = []
 
     def get_data(self) -> dict:
         """
