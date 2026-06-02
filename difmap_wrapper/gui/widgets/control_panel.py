@@ -1153,6 +1153,38 @@ class ControlPanel(QDockWidget):
         h_grid.addStretch()
         ip.addLayout(h_grid)
 
+        h_wt = QHBoxLayout(); h_wt.setSpacing(6)
+        h_wt.addWidget(QLabel("Weighting:"))
+        self.combo_weight = QComboBox()
+        self.combo_weight.addItems(["Uniform  (bin=2, err=0)", "Natural  (bin=0, err=−2)", "Custom"])
+        self.combo_weight.setToolTip(
+            "Pondération des visibilités UV (commande uvweight de Difmap)\n"
+            "  Uniform  : uvweight 2,0   (résolution maximale — défaut Difmap)\n"
+            "  Natural  : uvweight 0,-2  (1/σ² — meilleure sensibilité)\n"
+            "  Custom   : bin et errpow personnalisés"
+        )
+        h_wt.addWidget(self.combo_weight)
+        ip.addLayout(h_wt)
+
+        self.custom_weight_widget = QWidget()
+        h_cw = QHBoxLayout(self.custom_weight_widget); h_cw.setContentsMargins(0, 0, 0, 0); h_cw.setSpacing(6)
+        h_cw.addWidget(QLabel("Bin:"))
+        self.input_weight_bin = QLineEdit("2.0")
+        self.input_weight_bin.setFixedWidth(52)
+        self.input_weight_bin.setToolTip("uvweight bin (≥0 ; 0=natural, 2=uniform)")
+        h_cw.addWidget(self.input_weight_bin)
+        h_cw.addWidget(QLabel("ErrPow:"))
+        self.input_weight_err = QLineEdit("0.0")
+        self.input_weight_err.setFixedWidth(52)
+        self.input_weight_err.setToolTip("uvweight errpow (≤0 ; 0=uniform, -2=natural)")
+        h_cw.addWidget(self.input_weight_err)
+        h_cw.addStretch()
+        self.custom_weight_widget.setVisible(False)
+        ip.addWidget(self.custom_weight_widget)
+        self.combo_weight.currentTextChanged.connect(
+            lambda t: self.custom_weight_widget.setVisible(t.startswith("Custom"))
+        )
+
         h_uvf_hdr = QHBoxLayout(); h_uvf_hdr.setSpacing(6)
         lbl_uvf = QLabel("UV Filtering")
         lbl_uvf.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
@@ -1181,38 +1213,6 @@ class ControlPanel(QDockWidget):
         h_uvf.addWidget(lbl_uvfmin); h_uvf.addWidget(self.input_uvfilter_min)
         h_uvf.addWidget(lbl_uvfmax); h_uvf.addWidget(self.input_uvfilter_max)
         ip.addWidget(self._uv_filter_box)
-
-        h_wt = QHBoxLayout(); h_wt.setSpacing(6)
-        h_wt.addWidget(QLabel("Weighting:"))
-        self.combo_weight = QComboBox()
-        self.combo_weight.addItems(["Uniform", "Natural", "Custom"])
-        self.combo_weight.setToolTip(
-            "Pondération des visibilités UV (commande uvweight de Difmap)\n"
-            "  Uniform  : uvweight 2,0   (résolution maximale — défaut Difmap)\n"
-            "  Natural  : uvweight 0,-2  (1/σ² — meilleure sensibilité)\n"
-            "  Custom   : bin et errpow personnalisés"
-        )
-        h_wt.addWidget(self.combo_weight)
-        ip.addLayout(h_wt)
-
-        self.custom_weight_widget = QWidget()
-        h_cw = QHBoxLayout(self.custom_weight_widget); h_cw.setContentsMargins(0, 0, 0, 0); h_cw.setSpacing(6)
-        h_cw.addWidget(QLabel("Bin:"))
-        self.input_weight_bin = QLineEdit("2.0")
-        self.input_weight_bin.setFixedWidth(52)
-        self.input_weight_bin.setToolTip("uvweight bin (≥0 ; 0=natural, 2=uniform)")
-        h_cw.addWidget(self.input_weight_bin)
-        h_cw.addWidget(QLabel("ErrPow:"))
-        self.input_weight_err = QLineEdit("0.0")
-        self.input_weight_err.setFixedWidth(52)
-        self.input_weight_err.setToolTip("uvweight errpow (≤0 ; 0=uniform, -2=natural)")
-        h_cw.addWidget(self.input_weight_err)
-        h_cw.addStretch()
-        self.custom_weight_widget.setVisible(False)
-        ip.addWidget(self.custom_weight_widget)
-        self.combo_weight.currentTextChanged.connect(
-            lambda t: self.custom_weight_widget.setVisible(t == "Custom")
-        )
 
         lbl_taper_hdr = QLabel("Taper gaussien")
         lbl_taper_hdr.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
@@ -1440,35 +1440,37 @@ class ControlPanel(QDockWidget):
         )
         sc.addWidget(self.lbl_selfcal_status)
 
-        def _cmd_frame(cmd_name: str) -> tuple:
-            """Retourne (frame, inner_layout) avec un header monospace cmd_name."""
-            frame = QFrame()
-            frame.setStyleSheet(f"""
-                QFrame {{
+        def _cmd_frame(cmd_name: str, start_open: bool = True) -> tuple:
+            """Retourne (CollapsibleSection, inner_layout) avec header monospace cmd_name."""
+            sec = CollapsibleSection(cmd_name)
+            sec.toggle_button.setStyleSheet(f"""
+                QPushButton {{
                     background-color: {D.ASTRAL_DEEPEST};
+                    color: {D.ASTRAL_ACCENT};
                     border: 1px solid {D.ASTRAL_BORDER};
                     border-left: 3px solid {D.ASTRAL_ACCENT};
                     border-radius: 4px;
+                    padding: 6px 9px;
+                    text-align: left;
+                    font-family: monospace;
+                    font-size: {D.FONT_SIZE_XS};
+                    font-weight: bold;
+                    letter-spacing: 1px;
+                }}
+                QPushButton:hover {{ background-color: {D.ASTRAL_HOVER}; }}
+                QPushButton:checked {{
+                    border-bottom-left-radius: 0px;
+                    border-bottom-right-radius: 0px;
                 }}
             """)
-            vbox = QVBoxLayout(frame)
-            vbox.setContentsMargins(8, 6, 8, 6)
-            vbox.setSpacing(5)
-            lbl = QLabel(cmd_name)
-            lbl.setStyleSheet(f"""
-                color: {D.ASTRAL_ACCENT};
-                font-family: monospace;
-                font-size: {D.FONT_SIZE_XS};
-                font-weight: bold;
-                letter-spacing: 1px;
-                background: transparent;
-                border: none;
-            """)
-            vbox.addWidget(lbl)
-            return frame, vbox
+            sec.toggle_button.setChecked(start_open)
+            sec.content_area.setVisible(start_open)
+            arrow = "▼" if start_open else "▶"
+            sec.toggle_button.setText(f"{arrow}  {cmd_name}")
+            return sec, sec.content_layout
 
         # ── selfcal : doamp, dofloat, solint ─────────────────────
-        frm_sc, vsc = _cmd_frame("selfcal")
+        frm_sc, vsc = _cmd_frame("selfcal", start_open=True)
 
         h_mode = QHBoxLayout(); h_mode.setSpacing(6)
         lbl_doamp = QLabel("doamp")
@@ -1523,7 +1525,7 @@ class ControlPanel(QDockWidget):
         sc.addWidget(frm_sc)
 
         # ── selfflag : doflag, p_mintel, a_mintel ────────────────
-        frm_sf, vsf = _cmd_frame("selfflag")
+        frm_sf, vsf = _cmd_frame("selfflag", start_open=False)
 
         h_doflag = QHBoxLayout(); h_doflag.setSpacing(6)
         lbl_doflag_text = QLabel("doflag")
@@ -1569,7 +1571,7 @@ class ControlPanel(QDockWidget):
         sc.addWidget(frm_sf)
 
         # ── selflims : maxphs, maxamp, clip ───────────────────────
-        frm_sl, vsl = _cmd_frame("selflims")
+        frm_sl, vsl = _cmd_frame("selflims", start_open=False)
 
         h_lims = QHBoxLayout(); h_lims.setSpacing(8)
         lbl_maxphs = QLabel("maxphs (°)")
@@ -1612,7 +1614,7 @@ class ControlPanel(QDockWidget):
         sc.addWidget(frm_sl)
 
         # ── selftaper : gauval, gaurad ────────────────────────────
-        frm_st, vst = _cmd_frame("selftaper")
+        frm_st, vst = _cmd_frame("selftaper", start_open=False)
         lbl_st_hint = QLabel("Taper UV pour selfcal uniquement — n'affecte pas la carte")
         lbl_st_hint.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; font-style: italic; background: transparent; border: none;")
         lbl_st_hint.setWordWrap(True)

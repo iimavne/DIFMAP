@@ -385,22 +385,22 @@ class UVPlotEditor(BasePlotEditor):
         # ── Titre de l'axe ────────────────────────────────────────────────
         if self.index_antenne_actuelle < 0:
             self.ax.set_title("All baselines",
-                              color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10)
+                              color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10, loc='left')
         elif sub_actif not in self.antennes_par_subarray:
             label = self._nom_antenne_courante or "—"
-            self.ax.set_title(f"FOCUS : {sub_actif}:{label}  [vide]",
-                              color=DesignSystem.PLOT_FOCUS, fontsize=10)
+            self.ax.set_title(f"All baselines\nFOCUS : {sub_actif}:{label}  [vide]",
+                              color=DesignSystem.PLOT_FOCUS, fontsize=10, loc='left')
             logger.info("Subarray %s : aucune visibilité.", sub_actif)
         elif self.index_antenne_actuelle < len(self.toutes_antennes_sorted):
             vrai_nom = self.toutes_antennes_sorted[self.index_antenne_actuelle]
             if ant_cible is not None:
-                self.ax.set_title(f"FOCUS : {sub_actif}:{vrai_nom}",
-                                  color=DesignSystem.PLOT_FOCUS, fontsize=10)
+                self.ax.set_title(f"All baselines\nFOCUS : {sub_actif}:{vrai_nom}",
+                                  color=DesignSystem.PLOT_FOCUS, fontsize=10, loc='left')
                 if not np.any(m_focus & ~flagged):
                     logger.warning("No data for %s:%s", sub_actif, vrai_nom)
             else:
-                self.ax.set_title(f"FOCUS : {sub_actif}:{vrai_nom}  [pas de visibilités]",
-                                  color=DesignSystem.PLOT_FOCUS, fontsize=10)
+                self.ax.set_title(f"All baselines\nFOCUS : {sub_actif}:{vrai_nom}  [pas de visibilités]",
+                                  color=DesignSystem.PLOT_FOCUS, fontsize=10, loc='left')
                 logger.info("Pas de visibilités pour %s dans le subarray %s.", vrai_nom, sub_actif)
 
         # ── Layer 1 : fond — non-flaguués non-focalisés (Line2D) ──────────

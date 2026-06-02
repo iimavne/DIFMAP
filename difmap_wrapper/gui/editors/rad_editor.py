@@ -477,22 +477,22 @@ class RadPlotEditor(BasePlotEditor):
 
         # Label focus sur l'axe principal (comme UVPlotEditor)
         if self.ax:
+            ax_title = "Phase" if self.display_mode == DisplayMode.PHASE_ONLY else "Amplitude"
             if self.index_antenne_actuelle < 0:
-                ax_title = "Phase" if self.display_mode == DisplayMode.PHASE_ONLY else "Amplitude"
-                self.ax.set_title(ax_title, color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10)
+                self.ax.set_title(ax_title, color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10, loc='left')
             elif sub_actif not in self.antennes_par_subarray:
                 label = self._nom_antenne_courante or "—"
                 self.ax.set_title(
-                    f"FOCUS : {sub_actif}:{label}  [vide]",
-                    color=DesignSystem.PLOT_FOCUS, fontsize=10
+                    f"{ax_title}\nFOCUS : {sub_actif}:{label}  [vide]",
+                    color=DesignSystem.PLOT_FOCUS, fontsize=10, loc='left'
                 )
             elif self.index_antenne_actuelle < len(self.toutes_antennes_sorted):
                 vrai_nom = self.toutes_antennes_sorted[self.index_antenne_actuelle]
                 ant_cible = self._find_local_antenna_id(sub_actif, vrai_nom)
                 if ant_cible is not None:
                     self.ax.set_title(
-                        f"FOCUS : {sub_actif}:{vrai_nom}",
-                        color=DesignSystem.PLOT_FOCUS, fontsize=10
+                        f"{ax_title}\nFOCUS : {sub_actif}:{vrai_nom}",
+                        color=DesignSystem.PLOT_FOCUS, fontsize=10, loc='left'
                     )
                     m_focus = (
                         (self.data["subarray"] == sub_actif)
@@ -502,8 +502,8 @@ class RadPlotEditor(BasePlotEditor):
                         logger.warning("No data for %s:%s", sub_actif, vrai_nom)
                 else:
                     self.ax.set_title(
-                        f"FOCUS : {sub_actif}:{vrai_nom}  [pas de visibilités]",
-                        color=DesignSystem.PLOT_FOCUS, fontsize=10
+                        f"{ax_title}\nFOCUS : {sub_actif}:{vrai_nom}  [pas de visibilités]",
+                        color=DesignSystem.PLOT_FOCUS, fontsize=10, loc='left'
                     )
                     logger.info("Pas de visibilités pour %s dans le subarray %s.", vrai_nom, sub_actif)
 

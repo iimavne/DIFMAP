@@ -1199,11 +1199,11 @@ class MainWindow(QMainWindow):
             self.session.imager.mapsize(mapsize, cellsize)
             self._last_mapsize_params = (mapsize, cellsize)
 
-        if weight == "uniform":
+        if weight.startswith("uniform"):
             self.session.imager.uvweight(bin_size=2.0, err_power=0.0)
-        elif weight == "natural":
+        elif weight.startswith("natural"):
             self.session.imager.uvweight(bin_size=0.0, err_power=-2.0)
-        elif weight == "custom":
+        elif weight.startswith("custom"):
             try:
                 custom_bin = float(self.control_panel.input_weight_bin.text() or "2.0")
                 custom_err = float(self.control_panel.input_weight_err.text() or "0.0")
