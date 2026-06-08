@@ -183,7 +183,7 @@ def test_save_wobs_ajoute_extension(session, fichier_valide):
     session.obs._native.save_wobs = MagicMock()
 
     session.obs.save_wobs("sortie")
-    session.obs._native.save_wobs.assert_called_with("sortie.fits")
+    session.obs._native.save_wobs.assert_called_with("sortie.fits", False)
 
 
 def test_save_wobs_conserve_extension(session, fichier_valide):
@@ -192,7 +192,7 @@ def test_save_wobs_conserve_extension(session, fichier_valide):
     session.obs._native.save_wobs = MagicMock()
 
     session.obs.save_wobs("sortie.fits")
-    session.obs._native.save_wobs.assert_called_with("sortie.fits")
+    session.obs._native.save_wobs.assert_called_with("sortie.fits", False)
 
 
 def test_save_wobs_retourne_true(session, fichier_valide):

@@ -1,0 +1,199 @@
+{
+  "configuration": {
+    "difmap_binary": "/usr/local/bin/difmap",
+    "pol": "RR",
+    "mapsize": 512,
+    "cellsize": 0.1,
+    "clean_niter": 500,
+    "clean_gain": 0.05,
+    "tolerance_map_jy_beam": 1e-06,
+    "tolerance_uv_jy": 0.01,
+    "tolerance_beam_mas": 0.001,
+    "tolerance_peak_jy_beam": 0.0001
+  },
+  "maps": [
+    {
+      "map_type": "dirty",
+      "err_max": 0.0,
+      "rmse": 0.0,
+      "pearson_r": 1.0,
+      "conform": true,
+      "stem": "0003-066_X.SPLIT"
+    },
+    {
+      "map_type": "clean",
+      "err_max": 0.0,
+      "rmse": 0.0,
+      "pearson_r": 1.0,
+      "conform": true,
+      "stem": "0003-066_X.SPLIT"
+    },
+    {
+      "map_type": "dirty",
+      "err_max": 0.0,
+      "rmse": 0.0,
+      "pearson_r": 1.0,
+      "conform": true,
+      "stem": "0017+200_X.SPLIT"
+    },
+    {
+      "map_type": "clean",
+      "err_max": 0.0,
+      "rmse": 0.0,
+      "pearson_r": 1.0,
+      "conform": true,
+      "stem": "0017+200_X.SPLIT"
+    }
+  ],
+  "uv_radplot_peak_beam": {
+    "0003-066_X.SPLIT": {
+      "uv": {
+        "n_vis": 13072,
+        "metrics": {
+          "u": {
+            "err_max": 0.0,
+            "rmse": 0.0,
+            "pearson_r": 1.0,
+            "conform": true
+          },
+          "v": {
+            "err_max": 0.0,
+            "rmse": 0.0,
+            "pearson_r": 1.0,
+            "conform": true
+          },
+          "amp": {
+            "err_max": 0.0,
+            "rmse": 0.0,
+            "pearson_r": 1.0,
+            "conform": true
+          }
+        }
+      },
+      "radplot": {
+        "err_max": 0.0,
+        "rmse": 0.0,
+        "conform": true
+      },
+      "peak": {
+        "difmap_src": {
+          "flux": 2.5509085655212402,
+          "x": -0.0,
+          "y": 0.0
+        },
+        "difmap_wrapper": {
+          "flux": 2.5509085655212402,
+          "x": 0.0,
+          "y": 0.0
+        },
+        "value_equal": true,
+        "position_equal": true,
+        "conform": true
+      },
+      "beam": {
+        "difmap_src": {
+          "BMIN": 0.5457,
+          "BMAJ": 1.323,
+          "BPA": -9.027
+        },
+        "difmap_wrapper": {
+          "BMIN": 0.5457,
+          "BMAJ": 1.323,
+          "BPA": -9.027
+        },
+        "bmin_equal": true,
+        "bmaj_equal": true,
+        "bpa_equal": true,
+        "conform": true
+      }
+    },
+    "0017+200_X.SPLIT": {
+      "uv": {
+        "n_vis": 17032,
+        "metrics": {
+          "u": {
+            "err_max": 0.0,
+            "rmse": 0.0,
+            "pearson_r": 1.0,
+            "conform": true
+          },
+          "v": {
+            "err_max": 0.0,
+            "rmse": 0.0,
+            "pearson_r": 1.0,
+            "conform": true
+          },
+          "amp": {
+            "err_max": 0.0,
+            "rmse": 0.0,
+            "pearson_r": 1.0,
+            "conform": true
+          }
+        }
+      },
+      "radplot": {
+        "err_max": 0.0,
+        "rmse": 0.0,
+        "conform": true
+      },
+      "peak": {
+        "difmap_src": {
+          "flux": 0.24411186575889587,
+          "x": -0.0,
+          "y": 0.0
+        },
+        "difmap_wrapper": {
+          "flux": 0.24411186575889587,
+          "x": 0.0,
+          "y": 0.0
+        },
+        "value_equal": true,
+        "position_equal": true,
+        "conform": true
+      },
+      "beam": {
+        "difmap_src": {
+          "BMIN": 0.646,
+          "BMAJ": 0.8491,
+          "BPA": -8.307
+        },
+        "difmap_wrapper": {
+          "BMIN": 0.646,
+          "BMAJ": 0.8491,
+          "BPA": -8.307
+        },
+        "bmin_equal": true,
+        "bmaj_equal": true,
+        "bpa_equal": true,
+        "conform": true
+      }
+    }
+  },
+  "visibility_count": {
+    "0003-066_X.SPLIT.1": {
+      "difmap_src": {
+        "n_vis_raw": 13072,
+        "n_vis_active": 13072
+      },
+      "difmap_wrapper": {
+        "n_vis_raw": 13072,
+        "n_vis_active": 13072
+      },
+      "raw_equal": true,
+      "active_equal": true
+    },
+    "0017+200_X.SPLIT.1": {
+      "difmap_src": {
+        "n_vis_raw": 17032,
+        "n_vis_active": 17032
+      },
+      "difmap_wrapper": {
+        "n_vis_raw": 17032,
+        "n_vis_active": 17032
+      },
+      "raw_equal": true,
+      "active_equal": true
+    }
+  },
+  "global_conform": true
+}

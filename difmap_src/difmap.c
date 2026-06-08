@@ -8273,6 +8273,10 @@ int native_restore(int noresid, int dosm) {
         respar.bmaj = ftmp;
     }
     if (vlbob->model->ncmp + vlbob->newmod->ncmp < 1) return -1;
+    if (vlbmap->domap && uvinvert(vlbob, vlbmap, invpar.uvmin, invpar.uvmax,
+                                   invpar.gauval, invpar.gaurad, invpar.dorad,
+                                   invpar.errpow, invpar.uvbin))
+        return -1;
     vlbmap->domap = MAP_IS_STALE;
     if (vlbob->model->ncmp > 0) {
         if (mapres(vlbob, vlbmap, vlbob->model, vlbmap->map,
@@ -8379,7 +8383,13 @@ int native_wfits(const char *filename) {
 /* Écrit la clean map (requiert MAP_IS_CLEAN dans le buffer). */
 int native_wmap(const char *filename) {
     if (!vlbob || !vlbmap) return -1;
-    if (vlbmap->domap != MAP_IS_CLEAN) return -2;
+    if (vlbob->newmod->ncmp + vlbob->cnewmod->ncmp > 0) {
+        vlbmap->domap = MAP_IS_STALE;
+        if (mergemod(vlbob, 1)) return -1;
+    }
+    if (!vlbmap->ncmp || vlbmap->domap != MAP_IS_CLEAN) {
+        if (native_restore(0, 1) != 0) return -1;
+    }
     return w_MapBeam(vlbob, vlbmap, 1, filename) ? -1 : 0;
 }
 

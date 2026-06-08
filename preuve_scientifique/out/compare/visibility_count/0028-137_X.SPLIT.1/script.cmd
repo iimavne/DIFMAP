@@ -1,0 +1,4 @@
+observe /home/mahssini/Bureau/difmap2.5q_mod/tests/test_data/0028-137_X.SPLIT.1
+select RR
+wobs src_uv.fits
+quit
