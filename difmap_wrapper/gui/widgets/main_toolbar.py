@@ -66,3 +66,8 @@ class MainToolbar(QToolBar):
         self.action_terminal = act("Terminal", "fa5s.terminal",
                                    "Afficher / masquer le terminal")
         self.addAction(self.action_terminal)
+
+        # ── Export logs ───────────────────────────────────────────
+        self.action_export_logs = act("Export Logs", "fa5s.file-export",
+                                      "Exporter les logs dans un fichier texte")
+        self.addAction(self.action_export_logs)

@@ -593,6 +593,7 @@ class MainWindow(QMainWindow):
         tb.action_help.triggered.connect(self._show_help_dialog)
         tb.action_exit.triggered.connect(self.close)
         tb.action_terminal.triggered.connect(self._toggle_terminal)
+        tb.action_export_logs.triggered.connect(self._export_logs)
 
         router.route_button_both('btn_next_sub',  'action_next_subarray',  [None])
         router.route_button_both('btn_prev_sub',  'action_prev_subarray',  [None])
@@ -2345,6 +2346,20 @@ class MainWindow(QMainWindow):
     def _toggle_terminal(self):
         """Bascule la visibilité du panneau de logs (console terminale droite)."""
         self.log_console.setVisible(not self.log_console.isVisible())
+
+    def _export_logs(self):
+        """Ouvre un dialogue de sauvegarde et exporte le contenu de la console dans un fichier texte."""
+        from PyQt6.QtWidgets import QFileDialog
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Exporter les logs", "difmap_logs.txt", "Fichiers texte (*.txt);;Tous (*)"
+        )
+        if not filepath:
+            return
+        try:
+            self.log_console.export_logs(filepath)
+            self.log_console.log_success(f"Logs exportés → {os.path.basename(filepath)}")
+        except Exception as e:
+            self.log_console.log_error(f"Erreur export logs : {e}")
 
     def _has_unsaved_changes(self) -> bool:
         """
