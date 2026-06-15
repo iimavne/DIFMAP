@@ -38,25 +38,29 @@ doc/help.tex
 doc/help.dvi
 
 # ==========================================
-# Logs et Fichiers temporaires
+# Logs et fichiers temporaires
 # ==========================================
 *.log
 difmap.log*
 difmap.log_*
-*.png
-*.jpg
-*.jpeg
-*.md
+*~
+*.swp
+*.swo
+\#*\#
+.#*
 core
 !difmap_wrapper/core/
 !difmap_wrapper/core/**
-scrfil_src/scrfile*
 
-# On ignore les brouillons Markdown, MAIS on garde les docs officielles
-*.md
-!README.md
-!CHANGELOG.md
-graphify-out/
+# ==========================================
+# Images et outputs de visualisation
+# ==========================================
+*.png
+*.jpg
+*.jpeg
+*.ps
+*.color.ps
+
 # ==========================================
 # Fichiers de données et sorties VLBI/Difmap
 # ==========================================
@@ -69,13 +73,36 @@ graphify-out/
 *.win
 *.mod
 *.CMP_N
-*.ps
-*.color.ps
+*.bfits
 
-# EXCEPTION VITALE : On autorise explicitement les données de test 
-# pour que Pytest fonctionne partout !
-tests/test_data/
-tests/test_data/*
+# EXCEPTION VITALE : données de test pour Pytest
+!tests/test_data/
+!tests/test_data/**
+
+# ==========================================
+# Dossiers de validation / benchmark (outputs)
+# ==========================================
+preuve_scientifique/
+validation_output/
+resultat_validation/
+results/
+benchmark_results/
+
+# ==========================================
+# Notebooks Jupyter lourds (hors démo)
+# ==========================================
+.ipynb_checkpoints/
+demo_pipeline_python.ipynb
+preuve.ipynb
+test.ipynb
+
+# ==========================================
+# Brouillons et notes de travail
+# ==========================================
+*.md
+!README.md
+!CHANGELOG.md
+graphify-out/
 
 # ==========================================
 # Environnement Python & Tests
@@ -95,9 +122,9 @@ htmlcov/
 # ==========================================
 .DS_Store
 Thumbs.db
-*~
-*.swp
-*.swo
 .vscode/
 .idea/
 .codex
+.windsurf/
+.agents/
+.claude/
