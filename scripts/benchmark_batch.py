@@ -29,13 +29,13 @@ from concurrent.futures import ProcessPoolExecutor
 # Configuration du benchmark
 # ─────────────────────────────────────────────────────────
 
-SOURCE_FILE   = "0003-066.uvf"   # fichier de référence
-N_FILES       = 8                # nombre de copies à traiter
+SOURCE_FILE   = "tests/test_data/0003-067.uvf"   # fichier de référence
+N_FILES       = 16               # nombre de copies à traiter
 MAPSIZE       = 1024             # taille de la grille (px × px)
 CELLSIZE      = 0.1              # taille du pixel en mas
 CLEAN_NITER   = 5000             # itérations CLEAN (~1s par fichier)
 CLEAN_GAIN    = 0.05
-WORKERS_LIST  = [1, 2, 4]       # max 4 workers — doux pour la machine
+WORKERS_LIST  = [1, 2, 4, 6, 8, 12, 16] # points fins : montée → pic à 8 cœurs → régression
 N_REPEATS     = 2                # répétitions pour la médiane
 OUTPUT_DIR    = pathlib.Path("benchmark_results")
 TMPDIR        = pathlib.Path("benchmark_tmp")
@@ -354,6 +354,15 @@ def main():
 
     print("\n[Mesures] Démarrage des benchmarks...")
     results = collect_measurements(files)
+
+    # Métadonnées du run (utiles pour les graphiques)
+    results["meta"] = {
+        "n_files":     N_FILES,
+        "mapsize":     MAPSIZE,
+        "clean_niter": CLEAN_NITER,
+        "n_repeats":   N_REPEATS,
+        "cpu_count":   os.cpu_count(),
+    }
 
     # Sauvegarde JSON des résultats bruts
     json_path = OUTPUT_DIR / "benchmark_results.json"
