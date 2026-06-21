@@ -7,7 +7,7 @@ Classe de base pour tous les widgets Matplotlib.
 
 import os
 
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSizePolicy, QLabel
 from PyQt6.QtCore import Qt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
@@ -76,6 +76,17 @@ class BasePlotWidget(QWidget):
         self.plot_toolbar_layout.setSpacing(4)
         self.layout.addWidget(self.plot_toolbar_row)
 
+        # Barre contextuelle (hint) sous la toolbar — texte court expliquant l'outil actif
+        self.hint_label = QLabel("")
+        self.hint_label.setFixedHeight(20)
+        self.hint_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.hint_label.setStyleSheet(
+            "font-size: 11px; font-style: italic; color: #8A9BB0;"
+            " padding-left: 10px; background: transparent;"
+        )
+        self.hint_label.setVisible(False)
+        self.layout.addWidget(self.hint_label)
+
         # Figure Matplotlib
         self.fig = Figure(
             figsize=figsize,
@@ -125,6 +136,12 @@ class BasePlotWidget(QWidget):
     def get_canvas(self):
         """Retourne le Canvas PyQt."""
         return self.canvas
+
+    def set_hint(self, text: str) -> None:
+        """Affiche ou masque le texte d'aide contextuel sous la toolbar."""
+        text = (text or "").strip()
+        self.hint_label.setText(text)
+        self.hint_label.setVisible(bool(text))
 
     def _export_png(self, default_filename: str = "figure.png") -> None:
         """Ouvre une boîte de dialogue et exporte la figure courante en PNG."""

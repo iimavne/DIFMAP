@@ -1034,7 +1034,6 @@ class MainWindow(QMainWindow):
         <h3>Channels — syntaxes</h3>
         <table>
           <tr><td width="140"><b>Local</b></td><td><code>2:5-10</code> (IF2 canaux locaux 5..10), <code>1,3:2-5</code>.</td></tr>
-          <tr><td><b>Global</b></td><td><code>20-25,47-65</code> ou <code>20,25,47,65</code>.</td></tr>
           <tr><td><b>Variables</b></td><td><code>nif</code>, <code>nchan</code>, <code>nif*nchan</code>.</td></tr>
           <tr><td><b>Mapping</b></td><td>Bouton <b>Info</b> à côté de <b>Channels</b> pour voir IF → canaux globaux.</td></tr>
         </table>

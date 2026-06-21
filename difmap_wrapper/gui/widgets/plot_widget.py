@@ -87,10 +87,20 @@ class UVPlotWidget(BasePlotWidget):
         ("Pan",      "PAN",     True,  "fa5s.arrows-alt",   "[G]", "Naviguer / déplacer la vue"),
         ("Inspect",  "INSPECT", True,  "fa5s.info-circle",  "[S]", "Inspecter baseline / temps"),
     ]
+    _UV_ZOOM_MODES = [
+        ("Zoom —",    None,   True, "", "",    "Sélectionner un mode de zoom"),
+        ("Zoom Box",  "ZOOM", True, "", "[Z]", "Zoom rectangulaire — dessiner pour agrandir"),
+    ]
     _UV_EDIT = [
         ("Edit Off", None,  True, "fa5s.times", "[D]", "Désactiver les outils d'édition"),
         ("Flag",     "CUT", True, "fa5s.ban",   "[C]", "Flaguer rectangle"),
     ]
+    _UV_HINTS = {
+        "PAN":     "Pan : cliquer-glisser pour déplacer la vue",
+        "INSPECT": "Inspect : clic gauche pour voir les infos d'une visibilité",
+        "ZOOM":    "Zoom Box : dessiner un rectangle pour zoomer",
+        "CUT":     "Flag : dessiner un rectangle pour flagger les visibilités",
+    }
 
     def __init__(self, observation, data, parent=None,
                  save_callback=None, sync_callback=None):
@@ -164,7 +174,7 @@ class UVPlotWidget(BasePlotWidget):
         zoom_in_btn = QToolButton()
         zoom_in_btn.setText("+")
         zoom_in_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
-        zoom_in_btn.setToolTip("Zoom-in (centré sur la souris)")
+        zoom_in_btn.setToolTip("Zoom-in centré sur la souris")
         zoom_in_btn.clicked.connect(
             lambda checked=False: self._on_button_click(
                 self.editor.action_zoom_in, None) if self.editor else None
@@ -174,12 +184,16 @@ class UVPlotWidget(BasePlotWidget):
         zoom_out_btn = QToolButton()
         zoom_out_btn.setText("-")
         zoom_out_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
-        zoom_out_btn.setToolTip("Dézoomer de 50 %")
+        zoom_out_btn.setToolTip("Dézoomer de 20 % (ou revenir en arrière)")
         zoom_out_btn.clicked.connect(
             lambda checked=False: self._on_button_click(
                 self.editor.action_dezoom, None) if self.editor else None
         )
         lay.addWidget(zoom_out_btn)
+
+        zoom_mode_menu = _make_mode_dropdown(self._UV_ZOOM_MODES, self._tool_buttons, self._on_nav_tool_btn)
+        zoom_mode_menu.setToolTip("Sélectionner le mode de zoom (Zoom Box)")
+        lay.addWidget(zoom_mode_menu)
 
         lay.addWidget(_make_separator())
 
@@ -221,6 +235,7 @@ class UVPlotWidget(BasePlotWidget):
         """Outil de visualisation local (non synchronisé)."""
         self._nav_mode = mode
         self._set_active_tool_btn(mode)
+        self.set_hint(self._UV_HINTS.get(mode, ""))
         if not self.editor:
             return
         # Si un outil d'édition est actif, il reste prioritaire.
@@ -244,6 +259,7 @@ class UVPlotWidget(BasePlotWidget):
     def _set_edit_tool(self, mode: str | None, emit_sync: bool) -> None:
         self._edit_mode = mode
         self._set_active_edit_btn(mode)
+        self.set_hint(self._UV_HINTS.get(mode, ""))
         if self.editor:
             if mode is None:
                 # Retour au mode de visualisation local

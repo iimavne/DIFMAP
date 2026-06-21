@@ -142,6 +142,7 @@ class RadPlotWidget(BasePlotWidget):
     ]
     # Z=zoom libre (base), U (Shift+u)=Zoom Radius, Y=Zoom amp/phs
     _RAD_ZOOM = [
+        ("Zoom —",       None,     "",                  "",        "Sélectionner un mode de zoom"),
         ("Zoom Box",     "ZOOM",   "fa5s.search-plus",  "Z",       "Zoom rectangle (libre)"),
         ("Zoom Radius",  "ZOOM_X", "fa5s.arrows-alt-h", "Shift+u", "Zoom plage UV radius (axe X)"),
         ("Zoom Amp/Phs", "ZOOM_Y", "fa5s.arrows-alt-v", "Y",       "Zoom axe Amplitude / Phase"),
@@ -151,9 +152,20 @@ class RadPlotWidget(BasePlotWidget):
         ("Flag",     "CUT", "fa5s.ban",   "C", "Flaguer un rectangle"),
     ]
     _RAD_STATS = [
+        ("Stats —",     None,      "",                  "",  "Sélectionner un type de statistiques"),
         ("Amp / Phase", "STATS",   "fa5s.chart-bar",  "S", "Statistiques scalaires (Amp, Phase)"),
         ("Re / Im",     "STATS_V", "fa5s.chart-line", "V", "Statistiques vectorielles (Re, Im)"),
     ]
+    _RAD_HINTS = {
+        "PAN":     "Pan : cliquer-glisser pour déplacer la vue",
+        "INSPECT": "Inspect : clic gauche pour voir les infos d'une visibilité",
+        "ZOOM":    "Zoom Box : dessiner un rectangle pour zoomer",
+        "ZOOM_X":  "Zoom Radius : dessiner une plage sur l'axe UV radius (X)",
+        "ZOOM_Y":  "Zoom Amp/Phase : dessiner une plage sur l'axe Y",
+        "CUT":     "Flag : dessiner un rectangle pour flagger les visibilités",
+        "STATS":   "Amp/Phase stats : dessiner un rectangle pour voir les statistiques",
+        "STATS_V": "Re/Im stats : dessiner un rectangle pour les statistiques vectorielles",
+    }
 
     def _build_local_toolbar(self) -> None:
         """
@@ -288,6 +300,7 @@ class RadPlotWidget(BasePlotWidget):
         """Outil de visualisation local (non synchronisé)."""
         self._nav_mode = mode
         self._update_btn_visuals(mode)
+        self.set_hint(self._RAD_HINTS.get(mode, ""))
         if not self.editor:
             return
         # Si un outil d'édition est actif, il reste prioritaire.
@@ -310,6 +323,7 @@ class RadPlotWidget(BasePlotWidget):
     def _set_edit_tool(self, mode: str | None, emit_sync: bool) -> None:
         self._edit_mode = mode
         self._update_btn_visuals(mode if mode is not None else None)
+        self.set_hint(self._RAD_HINTS.get(mode, ""))
         if self.editor:
             if mode is None:
                 self._on_nav_tool_btn(self._nav_mode, None)

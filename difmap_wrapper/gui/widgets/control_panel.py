@@ -581,9 +581,6 @@ class ControlPanel(QDockWidget):
             self.input_if_select.setPlaceholderText("e.g. 1-3  or  1,3,5  (empty = all IFs)")
         else:
             self._lbl_if_info.setText(f"{n_ifs} IFs  ·  {total} canaux total")
-            self._lbl_chan_info.setText(
-                f"Syntaxe globale: 1..{total}  |  nif*nchan={total}"
-            )
             self.input_if_select.setPlaceholderText("e.g. 1-3  or  1,3,5  (empty = all IFs)")
 
         # Tooltip : mapping IF → plage de canaux globaux (info), et tooltip IFs = IFs only
@@ -1077,7 +1074,7 @@ class ControlPanel(QDockWidget):
         lbl_size.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
         lbl_size.setFixedWidth(52)
         self.lbl_slider_size = lbl_size
-        self.lbl_slider_size_val = QLabel("20 %")
+        self.lbl_slider_size_val = QLabel("40 %")
         self.lbl_slider_size_val.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
         self.lbl_slider_size_val.setAlignment(Qt.AlignmentFlag.AlignRight)
         h_size.addWidget(lbl_size)
@@ -1087,7 +1084,7 @@ class ControlPanel(QDockWidget):
         self.slider_size = QSlider(Qt.Orientation.Horizontal)
         self.slider_size.setMinimum(1)
         self.slider_size.setMaximum(100)
-        self.slider_size.setValue(20)
+        self.slider_size.setValue(40)
         self.slider_size.setToolTip("Marker size (1–100 %)")
         self.slider_size.valueChanged.connect(
             lambda v: self.lbl_slider_size_val.setText(f"{v} %")

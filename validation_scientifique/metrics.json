@@ -5,9 +5,11 @@
     "mapsize": 512,
     "cellsize": 0.1,
     "clean_niter": 500,
+    "clean_niter_2": 500,
     "clean_gain": 0.05,
     "tolerance_map_jy_beam": 1e-06,
-    "tolerance_uv_jy": 0.01,
+    "tolerance_uv_amp_jy": 1e-06,
+    "tolerance_uv_coord_lambda": 50.0,
     "tolerance_beam_mas": 0.001,
     "tolerance_peak_jy_beam": 0.0001
   },
@@ -29,6 +31,14 @@
       "stem": "0003-066_X.SPLIT"
     },
     {
+      "map_type": "clean_sc",
+      "err_max": 0.0,
+      "rmse": 0.0,
+      "pearson_r": 1.0,
+      "conform": true,
+      "stem": "0003-066_X.SPLIT"
+    },
+    {
       "map_type": "dirty",
       "err_max": 0.0,
       "rmse": 0.0,
@@ -43,37 +53,85 @@
       "pearson_r": 1.0,
       "conform": true,
       "stem": "0017+200_X.SPLIT"
+    },
+    {
+      "map_type": "clean_sc",
+      "err_max": 0.0,
+      "rmse": 0.0,
+      "pearson_r": 1.0,
+      "conform": true,
+      "stem": "0017+200_X.SPLIT"
     }
   ],
   "uv_radplot_peak_beam": {
     "0003-066_X.SPLIT": {
       "uv": {
         "n_vis": 13072,
+        "n_sample": 1000,
         "metrics": {
           "u": {
-            "err_max": 0.0,
-            "rmse": 0.0,
-            "pearson_r": 1.0,
-            "conform": true
+            "err_max": 14.815683364868164,
+            "rmse": 2.5417187094715805,
+            "pearson_r": 0.9999999999999997,
+            "conform": true,
+            "n_ok": 1000,
+            "n_sample": 1000
           },
           "v": {
-            "err_max": 0.0,
-            "rmse": 0.0,
-            "pearson_r": 1.0,
-            "conform": true
+            "err_max": 7.867926865816116,
+            "rmse": 1.3022744703452132,
+            "pearson_r": 0.9999999999999996,
+            "conform": true,
+            "n_ok": 1000,
+            "n_sample": 1000
           },
           "amp": {
             "err_max": 0.0,
             "rmse": 0.0,
             "pearson_r": 1.0,
-            "conform": true
+            "conform": true,
+            "n_ok": 1000,
+            "n_sample": 1000
+          }
+        }
+      },
+      "uv_sc": {
+        "n_vis": 12492,
+        "n_sample": 1000,
+        "metrics": {
+          "u": {
+            "err_max": 7.994324654340744,
+            "rmse": 2.5375160226206095,
+            "pearson_r": 1.0000000000000004,
+            "conform": true,
+            "n_ok": 1000,
+            "n_sample": 1000
+          },
+          "v": {
+            "err_max": 6.720005542039871,
+            "rmse": 1.092234751368957,
+            "pearson_r": 0.9999999999999987,
+            "conform": true,
+            "n_ok": 1000,
+            "n_sample": 1000
+          },
+          "amp": {
+            "err_max": 4.76837158203125e-07,
+            "rmse": 1.5699913217441003e-07,
+            "pearson_r": 0.9999999999999583,
+            "conform": true,
+            "n_ok": 1000,
+            "n_sample": 1000
           }
         }
       },
       "radplot": {
         "err_max": 0.0,
         "rmse": 0.0,
-        "conform": true
+        "conform": true,
+        "n_vis": 13072,
+        "n_sample": 1000,
+        "pearson_r": 1.0
       },
       "peak": {
         "difmap_src": {
@@ -110,31 +168,71 @@
     "0017+200_X.SPLIT": {
       "uv": {
         "n_vis": 17032,
+        "n_sample": 1000,
         "metrics": {
           "u": {
-            "err_max": 0.0,
-            "rmse": 0.0,
-            "pearson_r": 1.0,
-            "conform": true
+            "err_max": 8.611603558063507,
+            "rmse": 2.4484877802924605,
+            "pearson_r": 0.9999999999999998,
+            "conform": true,
+            "n_ok": 1000,
+            "n_sample": 1000
           },
           "v": {
-            "err_max": 0.0,
-            "rmse": 0.0,
-            "pearson_r": 1.0,
-            "conform": true
+            "err_max": 15.845746159553528,
+            "rmse": 2.3319738156419545,
+            "pearson_r": 0.9999999999999997,
+            "conform": true,
+            "n_ok": 1000,
+            "n_sample": 1000
           },
           "amp": {
             "err_max": 0.0,
             "rmse": 0.0,
             "pearson_r": 1.0,
-            "conform": true
+            "conform": true,
+            "n_ok": 1000,
+            "n_sample": 1000
+          }
+        }
+      },
+      "uv_sc": {
+        "n_vis": 15732,
+        "n_sample": 1000,
+        "metrics": {
+          "u": {
+            "err_max": 15.15577358007431,
+            "rmse": 2.462204852103821,
+            "pearson_r": 0.9999999999999998,
+            "conform": true,
+            "n_ok": 1000,
+            "n_sample": 1000
+          },
+          "v": {
+            "err_max": 15.048185884952545,
+            "rmse": 1.9909805195868486,
+            "pearson_r": 0.9999999999999999,
+            "conform": true,
+            "n_ok": 1000,
+            "n_sample": 1000
+          },
+          "amp": {
+            "err_max": 1.1920928955078125e-07,
+            "rmse": 1.7456995138926046e-08,
+            "pearson_r": 0.9999999999999892,
+            "conform": true,
+            "n_ok": 1000,
+            "n_sample": 1000
           }
         }
       },
       "radplot": {
         "err_max": 0.0,
         "rmse": 0.0,
-        "conform": true
+        "conform": true,
+        "n_vis": 17032,
+        "n_sample": 1000,
+        "pearson_r": 1.0
       },
       "peak": {
         "difmap_src": {

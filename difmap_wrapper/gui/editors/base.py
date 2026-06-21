@@ -798,14 +798,14 @@ class BasePlotEditor:
         self.fig.canvas.draw_idle()
 
     def action_dezoom(self, event=None):
-        """Retour arrière (comme toolbar.back) si possible, sinon dézoom 50 %."""
+        """Retour arrière (comme toolbar.back) si possible, sinon dézoom 20 %."""
         if self._pop_view_state():
             logger.info("Dézoom: retour arrière.")
             return
         xl, xr = self.ax.get_xlim()
         yl, yr = self.ax.get_ylim()
         cx, cy = (xl + xr) / 2, (yl + yr) / 2
-        dx, dy = (xr - xl) * 0.75, (yr - yl) * 0.75
+        dx, dy = (xr - xl) * 0.6, (yr - yl) * 0.6
         self.ax.set_xlim(cx - dx, cx + dx)
         self.ax.set_ylim(cy - dy, cy + dy)
         self.fig.canvas.draw_idle()

@@ -89,12 +89,9 @@ results/
 benchmark_results/
 
 # ==========================================
-# Notebooks Jupyter lourds (hors démo)
+# Notebooks Jupyter — sorties de checkpoints uniquement
 # ==========================================
 .ipynb_checkpoints/
-demo_pipeline_python.ipynb
-preuve.ipynb
-test.ipynb
 
 # ==========================================
 # Brouillons et notes de travail
