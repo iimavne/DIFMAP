@@ -5,7 +5,10 @@ import select as _select
 import numpy as np
 import difmap_native
 
-from PyQt6.QtWidgets import QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox, QGridLayout, QApplication
+from PyQt6.QtWidgets import (QMainWindow, QTabWidget, QFileDialog, QWidget, QMessageBox,
+                             QGridLayout, QApplication, QDialog, QVBoxLayout, QHBoxLayout,
+                             QGroupBox, QLabel, QLineEdit, QPushButton, QCheckBox, QRadioButton,
+                             QButtonGroup)
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QCursor
 
@@ -23,6 +26,112 @@ from .widgets.radplot_widget import RadPlotWidget
 from .utils import SignalRouter
 from .widgets.header_widget import HeaderWidget
 
+
+class SaveDialog(QDialog):
+    """
+    Dialogue de sauvegarde offrant deux modes :
+    - save  : préfixe → UV (.uvf), modèle (.mod), fenêtres (.win), beam (.bfits), carte (.fits), script (.par)
+    - wobs  : fichier FITS unique avec option do_shift
+    """
+
+    def __init__(self, parent=None, suggested_prefix: str = "session"):
+        super().__init__(parent)
+        self.setWindowTitle("Sauvegarder")
+        self.setMinimumWidth(480)
+        self.setStyleSheet(DesignSystem.get_full_app_style())
+        self.result_mode = None    # "save" | "wobs"
+        self.result_prefix = ""
+        self.result_filepath = ""
+        self.result_do_shift = False
+        self._suggested_prefix = suggested_prefix
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+
+        # ── Mode save ────────────────────────────────────────────
+        grp_save = QGroupBox("save  —  sauvegarde complète")
+        vbox_save = QVBoxLayout(grp_save)
+
+        lbl_save_info = QLabel(
+            "Génère : <b>.uvf</b> (UV), <b>.mod</b> (modèle), "
+            "<b>.win</b> (fenêtres), <b>.bfits</b> (beam), <b>.fits</b> (carte), <b>.par</b> (script)."
+        )
+        lbl_save_info.setWordWrap(True)
+        vbox_save.addWidget(lbl_save_info)
+
+        row_path = QHBoxLayout()
+        self._input_prefix = QLineEdit()
+        self._input_prefix.setPlaceholderText("chemin/préfixe…")
+        self._input_prefix.setReadOnly(True)
+        row_path.addWidget(self._input_prefix)
+        btn_browse_save = QPushButton("Parcourir…")
+        btn_browse_save.clicked.connect(self._browse_save_prefix)
+        row_path.addWidget(btn_browse_save)
+        vbox_save.addLayout(row_path)
+
+        self._btn_do_save = QPushButton("Sauvegarder (save)")
+        self._btn_do_save.setEnabled(False)
+        self._btn_do_save.clicked.connect(self._accept_save)
+        vbox_save.addWidget(self._btn_do_save)
+        layout.addWidget(grp_save)
+
+        # ── Mode wobs ────────────────────────────────────────────
+        grp_wobs = QGroupBox("wobs  —  données UV uniquement")
+        vbox_wobs = QVBoxLayout(grp_wobs)
+
+        lbl_wobs_info = QLabel("Exporte les visibilités dans un fichier UVFITS random-groups.")
+        lbl_wobs_info.setWordWrap(True)
+        vbox_wobs.addWidget(lbl_wobs_info)
+
+        self._chk_shift = QCheckBox("do_shift  (décaler le centre de pointage)")
+        vbox_wobs.addWidget(self._chk_shift)
+
+        btn_do_wobs = QPushButton("Sauvegarder (wobs)…")
+        btn_do_wobs.clicked.connect(self._accept_wobs)
+        vbox_wobs.addWidget(btn_do_wobs)
+        layout.addWidget(grp_wobs)
+
+        # ── Annuler ───────────────────────────────────────────────
+        btn_cancel = QPushButton("Annuler")
+        btn_cancel.clicked.connect(self.reject)
+        layout.addWidget(btn_cancel)
+
+    def _browse_save_prefix(self):
+        """Ouvre un QFileDialog pour choisir chemin + préfixe (sans extension)."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Choisir le préfixe de sauvegarde",
+            self._suggested_prefix,
+            "Préfixe difmap (*)"
+        )
+        if not path:
+            return
+        # Retirer toute extension que l'utilisateur aurait pu taper
+        base = path
+        for ext in ('.uvf', '.mod', '.cmod', '.win', '.bfits', '.fits', '.mtab', '.par'):
+            if base.lower().endswith(ext):
+                base = base[:-len(ext)]
+                break
+        self._input_prefix.setText(base)
+        self._btn_do_save.setEnabled(True)
+
+    def _accept_save(self):
+        prefix = self._input_prefix.text().strip()
+        if not prefix:
+            return
+        self.result_mode = "save"
+        self.result_prefix = prefix
+        self.accept()
+
+    def _accept_wobs(self):
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Save UV data (wobs)", self._suggested_prefix, "FITS (*.fits)"
+        )
+        if not filepath:
+            return
+        self.result_mode = "wobs"
+        self.result_filepath = filepath
+        self.result_do_shift = self._chk_shift.isChecked()
+        self.accept()
 
 
 class CleanTimer:
@@ -155,7 +264,7 @@ class MainWindow(QMainWindow):
         self.addToolBar(self.toolbar)
         self.menuBar().setVisible(False)  # remplacé par la toolbar unifiée
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea,  self.control_panel)
-        self.control_panel.setMinimumWidth(330)
+        self.control_panel.setMinimumWidth(370)
         self.control_panel.setMaximumWidth(520)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.log_console)
 
@@ -222,6 +331,7 @@ class MainWindow(QMainWindow):
         self._clean_worker = None
         self._last_mapsize_params = None   # (mapsize, cellsize) last sent to C
         self._last_uvtaper_params = None   # (taper_amp, taper_val) last sent to C
+        self._force_clean_reset   = True   # True = next CLEAN must do clrmod+invert
 
         self._selected_ifs: list[int] | None = None
         self._channels_text: str = ""
@@ -309,6 +419,7 @@ class MainWindow(QMainWindow):
             self._last_clean_package  = None
             self._last_mapsize_params = None
             self._last_uvtaper_params = None
+            self._force_clean_reset   = True
             self._set_selfcal_ready(False)
 
             available_pols = self.session.obs.available_polarizations()
@@ -428,6 +539,12 @@ class MainWindow(QMainWindow):
             else:
                 self.plot_widget.reload_data(self.data, self.session.obs)
 
+            # Ctrl+S → dialogue save/wobs complet
+            for _w in (self.plot_widget, self.radplot_widget):
+                _ed = getattr(_w, 'editor', None) if _w else None
+                if _ed is not None:
+                    _ed.full_save_callback = self._show_save_dialog
+
             self.radplot_widget.plot_data(
                 data=self.data,
                 observation=self.session.obs,
@@ -475,16 +592,12 @@ class MainWindow(QMainWindow):
 
         tb.action_load.triggered.connect(self._on_load_triggered)
 
-        def handle_save():
-            editor = self._get_active_editor()
-            if editor:
-                editor.save_callback = self._handle_save_dialog
-                editor.action_save()
-        tb.action_save.triggered.connect(handle_save)
+        tb.action_save.triggered.connect(self._show_save_dialog)
 
         tb.action_help.triggered.connect(self._show_help_dialog)
         tb.action_exit.triggered.connect(self.close)
         tb.action_terminal.triggered.connect(self._toggle_terminal)
+        tb.action_export_logs.triggered.connect(self._export_logs)
 
         router.route_button_both('btn_next_sub',  'action_next_subarray',  [None])
         router.route_button_both('btn_prev_sub',  'action_prev_subarray',  [None])
@@ -833,6 +946,47 @@ class MainWindow(QMainWindow):
         )
         return filename
 
+    def _show_save_dialog(self):
+        """Ouvre le dialogue de sauvegarde (save / wobs) et exécute l'action choisie."""
+        if not self.session.uv_loaded:
+            QMessageBox.information(self, "Aucune donnée", "Chargez un fichier FITS d'abord.")
+            return
+
+        try:
+            src = (self.session.obs.source or "session").strip().replace(" ", "_") or "session"
+        except Exception:
+            src = "session"
+        # Préfixe complet = répertoire courant + nom de source
+        suggested = os.path.join(os.getcwd(), src)
+
+        dlg = SaveDialog(parent=self, suggested_prefix=suggested)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        if dlg.result_mode == "save":
+            prefix = dlg.result_prefix
+            try:
+                self.session.save(prefix)
+                self.log_console.log(
+                    f"Sauvegarde complète → {prefix}.uvf / .mod / .win / .bfits / .fits / .par"
+                )
+            except Exception as e:
+                self.log_console.log(f"Erreur save : {e}")
+                QMessageBox.critical(self, "Save Error", str(e))
+
+        elif dlg.result_mode == "wobs":
+            filepath = dlg.result_filepath
+            do_shift = dlg.result_do_shift
+            try:
+                self.session.obs.save_wobs(filepath, do_shift=do_shift)
+                self.log_console.log(
+                    f"wobs → {os.path.basename(filepath)}"
+                    + (" (do_shift=True)" if do_shift else "")
+                )
+            except Exception as e:
+                self.log_console.log(f"Erreur wobs : {e}")
+                QMessageBox.critical(self, "wobs Error", str(e))
+
     def _show_help_dialog(self):
         """
         Affiche une boîte de dialogue récapitulant tous les raccourcis clavier.
@@ -884,7 +1038,6 @@ class MainWindow(QMainWindow):
         <h3>Channels — syntaxes</h3>
         <table>
           <tr><td width="140"><b>Local</b></td><td><code>2:5-10</code> (IF2 canaux locaux 5..10), <code>1,3:2-5</code>.</td></tr>
-          <tr><td><b>Global</b></td><td><code>20-25,47-65</code> ou <code>20,25,47,65</code>.</td></tr>
           <tr><td><b>Variables</b></td><td><code>nif</code>, <code>nchan</code>, <code>nif*nchan</code>.</td></tr>
           <tr><td><b>Mapping</b></td><td>Bouton <b>Info</b> à côté de <b>Channels</b> pour voir IF → canaux globaux.</td></tr>
         </table>
@@ -906,7 +1059,7 @@ class MainWindow(QMainWindow):
         <ul>
           <li>Les points flaggués sont masqués (état conservé par l'Observation).</li>
           <li>Annulation : <code>u</code> ou <code>Ctrl+Z</code>.</li>
-          <li>Sauvegarde : <code>Ctrl+S</code> exporte les visibilités.</li>
+          <li>Sauvegarde : <code>Ctrl+S</code> ouvre le dialogue save / wobs.</li>
         </ul>
         """
 
@@ -940,10 +1093,9 @@ class MainWindow(QMainWindow):
         <table>
           <tr><td width="160"><b>A</b></td><td>Flagger le point le plus proche</td></tr>
           <tr><td><b>C</b></td><td>Flagger une zone rectangulaire</td></tr>
-          <tr><td><b>F</b></td><td>Flagging interactif (gauche=flag, droit=unflag)</td></tr>
           <tr><td><b>Z</b></td><td>Zoom box</td></tr>
           <tr><td><b>u / Ctrl+Z</b></td><td>Annuler</td></tr>
-          <tr><td><b>Ctrl+S</b></td><td>Sauvegarder (export FITS)</td></tr>
+          <tr><td><b>Ctrl+S</b></td><td>Ouvrir le dialogue save / wobs</td></tr>
         </table>
 
         <h3>Radplot</h3>
@@ -1051,11 +1203,11 @@ class MainWindow(QMainWindow):
             self.session.imager.mapsize(mapsize, cellsize)
             self._last_mapsize_params = (mapsize, cellsize)
 
-        if weight == "uniform":
+        if weight.startswith("uniform"):
             self.session.imager.uvweight(bin_size=2.0, err_power=0.0)
-        elif weight == "natural":
+        elif weight.startswith("natural"):
             self.session.imager.uvweight(bin_size=0.0, err_power=-2.0)
-        elif weight == "custom":
+        elif weight.startswith("custom"):
             try:
                 custom_bin = float(self.control_panel.input_weight_bin.text() or "2.0")
                 custom_err = float(self.control_panel.input_weight_err.text() or "0.0")
@@ -1131,6 +1283,24 @@ class MainWindow(QMainWindow):
                 contour_custom=contour_custom
             )
 
+            # Mettre en cache le package dirty pour l'onglet All Maps.
+            # On copie les données ici (view C → numpy) pour qu'elles restent
+            # valides après un éventuel re-invert ou rechargement de fichier.
+            try:
+                frozen = dict(img_dict)
+                _data = img_dict.get('data')
+                if hasattr(_data, 'copy'):
+                    frozen['data'] = _data.copy()
+                _ext = img_dict.get('extent')
+                if isinstance(_ext, list):
+                    frozen['extent'] = list(_ext)
+                _info = img_dict.get('info')
+                if isinstance(_info, dict):
+                    frozen['info'] = dict(_info)
+                self._last_dirty_package = frozen
+            except Exception:
+                pass
+
             # Pré-rendre l'onglet Residual (identique à la dirty au départ) pour
             # éviter un onglet vide lors du premier switch.
             try:
@@ -1200,6 +1370,7 @@ class MainWindow(QMainWindow):
             )
             _can_continue = (
                 not _params_changed
+                and not self._force_clean_reset   # reset explicite demandé (ex. post-selfcal)
                 and self.session.imager._current_map_type == "residual"
                 and self.session.imager._last_residual_map is not None
             )
@@ -1228,10 +1399,13 @@ class MainWindow(QMainWindow):
                         self._last_dirty_package = _frozen
                 except Exception:
                     pass
+                # Le reset explicite a été consommé.
+                self._force_clean_reset = False
 
             self.control_panel.progress_bar.setValue(0)
             self.control_panel.lbl_progress.setText(f"0 / {niter}")
 
+            mode_str   = "continued" if _can_continue else "started"
             cutoff_str = f", cutoff: {cutoff}" if cutoff > 0 else ""
             mode_str = "continued" if _can_continue else "started"
             self.log_console.log(
@@ -1467,7 +1641,7 @@ class MainWindow(QMainWindow):
             self.log_console.log("Re-invert post-selfcal…")
             mapsize, cellsize, taper_val, uvmin_wav, uvmax_wav = self._apply_imaging_params()
             self.session.imager.invert(uvmin_wav, uvmax_wav)
-            self._last_uvtaper_params = None  # force re-apply taper au prochain CLEAN
+            self._force_clean_reset = True  # post-selfcal : prochain CLEAN repart de zéro
 
             self._refresh_residual_map()
             self._refresh_dirty_map()
@@ -2221,6 +2395,20 @@ class MainWindow(QMainWindow):
         """Bascule la visibilité du panneau de logs (console terminale droite)."""
         self.log_console.setVisible(not self.log_console.isVisible())
 
+    def _export_logs(self):
+        """Ouvre un dialogue de sauvegarde et exporte le contenu de la console dans un fichier texte."""
+        from PyQt6.QtWidgets import QFileDialog
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Exporter les logs", "difmap_logs.txt", "Fichiers texte (*.txt);;Tous (*)"
+        )
+        if not filepath:
+            return
+        try:
+            self.log_console.export_logs(filepath)
+            self.log_console.log_success(f"Logs exportés → {os.path.basename(filepath)}")
+        except Exception as e:
+            self.log_console.log_error(f"Erreur export logs : {e}")
+
     def _has_unsaved_changes(self) -> bool:
         """
         Indique si des opérations de flagging non sauvegardées sont présentes.
@@ -2335,15 +2523,15 @@ class MainWindow(QMainWindow):
                 if 'show_help' in state_dict:
                     QTimer.singleShot(0, self._show_help_dialog)
                 if 'inspect_active' in state_dict:
-                    # Synchronise le combo de la toolbar locale
-                    for widget in [self.plot_widget, self.radplot_widget]:
-                        if widget and hasattr(widget, 'sync_inspect_state'):
-                            widget.sync_inspect_state(state_dict['inspect_active'])
+                    pass
 
                 if 'active_tool' in state_dict:
+                    pass
+
+                if 'edit_tool' in state_dict:
                     for widget in [self.plot_widget, self.radplot_widget]:
-                        if widget and hasattr(widget, 'sync_tool_state'):
-                            widget.sync_tool_state(state_dict['active_tool'])
+                        if widget and hasattr(widget, 'sync_edit_tool_state'):
+                            widget.sync_edit_tool_state(state_dict.get('edit_tool'))
 
                 if state_dict.get('_refresh_layout'):
                     # Apply all layout-affecting state changes to the widget BEFORE

@@ -43,7 +43,9 @@ class EditorMode:
     """Modes d'interaction de l'éditeur graphique (souris/clavier)."""
     INSPECT          = None
     ZOOM             = "ZOOM"
-    CUT              = "CUT"
+    CUT              = "CUT"  # compat
+    FLAG             = "CUT"
+    UNFLAG           = "UNFLAG"
     PAN              = "PAN"
     STATS            = "STATS"
     STATS_V          = "STATS_V"
@@ -51,7 +53,7 @@ class EditorMode:
     INTERACTIVE_FLAG = "INTERACTIVE_FLAG"
     ZOOM_Y           = "ZOOM_Y"
 
-    ALL_RECT = frozenset(["ZOOM", "CUT", "STATS", "STATS_V"])
+    ALL_RECT = frozenset(["ZOOM", "CUT", "UNFLAG", "STATS", "STATS_V"])
 
 
 class DisplayMode:

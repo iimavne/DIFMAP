@@ -28,8 +28,13 @@ def get_nif() -> int:
     """Retourne le nombre total d'IFs dans l'observation courante."""
     return cdifmap.native_get_nif()
 
+_MAX_IFS = 64
+_MAX_CHAN_PAIRS = 64
+
 def select_ifs(pol: str, if_list: list) -> int:
     """Sélectionne une liste d'IFs non-contigus (1-indexed) et change la polarisation."""
+    if len(if_list) > _MAX_IFS:
+        raise ValueError(f"Trop d'IFs : {len(if_list)} demandés, maximum {_MAX_IFS}")
     cdef bytes pol_bytes = pol.encode('utf-8')
     cdef int n = len(if_list)
     cdef int[64] buf
@@ -40,6 +45,8 @@ def select_ifs(pol: str, if_list: list) -> int:
 
 def set_if_mask(if_list: list) -> int:
     """Met à jour le masque d'IFs sans changer la pol ni relire le scratch."""
+    if len(if_list) > _MAX_IFS:
+        raise ValueError(f"Trop d'IFs : {len(if_list)} demandés, maximum {_MAX_IFS}")
     cdef int n = len(if_list)
     cdef int[64] buf
     cdef int i
@@ -57,6 +64,8 @@ def select_channels(pol: str, pairs: list) -> int:
     pairs : [(bchan1, echan1), ...] — liste de paires (début, fin) en index global.
             Liste vide = tous les canaux.
     """
+    if len(pairs) > _MAX_CHAN_PAIRS:
+        raise ValueError(f"Trop de paires de canaux : {len(pairs)} demandées, maximum {_MAX_CHAN_PAIRS}")
     cdef bytes pol_bytes = pol.encode('utf-8')
     cdef int n = len(pairs)
     cdef int[64] bchans_buf
@@ -349,15 +358,23 @@ def unflag_data(int[:] indices):
     cdef int status = cdifmap.unflag_native_data(&indices[0], num_indices)
     return num_indices
 
-def save_wobs(str filepath):
-    """Demande au moteur C de sauvegarder l'observation actuelle."""
-    # En Cython, il faut encoder la string Python en bytes (UTF-8) pour le C
+def save_wobs(str filepath, bint do_shift=False):
+    """Demande au moteur C de sauvegarder l'observation actuelle (wobs)."""
     cdef bytes filepath_bytes = filepath.encode('utf-8')
     cdef const char* c_filepath = filepath_bytes
-    
-    cdef int status = cdifmap.save_native_wobs(c_filepath)
+    cdef int status = cdifmap.save_native_wobs(c_filepath, 1 if do_shift else 0)
     if status != 0:
-        raise RuntimeError(f"Erreur lors de la sauvegarde du fichier : {filepath}")
+        raise RuntimeError(f"Erreur lors de la sauvegarde wobs : {filepath}")
+    return True
+
+
+def save(str prefix):
+    """Sauvegarde complète difmap : UV, modèle, fenêtres, carte restore, fichier .par."""
+    cdef bytes prefix_bytes = prefix.encode('utf-8')
+    cdef const char* c_prefix = prefix_bytes
+    cdef int status = cdifmap.native_save(c_prefix)
+    if status != 0:
+        raise RuntimeError(f"Erreur lors de la sauvegarde save : {prefix}")
     return True
 
 

@@ -131,8 +131,10 @@ class BasePlotEditor:
         self.mode = None
         self.press_info = None
         self.pan_start = None
+        self._last_mouse = None  # (inaxes, xdata, ydata)
         self.original_limits = (self.ax.get_xlim(), self.ax.get_ylim())
-        self.marker_size_pct = 5   # pourcentage courant (1–100)
+        self._view_history: list[dict] = []
+        self.marker_size_pct = 20  # pourcentage courant (1–100)
         self._SIZE_MIN = 0.35  # pts² à 1 %
         self._SIZE_MAX = 26.0  # pts² à 100 %
 
@@ -156,6 +158,11 @@ class BasePlotEditor:
         )
         self.span_x.set_active(False)
 
+        # Styles par défaut des sélections (editing = rouge, non-edit = gris)
+        self._selection_props_edit = dict(facecolor="#ff3b30", edgecolor="#ff3b30", linewidth=2.0, alpha=0.18)
+        self._selection_props_other = dict(facecolor="#9aa0a6", edgecolor="#9aa0a6", linewidth=1.5, alpha=0.15)
+        self._apply_selection_style(None)
+
         self.axes_list = [self.ax]
         self.cursor = None
         self.cursor_active = False
@@ -172,12 +179,12 @@ class BasePlotEditor:
             "m": self.action_toggle_pan, "M": self.action_toggle_pan,
             "c": self.action_toggle_cut, "C": self.action_toggle_cut,
             "d": self.action_cancel_cut, "D": self.action_cancel_cut,
-            "f": self.action_toggle_interactive_flag, "F": self.action_toggle_interactive_flag,
             "a": self.action_flag_nearest, "A": self.action_flag_nearest,
             ".": self.action_toggle_marker_size,
             "+": self.action_toggle_crosshair,
             "o": self.action_dezoom, "O": self.action_dezoom,
             "u": self.action_undo, "ctrl+z": self.action_undo,
+            "ctrl+y": self.action_redo,
             "s": self.action_toggle_inspect,
             "S": self.action_toggle_stats,
             "v": self.action_toggle_stats_vec, "V": self.action_toggle_stats_vec,
@@ -192,6 +199,7 @@ class BasePlotEditor:
             self.fig.canvas.mpl_connect("button_press_event",   self.on_mouse_press),
             self.fig.canvas.mpl_connect("button_release_event", self.on_mouse_release),
             self.fig.canvas.mpl_connect("motion_notify_event",  self.on_mouse_motion),
+            self.fig.canvas.mpl_connect("scroll_event",         self.on_scroll),
             self.fig.canvas.mpl_connect("figure_leave_event",   self._on_figure_leave),
             self.fig.canvas.mpl_connect("figure_enter_event",   self._on_figure_enter),
         ]
@@ -332,6 +340,8 @@ class BasePlotEditor:
             return
         if event.inaxes not in self.axes_list:
             return
+        if event.xdata is not None and event.ydata is not None:
+            self._last_mouse = (event.inaxes, event.xdata, event.ydata)
         self.press_info = (event.x, event.y)
         if hasattr(self, '_last_pressed_axis'):
             self._last_pressed_axis = event.inaxes
@@ -347,6 +357,10 @@ class BasePlotEditor:
         event : matplotlib.backend_bases.MouseEvent
             Événement de déplacement souris.
         """
+        if event.inaxes is not None and event.xdata is not None and event.ydata is not None:
+            if not hasattr(self, 'axes_list') or event.inaxes in self.axes_list:
+                self._last_mouse = (event.inaxes, event.xdata, event.ydata)
+
         if self.mode == EditorMode.PAN and self.pan_start is not None and event.x is not None:
             px_start, py_start, xlim0, ylim0 = self.pan_start
             dx_pix = event.x - px_start
@@ -357,6 +371,60 @@ class BasePlotEditor:
             self.ax.set_xlim(xlim0[0] - dx_pix * ux, xlim0[1] - dx_pix * ux)
             self.ax.set_ylim(ylim0[0] - dy_pix * uy, ylim0[1] - dy_pix * uy)
             self.fig.canvas.draw_idle()
+
+    def action_zoom_in(self, _event=None) -> None:
+        """Zoom-in immédiat centré sur la position souris (comme la molette)."""
+        self._apply_step_zoom(direction=+1)
+
+    def action_zoom_out(self, _event=None) -> None:
+        """Zoom-out immédiat centré sur la position souris (comme la molette)."""
+        self._apply_step_zoom(direction=-1)
+
+    def _apply_step_zoom(self, direction: int) -> None:
+        if direction not in (-1, 1):
+            return
+
+        inaxes, xdata, ydata = (None, None, None)
+        last = getattr(self, '_last_mouse', None)
+        if last is not None:
+            try:
+                inaxes, xdata, ydata = last
+            except Exception:
+                inaxes, xdata, ydata = (None, None, None)
+
+        if inaxes is None or xdata is None or ydata is None:
+            # Fallback: centre de l'axe principal
+            xl, xr = self.ax.get_xlim()
+            yl, yr = self.ax.get_ylim()
+            inaxes = self.ax
+            xdata = (xl + xr) / 2
+            ydata = (yl + yr) / 2
+
+        if hasattr(self, 'axes_list') and inaxes not in self.axes_list:
+            inaxes = self.ax
+
+        base_scale = 1.2
+        scale = (1 / base_scale) if direction > 0 else base_scale
+
+        self._push_view_state()
+
+        cx = float(xdata)
+        for ax in getattr(self, 'axes_list', [self.ax]):
+            if ax is None:
+                continue
+            xl, xr = ax.get_xlim()
+            dx_l = (cx - xl) * scale
+            dx_r = (xr - cx) * scale
+            ax.set_xlim(cx - dx_l, cx + dx_r)
+
+        ax = inaxes
+        cy = float(ydata)
+        yl, yr = ax.get_ylim()
+        dy_l = (cy - yl) * scale
+        dy_r = (yr - cy) * scale
+        ax.set_ylim(cy - dy_l, cy + dy_r)
+
+        self.fig.canvas.draw_idle()
 
     def on_mouse_release(self, event):
         """
@@ -398,6 +466,7 @@ class BasePlotEditor:
         u2, v2 = erelease.xdata, erelease.ydata
 
         if self.mode == EditorMode.ZOOM:
+            self._push_view_state()
             # Préserver l'orientation des axes (ex: axe X inversé dans UV plot)
             x_inv = self.ax.get_xlim()[0] > self.ax.get_xlim()[1]
             y_inv = self.ax.get_ylim()[0] > self.ax.get_ylim()[1]
@@ -409,10 +478,16 @@ class BasePlotEditor:
             logger.info("Zoom appliqué.")
         elif self.mode == EditorMode.CUT:
             self.apply_cut(u1, v1, u2, v2)
+        elif self.mode == EditorMode.UNFLAG:
+            self.apply_unflag(u1, v1, u2, v2)
         elif self.mode == EditorMode.STATS:
             self.apply_stats(u1, v1, u2, v2)
         elif self.mode == EditorMode.STATS_V:
             self.apply_stats_vec(u1, v1, u2, v2)
+
+    def apply_unflag(self, x1, y1, x2, y2):
+        """Unflag dans une boîte. Surchargée par les sous-classes."""
+        logger.info("Unflag not yet specified for this plot.")
 
     def _on_interactive_select(self, eclick, erelease):
         """
@@ -468,7 +543,9 @@ class BasePlotEditor:
         if gui_event is not None:
             try:
                 text = gui_event.text()
-                if text:
+                # Ignorer les caractères de contrôle (Ctrl+Y → '\x19', Ctrl+Z → '\x1a', etc.)
+                # qui écraseraient les raccourcis multi-touches reconnus par Matplotlib.
+                if text and text.isprintable():
                     key = text
                 else:
                     modifiers = gui_event.modifiers()
@@ -505,10 +582,84 @@ class BasePlotEditor:
             Borne supérieure de la sélection en coordonnées de données.
         """
         if self.mode == EditorMode.ZOOM_X:
+            self._push_view_state()
             self.ax.set_xlim(vmin, vmax)
             if hasattr(self, 'ax_phase') and self.ax_phase:
                 self.ax_phase.set_xlim(vmin, vmax)
             self.fig.canvas.draw_idle()
+
+    def _push_view_state(self) -> None:
+        """Enregistre la vue courante pour permettre un retour arrière (dezoom/back)."""
+        try:
+            state = {}
+            for ax in getattr(self, 'axes_list', [self.ax]):
+                if ax is None:
+                    continue
+                state[ax] = (ax.get_xlim(), ax.get_ylim())
+            if state:
+                self._view_history.append(state)
+        except Exception:
+            return
+
+    def _pop_view_state(self) -> bool:
+        """Restaure la dernière vue si disponible. Retourne True si restauré."""
+        if not self._view_history:
+            return False
+        state = self._view_history.pop()
+        try:
+            for ax, (xlim, ylim) in state.items():
+                try:
+                    ax.set_xlim(xlim)
+                    ax.set_ylim(ylim)
+                except Exception:
+                    continue
+            self.fig.canvas.draw_idle()
+            return True
+        except Exception:
+            return False
+
+    def on_scroll(self, event) -> None:
+        """Zoom à la molette, façon Matplotlib toolbar, centré sur le curseur."""
+        if event.inaxes is None or event.xdata is None or event.ydata is None:
+            return
+        if hasattr(self, 'axes_list') and event.inaxes not in self.axes_list:
+            return
+        step = getattr(event, 'step', None)
+        button = getattr(event, 'button', None)
+        direction = 0
+        if step is not None:
+            direction = 1 if step > 0 else (-1 if step < 0 else 0)
+        elif isinstance(button, str):
+            direction = 1 if 'up' in button else (-1 if 'down' in button else 0)
+        if direction == 0:
+            return
+
+        base_scale = 1.2
+        scale = (1 / base_scale) if direction > 0 else base_scale
+
+        self._last_mouse = (event.inaxes, event.xdata, event.ydata)
+
+        self._push_view_state()
+
+        # X: appliquer à tous les axes (cohérence RadPlot amp/phase/err)
+        cx = float(event.xdata)
+        for ax in getattr(self, 'axes_list', [self.ax]):
+            if ax is None:
+                continue
+            xl, xr = ax.get_xlim()
+            dx_l = (cx - xl) * scale
+            dx_r = (xr - cx) * scale
+            ax.set_xlim(cx - dx_l, cx + dx_r)
+
+        # Y: uniquement l'axe sous le curseur
+        ax = event.inaxes
+        cy = float(event.ydata)
+        yl, yr = ax.get_ylim()
+        dy_l = (cy - yl) * scale
+        dy_r = (yr - cy) * scale
+        ax.set_ylim(cy - dy_l, cy + dy_r)
+
+        self.fig.canvas.draw_idle()
 
     # =========================================================
     # GESTION DES MODES
@@ -516,6 +667,7 @@ class BasePlotEditor:
 
     def _set_mode(self, new_mode) -> None:
         """Définit le mode et gère l'activation des widgets Matplotlib."""
+        already_set = (new_mode == self.mode)
         self.mode = new_mode
         if new_mode is not None:
             self.inspect_active = False
@@ -533,23 +685,50 @@ class BasePlotEditor:
         elif self.mode == EditorMode.ZOOM_X:
             self.span_x.set_active(True)
 
-        etat = self.mode if self.mode else "Inspection"
-        logger.info("Mode : %s", etat)
+        self._apply_selection_style(self.mode)
+
+        if not already_set:
+            etat = self.mode if self.mode else "Inspection"
+            logger.info("Mode : %s", etat)
         self.fig.canvas.draw_idle()
-        if self.sync_callback:
-            tool_state = self.mode if self.mode else ("INSPECT" if self.inspect_active else None)
-            state = {'inspect_active': self.inspect_active}
-            if tool_state is not None:
-                state['active_tool'] = tool_state
-            self.sync_callback(state)
+
+    def _apply_selection_style(self, mode) -> None:
+        """Applique la couleur de sélection selon le mode (editing=rouge, sinon gris)."""
+        is_edit = mode in (EditorMode.CUT, EditorMode.FLAG, EditorMode.UNFLAG, EditorMode.INTERACTIVE_FLAG)
+        props = self._selection_props_edit if is_edit else self._selection_props_other
+        for sel in (getattr(self, 'rs', None), getattr(self, 'rs_flag', None)):
+            self._set_selector_props(sel, props)
+
+    @staticmethod
+    def _set_selector_props(selector, props: dict) -> None:
+        if selector is None:
+            return
+        artist = (
+            getattr(selector, '_selection_artist', None)
+            or getattr(selector, 'artist', None)
+            or getattr(selector, '_rect_artist', None)
+        )
+        if artist is None:
+            return
+        try:
+            if 'facecolor' in props:
+                artist.set_facecolor(props['facecolor'])
+            if 'edgecolor' in props:
+                artist.set_edgecolor(props['edgecolor'])
+            if 'linewidth' in props:
+                artist.set_linewidth(props['linewidth'])
+            if 'alpha' in props:
+                artist.set_alpha(props['alpha'])
+        except Exception:
+            return
 
     def action_toggle_zoom(self, _event=None):
         """Active le mode ZOOM (sélection rectangulaire pour zoomer). Touche ``Z``."""
         self._set_mode(EditorMode.ZOOM)
 
     def action_toggle_cut(self, _event=None):
-        """Active le mode CUT (sélection rectangulaire pour flagguer). Touche ``C``."""
-        self._set_mode(EditorMode.CUT)
+        """Active le mode FLAG (sélection rectangulaire pour flagguer). Touche ``C``."""
+        self._set_mode(EditorMode.FLAG)
 
     def action_toggle_interactive_flag(self, _event=None):
         """
@@ -603,6 +782,7 @@ class BasePlotEditor:
             Événement clavier (ignoré).
         """
         if self.original_limits:
+            self._view_history.clear()
             self.ax.set_xlim(self.original_limits[0])
             self.ax.set_ylim(self.original_limits[1])
             self.index_antenne_actuelle = -1
@@ -618,11 +798,14 @@ class BasePlotEditor:
         self.fig.canvas.draw_idle()
 
     def action_dezoom(self, event=None):
-        """Dézoom de 50 % — élargit la vue courante. Touche ``O``."""
+        """Retour arrière (comme toolbar.back) si possible, sinon dézoom 20 %."""
+        if self._pop_view_state():
+            logger.info("Dézoom: retour arrière.")
+            return
         xl, xr = self.ax.get_xlim()
         yl, yr = self.ax.get_ylim()
         cx, cy = (xl + xr) / 2, (yl + yr) / 2
-        dx, dy = (xr - xl) * 0.75, (yr - yl) * 0.75
+        dx, dy = (xr - xl) * 0.6, (yr - yl) * 0.6
         self.ax.set_xlim(cx - dx, cx + dx)
         self.ax.set_ylim(cy - dy, cy + dy)
         self.fig.canvas.draw_idle()
@@ -702,8 +885,16 @@ class BasePlotEditor:
         if visible == self.cursor_active and (visible or self.cursor is None):
             return
 
-        _xlim = self.ax.get_xlim()
-        _ylim = self.ax.get_ylim()
+        # Préserver la vue courante (tous les axes) : le MultiCursor peut déclencher
+        # un redraw/autoscale selon les backends si on ne restaure pas explicitement.
+        view_state: dict = {}
+        for ax in getattr(self, 'axes_list', [self.ax]):
+            if ax is None:
+                continue
+            try:
+                view_state[ax] = (ax.get_xlim(), ax.get_ylim())
+            except Exception:
+                pass
 
         self._disconnect_crosshair()
         if visible:
@@ -714,9 +905,15 @@ class BasePlotEditor:
             )
             self.cursor_active = True
 
+        # Restaurer la vue AVANT redraw, pour éviter un "reset" visuel.
+        for ax, (xlim, ylim) in view_state.items():
+            try:
+                ax.set_xlim(xlim)
+                ax.set_ylim(ylim)
+            except Exception:
+                pass
+
         self.fig.canvas.draw_idle()
-        self.ax.set_xlim(_xlim)
-        self.ax.set_ylim(_ylim)
         if self.sync_callback:
             self.sync_callback({'crosshair': self.cursor_active})
 
@@ -846,6 +1043,13 @@ class BasePlotEditor:
             logger.warning("Aucune opération à annuler.")
             return
         derniers_morts = self.obs.undo_history.pop()
+
+        # Reflag (redo) : mémoriser l'opération annulée
+        try:
+            self.obs.reflag_history.append(derniers_morts)
+        except Exception:
+            pass
+
         self.obs.unflag_data(derniers_morts)
         self.obs.flag_mask[derniers_morts] = False
         self._update_colors()
@@ -854,18 +1058,37 @@ class BasePlotEditor:
         if self.sync_callback:
             self.sync_callback()
 
+    def action_redo(self, event=None):
+        """Refait (reflag) la dernière opération annulée. Raccourci ``Ctrl+Y``."""
+        stack = getattr(self.obs, 'reflag_history', None)
+        if not stack:
+            logger.warning("Aucune opération à refaire.")
+            return
+
+        indices = stack.pop()
+        if indices is None or len(indices) == 0:
+            return
+
+        # Re-applique le flagging (et repousse dans l'historique undo)
+        indices_np = np.array(indices, dtype=np.int32)
+        self.obs.flag_data(indices_np)
+        self.obs.flag_mask[indices_np] = True
+        self.obs.undo_history.append(indices_np)
+        self._update_colors()
+        logger.info("Reflag de %d visibilités.", len(indices_np), extra={'difmap_level': 'success'})
+        if self.sync_callback:
+            self.sync_callback()
+
     def action_save(self, event=None):
         """
-        Sauvegarde les visibilités dans un fichier FITS via ``save_callback``. ``Ctrl+S``.
+        Ouvre le dialogue de sauvegarde (save / wobs). ``Ctrl+S``.
 
-        Appelle ``save_callback`` pour obtenir le chemin de destination,
-        puis ``obs.save_wobs()`` pour écrire le fichier.
-
-        Parameters
-        ----------
-        event : matplotlib.backend_bases.KeyEvent, optional
-            Événement clavier (ignoré).
+        Si ``full_save_callback`` est défini il est appelé directement (délègue au
+        dialogue de la MainWindow). Sinon, repli sur l'ancien comportement wobs.
         """
+        if callable(getattr(self, 'full_save_callback', None)):
+            self.full_save_callback()
+            return
         path_origine = getattr(self.obs, 'filepath', "data.fits")
         if self.save_callback:
             nom_final = self.save_callback(path_origine)
@@ -1241,6 +1464,13 @@ class BasePlotEditor:
         """
         if len(indices) == 0:
             return
+
+        # Nouvelle branche d'édition → invalide la pile redo
+        try:
+            self.obs.reflag_history.clear()
+        except Exception:
+            pass
+
         indices_np = np.array(indices, dtype=np.int32)
         self.obs.flag_data(indices_np)
         self.obs.flag_mask[indices_np] = True

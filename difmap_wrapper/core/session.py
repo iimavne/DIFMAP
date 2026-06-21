@@ -1,10 +1,13 @@
 # difmap_wrapper/session.py
+import logging
 import threading
 import difmap_native
 
 from .imaging import DifmapImager
 from .observation import Observation
 from ..utils.exceptions import DifmapStateError, DifmapError
+
+logger = logging.getLogger("difmap.session")
 
 
 class _SingletonMeta(type):
@@ -31,14 +34,26 @@ class _SingletonMeta(type):
         Libère le verrou singleton sans passer par l'instance.
 
         À utiliser uniquement dans un notebook Jupyter quand le kernel a planté
-        et que l'instance précédente est inaccessible. N'appelle aucun destructeur
-        C — les ressources natives sont perdues (acceptable après un crash kernel).
+        et que l'instance précédente est inaccessible. Tente un cleanup C best-effort
+        avant de réinitialiser le slot.
 
         Examples
         --------
         >>> DifmapSession.force_reset()
         >>> session = DifmapSession()   # OK
         """
+        import logging
+        import difmap_native
+        _log = logging.getLogger("difmap.session")
+        _log.warning(
+            "force_reset() appelé — tentative de cleanup C best-effort. "
+            "Si le kernel a planté, l'état C peut rester corrompu ; "
+            "redémarrez le kernel si des erreurs surviennent."
+        )
+        try:
+            difmap_native.cleanup()
+        except Exception:
+            pass
         cls._instance = None
 
 
@@ -153,7 +168,7 @@ class DifmapSession(metaclass=_SingletonMeta):
             try:
                 editor.cleanup()
             except Exception:
-                pass
+                logger.warning("Échec du cleanup de l'éditeur %s", editor, exc_info=True)
         self.obs._editors.clear()
         self._native.cleanup()
         # Réinitialiser l'état Python pour ne pas garder en RAM les données de l'ancien fichier
@@ -171,6 +186,21 @@ class DifmapSession(metaclass=_SingletonMeta):
         self.obs.flag_mask = None
         self.obs.undo_history.clear()
         self.obs.invalidate_cache()
+
+    def save(self, prefix: str) -> None:
+        """
+        Sauvegarde complète (commande save difmap) : données UV (.uvf), modèle (.mod),
+        fenêtres CLEAN (.win), carte restaurée (.fits) et fichier de paramètres (.par).
+
+        Parameters
+        ----------
+        prefix : str
+            Préfixe de base pour tous les fichiers générés. Exemple : ``"session_01"``.
+        """
+        if not self.uv_loaded:
+            from ..utils.exceptions import DifmapStateError
+            raise DifmapStateError("Aucune observation chargée — appelez observe() d'abord.")
+        self._native.save(prefix)
 
     def cleanup(self) -> None:
         """

@@ -153,6 +153,35 @@ class UVPlotEditor(BasePlotEditor):
             )
             self._flag_indices(indices)
 
+    def apply_unflag(self, x1, y1, x2, y2):
+        """Unflagge les visibilités flaggées dans la boîte, conjugués inclus."""
+        u_min, u_max = min(x1, x2), max(x1, x2)
+        v_min, v_max = min(y1, y2), max(y1, y2)
+
+        u_data = self.data["u"] / 1e6
+        v_data = self.data["v"] / 1e6
+
+        mask_main = (u_data >= u_min) & (u_data <= u_max) & (v_data >= v_min) & (v_data <= v_max)
+        mask_conj = (-u_data >= u_min) & (-u_data <= u_max) & (-v_data >= v_min) & (-v_data <= v_max)
+        masque_intersection = mask_main | mask_conj
+        masque_final = masque_intersection & self.obs.flag_mask
+        indices = np.where(masque_final)[0]
+
+        if len(indices) == 0:
+            return
+
+        try:
+            self.obs.reflag_history.clear()
+        except Exception:
+            pass
+
+        self.obs.unflag_data(indices)
+        self.obs.flag_mask[indices] = False
+        self._update_colors()
+        logger.info(f"🔓 {len(indices)} points UNFLAG (boîte)", extra={'difmap_level': 'success'})
+        if self.sync_callback:
+            self.sync_callback()
+
     def _apply_interactive_flag(self, x1, y1, x2, y2, is_flag: bool):
         """
         Flagging interactif sur le plan UV avec détection du bouton de souris.
@@ -187,6 +216,10 @@ class UVPlotEditor(BasePlotEditor):
             masque_final = masque_intersection & self.obs.flag_mask
             indices = np.where(masque_final)[0]
             if len(indices) > 0:
+                try:
+                    self.obs.reflag_history.clear()
+                except Exception:
+                    pass
                 self.obs.unflag_data(indices)
                 self.obs.flag_mask[indices] = False
                 self.obs.undo_history.append(indices)
@@ -213,6 +246,10 @@ class UVPlotEditor(BasePlotEditor):
         if not indices_valides:
             return
         indices_np = np.array(indices_valides, dtype=np.int32)
+        try:
+            self.obs.reflag_history.clear()
+        except Exception:
+            pass
         self.obs.flag_data(indices_np)
         self.obs.flag_mask[indices_np] = True
         self.obs.undo_history.append(indices_np)
@@ -349,22 +386,22 @@ class UVPlotEditor(BasePlotEditor):
         # ── Titre de l'axe ────────────────────────────────────────────────
         if self.index_antenne_actuelle < 0:
             self.ax.set_title("All baselines",
-                              color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10)
+                              color=DesignSystem.PLOT_TITLE_INACTIVE, fontsize=10, loc='left')
         elif sub_actif not in self.antennes_par_subarray:
             label = self._nom_antenne_courante or "—"
-            self.ax.set_title(f"FOCUS : {sub_actif}:{label}  [vide]",
-                              color=DesignSystem.PLOT_FOCUS, fontsize=10)
+            self.ax.set_title(f"All baselines\nFOCUS : {sub_actif}:{label}  [vide]",
+                              color=DesignSystem.PLOT_FOCUS, fontsize=10, loc='left')
             logger.info("Subarray %s : aucune visibilité.", sub_actif)
         elif self.index_antenne_actuelle < len(self.toutes_antennes_sorted):
             vrai_nom = self.toutes_antennes_sorted[self.index_antenne_actuelle]
             if ant_cible is not None:
-                self.ax.set_title(f"FOCUS : {sub_actif}:{vrai_nom}",
-                                  color=DesignSystem.PLOT_FOCUS, fontsize=10)
+                self.ax.set_title(f"All baselines\nFOCUS : {sub_actif}:{vrai_nom}",
+                                  color=DesignSystem.PLOT_FOCUS, fontsize=10, loc='left')
                 if not np.any(m_focus & ~flagged):
                     logger.warning("No data for %s:%s", sub_actif, vrai_nom)
             else:
-                self.ax.set_title(f"FOCUS : {sub_actif}:{vrai_nom}  [pas de visibilités]",
-                                  color=DesignSystem.PLOT_FOCUS, fontsize=10)
+                self.ax.set_title(f"All baselines\nFOCUS : {sub_actif}:{vrai_nom}  [pas de visibilités]",
+                                  color=DesignSystem.PLOT_FOCUS, fontsize=10, loc='left')
                 logger.info("Pas de visibilités pour %s dans le subarray %s.", vrai_nom, sub_actif)
 
         # ── Layer 1 : fond — non-flaguués non-focalisés (Line2D) ──────────

@@ -55,6 +55,7 @@ def main():
         window = MainWindow(c_capture_fd=c_capture_fd)
         window.show()
     except Exception as e:
+        os.close(c_capture_fd)
         print(f"Erreur fatale au lancement : {e}")
         sys.exit(1)
 

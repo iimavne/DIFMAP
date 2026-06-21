@@ -156,7 +156,7 @@ def _add_map_annotations(ax, fig, map_data, map_type, beam_info=None,
                 show = pct_levels[:8]
                 suffix = " ..." if len(pct_levels) > 8 else ""
                 formatted_lines.append(
-                    "Contours %: " + " ".join(f"{p:.0g}" for p in show) + suffix
+                    "Contours %: " + " ".join(f"{p:g}" for p in show) + suffix
                 )
 
         bmaj = float(map_info.get('bmaj', 0.0) or 0.0)
@@ -225,8 +225,11 @@ class MapPlotWidget(BasePlotWidget):
         self.window_selection_mode = False
         self.selected_window = None
 
+        self._cursor_pos = None  # (x, y) en coordonnées axes, mis à jour sur motion
+        self._map_crosshair = None
         self.canvas.mpl_connect('button_press_event', self._on_mouse_press)
         self.canvas.mpl_connect('key_press_event', self._on_key_press)
+        self.canvas.mpl_connect('motion_notify_event', self._on_mouse_motion)
 
         if self._show_tools:
             self._build_map_toolbar()
@@ -298,6 +301,33 @@ class MapPlotWidget(BasePlotWidget):
             self._window_tool_action = None
 
         lay.addStretch()
+
+        # Raccourcis clavier disponibles
+        _keys_lbl = QLabel("  L=Refresh  F=Colormap  V=Pixel  S=Stats  +=Crosshair")
+        _keys_lbl.setStyleSheet("font-size: 10px; font-style: italic; color: #6A7D95;")
+        _keys_lbl.setToolTip(
+            "Raccourcis clavier de la carte :\n"
+            "  L — Rafraîchir l'affichage\n"
+            "  F — Réinitialiser la colormap (min/max données)\n"
+            "  V — Voir le flux du pixel sous le curseur\n"
+            "  S — Statistiques de la fenêtre CLEAN la plus proche\n"
+            "  + — Activer/désactiver le crosshair\n"
+            "  W — Ajouter une fenêtre CLEAN\n"
+            "  P — Ajouter une fenêtre Peak\n"
+            "  D — Supprimer toutes les fenêtres\n"
+            "  R — Réinitialiser la vue\n"
+            "  M — Afficher/masquer les composantes du modèle"
+        )
+        lay.addWidget(_keys_lbl)
+
+        lay.addWidget(self._make_separator())
+        _export_btn = QToolButton()
+        _export_btn.setText("Export PNG")
+        _export_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        _export_btn.setToolTip("Exporter la figure en PNG")
+        _default_fn = f"{getattr(self, '_map_type', None) or 'map'}.png"
+        _export_btn.clicked.connect(lambda checked=False, fn=_default_fn: self._export_png(fn))
+        lay.addWidget(_export_btn)
 
     def _make_tool_dropdown(self, items: list[tuple[str, str]]) -> QToolButton:
         btn = QToolButton()
@@ -586,6 +616,11 @@ class MapPlotWidget(BasePlotWidget):
             _add_map_annotations(self.ax, self.fig, cropped_data, self._map_type, contour_levels=contour_levels)
         self.draw()
 
+    def _on_mouse_motion(self, event):
+        """Mémorise la position courante du curseur en coordonnées données."""
+        if event.inaxes == self.ax and event.xdata is not None:
+            self._cursor_pos = (event.xdata, event.ydata)
+
     def _on_mouse_press(self, event):
         """Gère les clics de souris pour la sélection de fenêtres."""
         if event.inaxes != self.ax:
@@ -613,10 +648,102 @@ class MapPlotWidget(BasePlotWidget):
             self._delete_all_windows()
         elif event.key == 'm':
             self._toggle_show_model()
+        elif event.key == 'l':
+            self.canvas.draw_idle()
+        elif event.key == 'f':
+            self._reset_colormap()
+        elif event.key in ('+', 'shift+='):
+            self._toggle_crosshair()
+        elif event.key == 'v':
+            self._inspect_pixel()
+        elif event.key == 's':
+            self._describe_nearest_window()
         elif event.key == 'escape':
             self._sync_combo_to("NAVIGATE")
             self._exit_window_selection_mode()
             self._deactivate_mpl_tools()
+
+    def _inspect_pixel(self):
+        """[V] Affiche le flux du pixel sous le curseur dans le log."""
+        import logging
+        log = logging.getLogger("difmap.map")
+        if not hasattr(self, '_cursor_pos') or self._cursor_pos is None:
+            log.info("Pixel Inspect : déplacer la souris sur la carte d'abord.")
+            return
+        if self.image is None:
+            return
+        x, y = self._cursor_pos
+        arr = self.image.get_array()
+        if arr is None:
+            return
+        ext = self.image.get_extent()  # [xmin, xmax, ymin, ymax] ou [xmax, xmin, ...]
+        nx, ny = arr.shape[1], arr.shape[0]
+        x0, x1 = min(ext[0], ext[1]), max(ext[0], ext[1])
+        y0, y1 = min(ext[2], ext[3]), max(ext[2], ext[3])
+        col = int((x - x0) / (x1 - x0) * nx) if x1 != x0 else 0
+        row = int((y - y0) / (y1 - y0) * ny) if y1 != y0 else 0
+        col = max(0, min(nx - 1, col))
+        row = max(0, min(ny - 1, row))
+        flux = float(arr[row, col])
+        log.info("Pixel [%d, %d] : %.4g Jy/beam  (x=%.2f mas, y=%.2f mas)", col, row, flux, x, y)
+
+    def _describe_nearest_window(self):
+        """[S] Statistiques sur la fenêtre CLEAN la plus proche du curseur."""
+        import logging
+        log = logging.getLogger("difmap.map")
+        if not hasattr(self, '_cursor_pos') or self._cursor_pos is None:
+            log.info("Window Stats : déplacer la souris sur la carte d'abord.")
+            return
+        parent = self.parent()
+        while parent is not None:
+            if hasattr(parent, '_clean_windows'):
+                wins = getattr(parent, '_clean_windows', [])
+                if not wins:
+                    log.info("Aucune fenêtre CLEAN définie.")
+                    return
+                cx, cy = self._cursor_pos
+                best, best_d = None, float('inf')
+                for w in wins:
+                    wx = (w[0] + w[1]) / 2
+                    wy = (w[2] + w[3]) / 2
+                    d = (cx - wx) ** 2 + (cy - wy) ** 2
+                    if d < best_d:
+                        best_d, best = d, w
+                if best is not None:
+                    xa, xb, ya, yb = best
+                    log.info("Fenêtre la plus proche : x=[%.2f, %.2f] y=[%.2f, %.2f] mas  "
+                             "taille=%.2f×%.2f mas", xa, xb, ya, yb, abs(xb - xa), abs(yb - ya))
+                return
+            parent = parent.parent()
+        log.info("Window Stats : fenêtres non accessibles.")
+
+    def _reset_colormap(self):
+        """[F] Réinitialise les limites de la colormap au min/max des données."""
+        if self.image is None:
+            return
+        arr = self.image.get_array()
+        if arr is None:
+            return
+        self.image.set_clim(float(np.nanmin(arr)), float(np.nanmax(arr)))
+        self.canvas.draw_idle()
+
+    def _toggle_crosshair(self):
+        """[+] Active/désactive un curseur crosshair sur la carte."""
+        from matplotlib.widgets import MultiCursor
+        if not hasattr(self, '_map_crosshair'):
+            self._map_crosshair = None
+        if self._map_crosshair is not None:
+            try:
+                self._map_crosshair.disconnect_events()
+            except Exception:
+                pass
+            self._map_crosshair = None
+            self.canvas.draw_idle()
+        else:
+            self._map_crosshair = MultiCursor(
+                self.fig.canvas, [self.ax],
+                color='#4A9EFF', lw=0.8, horizOn=True, vertOn=True
+            )
 
     def _toggle_show_model(self):
         """Toggle l'affichage des composantes du modèle (comme PGPLOT 'M')."""

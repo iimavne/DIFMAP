@@ -16,7 +16,7 @@ dossier_tests = os.path.dirname(os.path.abspath(__file__))
 
 DATASETS = [
     ("0003-066_X.SPLIT.1", "verite_terrain_test.fits"),
-    ("0017+200_X.SPLIT.1", "test_wrapper_strict.fits"),
+    ("0017+200_X.SPLIT.1", "0017+200_dirty_ref.fits"),
 ]
 
 # =====================================================================

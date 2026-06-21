@@ -277,6 +277,11 @@ class ImprovedLogConsole(QDockWidget):
         """Efface tout le contenu de la console."""
         self.text_edit.clear()
 
+    def export_logs(self, filepath: str) -> None:
+        """Exporte le contenu de la console dans un fichier texte brut."""
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(self.text_edit.toPlainText())
+
     def copy_all(self):
         """Copie tout le contenu de la console dans le presse-papiers."""
         self.text_edit.selectAll()

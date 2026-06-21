@@ -1,0 +1,14 @@
+! Command file created by difmap GUI
+mapunits mas
+get /home/mahssini/Bureau/difmap2.5q_mod/tests/test_data/0017+201
+mapsize 512,0.1, 512,0.1
+select RR, 1, 4
+uvtaper 0, 0
+uvrange 0, 0
+uvweight 2, 0, false
+integer niter; niter=100
+float gain; gain=0.05
+float cutoff; cutoff=0
+selftaper 0, 0
+selflims 0, 0, false
+selfflag true, 3, 4

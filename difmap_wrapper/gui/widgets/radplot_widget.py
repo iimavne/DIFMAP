@@ -8,7 +8,7 @@ import numpy as np
 from matplotlib.collections import PathCollection
 from PyQt6.QtCore import Qt as _Qt
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QMenu, QToolButton, QWidget
+from PyQt6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QMenu, QToolButton, QWidget
 try:
     import qtawesome as qta
     _HAS_QTA = True
@@ -142,17 +142,30 @@ class RadPlotWidget(BasePlotWidget):
     ]
     # Z=zoom libre (base), U (Shift+u)=Zoom Radius, Y=Zoom amp/phs
     _RAD_ZOOM = [
+        ("Zoom —",       None,     "",                  "",        "Sélectionner un mode de zoom"),
         ("Zoom Box",     "ZOOM",   "fa5s.search-plus",  "Z",       "Zoom rectangle (libre)"),
         ("Zoom Radius",  "ZOOM_X", "fa5s.arrows-alt-h", "Shift+u", "Zoom plage UV radius (axe X)"),
         ("Zoom Amp/Phs", "ZOOM_Y", "fa5s.arrows-alt-v", "Y",       "Zoom axe Amplitude / Phase"),
     ]
-    _RAD_FLAG = [
-        ("Flag Box", "CUT", "fa5s.ban", "C", "Flaguer un rectangle"),
+    _RAD_EDIT = [
+        ("Edit Off", None,  "fa5s.times", "D", "Désactiver les outils d'édition"),
+        ("Flag",     "CUT", "fa5s.ban",   "C", "Flaguer un rectangle"),
     ]
     _RAD_STATS = [
+        ("Stats —",     None,      "",                  "",  "Sélectionner un type de statistiques"),
         ("Amp / Phase", "STATS",   "fa5s.chart-bar",  "S", "Statistiques scalaires (Amp, Phase)"),
         ("Re / Im",     "STATS_V", "fa5s.chart-line", "V", "Statistiques vectorielles (Re, Im)"),
     ]
+    _RAD_HINTS = {
+        "PAN":     "Pan : cliquer-glisser pour déplacer la vue",
+        "INSPECT": "Inspect : clic gauche pour voir les infos d'une visibilité",
+        "ZOOM":    "Zoom Box : dessiner un rectangle pour zoomer",
+        "ZOOM_X":  "Zoom Radius : dessiner une plage sur l'axe UV radius (X)",
+        "ZOOM_Y":  "Zoom Amp/Phase : dessiner une plage sur l'axe Y",
+        "CUT":     "Flag : dessiner un rectangle pour flagger les visibilités",
+        "STATS":   "Amp/Phase stats : dessiner un rectangle pour voir les statistiques",
+        "STATS_V": "Re/Im stats : dessiner un rectangle pour les statistiques vectorielles",
+    }
 
     def _build_local_toolbar(self) -> None:
         """
@@ -168,49 +181,89 @@ class RadPlotWidget(BasePlotWidget):
         lay.setContentsMargins(8, 5, 8, 5)
         lay.setSpacing(6)
 
+        self._nav_mode = "PAN"
+        self._edit_mode = None
+
         lay.addWidget(QLabel("Tool:"))
-        dd_tool = _make_dropdown("Tool", self._RAD_NAVIGATE + self._RAD_FLAG,
-                                 self._tool_buttons, self._on_tool_btn)
+        dd_tool = _make_dropdown("Tool", self._RAD_NAVIGATE,
+                                 self._tool_buttons, self._on_nav_tool_btn)
         lay.addWidget(dd_tool)
         lay.addWidget(_make_separator())
 
+        lay.addWidget(QLabel("Edit:"))
+        dd_edit = _make_dropdown("Edit", self._RAD_EDIT,
+                                 self._tool_buttons, self._on_edit_tool_btn)
+        lay.addWidget(dd_edit)
+
+        undo_btn = QToolButton()
+        undo_btn.setText("Undo [u]")
+        undo_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        undo_btn.setToolTip("Annuler le dernier flag (u / Ctrl+Z)")
+        undo_btn.clicked.connect(
+            lambda checked=False: self._on_button_click(
+                self.editor.action_undo, None) if self.editor else None
+        )
+        lay.addWidget(undo_btn)
+
+        redo_btn = QToolButton()
+        redo_btn.setText("Redo [Ctrl+Y]")
+        redo_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        redo_btn.setToolTip("Refaire le dernier undo flag (Ctrl+Y)")
+        redo_btn.clicked.connect(
+            lambda checked=False: self._on_button_click(
+                self.editor.action_redo, None) if self.editor else None
+        )
+        lay.addWidget(redo_btn)
+
+        lay.addWidget(_make_separator())
+
         lay.addWidget(QLabel("Zoom:"))
+        zoom_in_btn = QToolButton()
+        zoom_in_btn.setText("+")
+        zoom_in_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        zoom_in_btn.setToolTip("Zoom-in (centré sur la souris)")
+        zoom_in_btn.clicked.connect(
+            lambda checked=False: self._on_button_click(
+                self.editor.action_zoom_in, None) if self.editor else None
+        )
+        lay.addWidget(zoom_in_btn)
+
+        zoom_out_btn = QToolButton()
+        zoom_out_btn.setText("-")
+        zoom_out_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        zoom_out_btn.setToolTip("Dézoomer de 50 %")
+        zoom_out_btn.clicked.connect(
+            lambda checked=False: self._on_button_click(self.editor.action_dezoom, None) if self.editor else None
+        )
+        lay.addWidget(zoom_out_btn)
+
         dd_zoom = _make_dropdown("Zoom", self._RAD_ZOOM,
-                                 self._tool_buttons, self._on_tool_btn)
+                                 self._tool_buttons, self._on_nav_tool_btn)
         lay.addWidget(dd_zoom)
         lay.addWidget(_make_separator())
 
         lay.addWidget(QLabel("Stats:"))
         dd_stats = _make_dropdown("Stats", self._RAD_STATS,
-                                  self._tool_buttons, self._on_tool_btn)
+                                  self._tool_buttons, self._on_nav_tool_btn)
         lay.addWidget(dd_stats)
         lay.addWidget(_make_separator())
 
-        lay.addWidget(QLabel("View:"))
-        view_btn = QToolButton()
-        view_btn.setText("View ▾")
-        view_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        view_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
-        view_menu = QMenu(view_btn)
-        view_actions = [
-            ("Dezoom [O]", "Dézoomer de 50 %", lambda: self._on_button_click(self.editor.action_dezoom, None) if self.editor else None),
-            ("Reset [R]", "Réinitialiser la vue", lambda: self._on_button_click(self.editor.action_home, None) if self.editor else None),
-            ("Undo Flag [u]", "Annuler le dernier flagging", lambda: self._on_button_click(self.editor.action_undo, None) if self.editor else None),
-        ]
-        for text, tip, callback in view_actions:
-            act = QAction(text, view_btn)
-            act.setToolTip(tip)
-            act.triggered.connect(lambda checked=False, cb=callback: cb())
-            view_menu.addAction(act)
-        cross = QAction("Crosshair [+]", view_btn)
-        cross.setCheckable(True)
-        cross.setToolTip("Crosshair plein écran")
-        cross.triggered.connect(lambda checked: self._on_crosshair_btn(cross, checked))
-        view_menu.addAction(cross)
-        self._tool_buttons["XHAIR"] = cross
-        view_btn.setMenu(view_menu)
-        lay.addWidget(view_btn)
+        self._crosshair_chk = QCheckBox("Crosshair")
+        self._crosshair_chk.setToolTip("Crosshair plein écran")
+        self._crosshair_chk.stateChanged.connect(
+            lambda _state: self._on_crosshair_chk(bool(self._crosshair_chk.isChecked()))
+        )
+        lay.addWidget(self._crosshair_chk)
+        lay.addWidget(_make_separator())
         lay.addStretch()
+
+        lay.addWidget(_make_separator())
+        _export_btn = QToolButton()
+        _export_btn.setText("Export PNG")
+        _export_btn.setToolButtonStyle(_Qt.ToolButtonStyle.ToolButtonTextOnly)
+        _export_btn.setToolTip("Exporter le radplot en PNG")
+        _export_btn.clicked.connect(lambda checked=False: self._export_png("radplot.png"))
+        lay.addWidget(_export_btn)
 
     # ── Gestion des boutons ──────────────────────────────────────
 
@@ -243,10 +296,18 @@ class RadPlotWidget(BasePlotWidget):
                 b.setChecked(m == mode)
                 b.blockSignals(False)
 
-    def _on_tool_btn(self, mode: str, btn) -> None:
-        """Appelé par interaction utilisateur : met à jour l'UI puis l'éditeur."""
+    def _on_nav_tool_btn(self, mode: str, btn) -> None:
+        """Outil de visualisation local (non synchronisé)."""
+        self._nav_mode = mode
         self._update_btn_visuals(mode)
+        self.set_hint(self._RAD_HINTS.get(mode, ""))
         if not self.editor:
+            return
+        # Si un outil d'édition est actif, il reste prioritaire.
+        if self._edit_mode is not None:
+            self.editor.inspect_active = False
+            self.editor._set_mode(self._edit_mode)
+            self.canvas.setFocus()
             return
         if mode == "INSPECT":
             self.editor.inspect_active = True
@@ -256,10 +317,26 @@ class RadPlotWidget(BasePlotWidget):
             self.editor._set_mode(mode)
         self.canvas.setFocus()
 
-    def _on_crosshair_btn(self, btn, checked: bool | None = None) -> None:
+    def _on_edit_tool_btn(self, mode: str | None, btn) -> None:
+        self._set_edit_tool(mode, emit_sync=True)
+
+    def _set_edit_tool(self, mode: str | None, emit_sync: bool) -> None:
+        self._edit_mode = mode
+        self._update_btn_visuals(mode if mode is not None else None)
+        self.set_hint(self._RAD_HINTS.get(mode, ""))
         if self.editor:
-            visible = btn.isChecked() if checked is None else bool(checked)
-            self.editor.set_crosshair_visible(visible)
+            if mode is None:
+                self._on_nav_tool_btn(self._nav_mode, None)
+            else:
+                self.editor.inspect_active = False
+                self.editor._set_mode(mode)
+        if emit_sync and self._sync_callback:
+            self._sync_callback({'edit_tool': mode})
+        self.canvas.setFocus()
+
+    def _on_crosshair_chk(self, checked: bool) -> None:
+        if self.editor:
+            self.editor.set_crosshair_visible(bool(checked))
         self.canvas.setFocus()
 
     def _on_button_click(self, func, arg=None):
@@ -291,12 +368,16 @@ class RadPlotWidget(BasePlotWidget):
             return
         self._update_btn_visuals(tool)
 
+    def sync_edit_tool_state(self, tool: str | None) -> None:
+        """Synchronise l'outil d'édition sans reboucler vers MainWindow."""
+        self._set_edit_tool(tool, emit_sync=False)
+
     def sync_crosshair_btn(self, active: bool) -> None:
-        btn = self._tool_buttons.get("XHAIR")
-        if btn:
-            btn.blockSignals(True)
-            btn.setChecked(active)
-            btn.blockSignals(False)
+        chk = getattr(self, '_crosshair_chk', None)
+        if chk:
+            chk.blockSignals(True)
+            chk.setChecked(bool(active))
+            chk.blockSignals(False)
 
     # =========================================================
     # API publique
@@ -574,11 +655,8 @@ class RadPlotWidget(BasePlotWidget):
         self.editor.show_errors  = self.show_errors
         self.editor.display_mode = self.display_mode
         self.editor._update_colors()
-        # Appliquer le mode courant des boutons au nouvel éditeur
-        if hasattr(self, '_tool_buttons'):
-            for mode, btn in self._tool_buttons.items():
-                if mode == "XHAIR":
-                    continue
-                if isinstance(btn, QToolButton) and btn.property("activeMode") == mode:
-                    self._on_tool_btn(mode, btn)
-                    break
+        # Appliquer l'état courant au nouvel éditeur
+        if self._edit_mode is not None:
+            self._set_edit_tool(self._edit_mode, emit_sync=False)
+        else:
+            self._on_nav_tool_btn(self._nav_mode, None)

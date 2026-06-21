@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QComboBox, QLineEdit, QCheckBox,
                              QScrollArea, QSlider, QPushButton, QMessageBox,
                              QColorDialog, QSpinBox, QFrame, QProgressBar,
-                             QGridLayout)
+                             QGridLayout, QToolButton)
 from PyQt6.QtGui import QColor, QPainter, QBrush, QPen
 from PyQt6.QtCore import pyqtSignal, QRect
 from PyQt6.QtCore import Qt
@@ -214,6 +214,41 @@ class ToggleSwitch(QPushButton):
         p.end()
 
 
+class LabeledToggle(QWidget):
+    """Switch iOS-style avec label intégré — label à gauche, switch à droite.
+
+    Drop-in replacement de QCheckBox pour les lignes autonomes.
+    setVisible / setEnabled / blockSignals / setChecked / isChecked / toggled
+    se comportent exactement comme sur QCheckBox.
+    """
+    toggled = pyqtSignal(bool)
+
+    def __init__(self, label_text, parent=None):
+        super().__init__(parent)
+        h = QHBoxLayout(self)
+        h.setContentsMargins(0, 2, 0, 2)
+        h.setSpacing(8)
+        self._lbl = QLabel(label_text)
+        self._lbl.setStyleSheet(
+            f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; background: transparent;"
+        )
+        self._sw = ToggleSwitch()
+        self._sw.toggled.connect(self.toggled)
+        h.addWidget(self._lbl)
+        h.addStretch()
+        h.addWidget(self._sw)
+
+    def setChecked(self, v: bool) -> None:
+        self._sw.setChecked(v)
+
+    def isChecked(self) -> bool:
+        return self._sw.isChecked()
+
+    def setToolTip(self, text: str) -> None:
+        super().setToolTip(text)
+        self._sw.setToolTip(text)
+
+
 class CollapsibleSection(QWidget):
     """
     Section accordéon déroulante remplaçant le ``QGroupBox`` standard.
@@ -343,14 +378,27 @@ class ControlPanel(QDockWidget):
         self.setWidget(scroll)
 
     def set_uv_data_range(self, umin: float, umax: float, vmin: float, vmax: float) -> None:
-        """Cale les sliders UV sur la plage réelle des données (en Mλ, signée)."""
+        """Cale les sliders UV et affiche les vraies valeurs comme placeholder."""
         self._slider_u.set_data_range(umin, umax)
         self._slider_v.set_data_range(vmin, vmax)
+        def _f(v): return f"{v:.2f}"
+        # U inversé : inp_umin ↔ positif (umax), inp_umax ↔ négatif (umin)
+        self.input_umin.setPlaceholderText(_f(umax))
+        self.input_umax.setPlaceholderText(_f(umin))
+        self.input_vmin_uv.setPlaceholderText(_f(vmin))
+        self.input_vmax_uv.setPlaceholderText(_f(vmax))
 
     def set_rad_data_range(self, uv_max: float, amp_max: float) -> None:
-        """Cale les sliders Radplot sur la plage réelle des données."""
+        """Cale les sliders Radplot et affiche les vraies valeurs comme placeholder."""
         self._slider_rad_uv.set_data_range(0.0, uv_max)
         self._slider_rad_amp.set_data_range(0.0, amp_max)
+        def _f(v): return f"{v:.2f}"
+        self.input_rad_uvmin.setPlaceholderText(_f(0.0))
+        self.input_rad_uvmax.setPlaceholderText(_f(uv_max))
+        self.input_rad_ampmin.setPlaceholderText(_f(0.0))
+        self.input_rad_ampmax.setPlaceholderText(_f(amp_max))
+        self.input_rad_phsmin.setPlaceholderText("-180.00")
+        self.input_rad_phsmax.setPlaceholderText("180.00")
         # Phase : toujours −180 / +180
 
     def set_available_polarizations(self, polarizations: list[str], current: str | None = None) -> None:
@@ -533,9 +581,6 @@ class ControlPanel(QDockWidget):
             self.input_if_select.setPlaceholderText("e.g. 1-3  or  1,3,5  (empty = all IFs)")
         else:
             self._lbl_if_info.setText(f"{n_ifs} IFs  ·  {total} canaux total")
-            self._lbl_chan_info.setText(
-                f"Syntaxe globale: 1..{total}  |  nif*nchan={total}"
-            )
             self.input_if_select.setPlaceholderText("e.g. 1-3  or  1,3,5  (empty = all IFs)")
 
         # Tooltip : mapping IF → plage de canaux globaux (info), et tooltip IFs = IFs only
@@ -673,12 +718,12 @@ class ControlPanel(QDockWidget):
         layout.addWidget(self.sep_display)
 
         # ── Checkboxes UV / Radplot ────────────────────────────────
-        self.chk_conjugate = QCheckBox("Conjugate points  [%]")
+        self.chk_conjugate = LabeledToggle("Conjugate points  [%]")
         self.chk_conjugate.setChecked(True)
-        self.chk_model     = QCheckBox("Model overlay  [M]")
-        self.chk_residuals = QCheckBox("Residuals (Data − Model)  [−]")
+        self.chk_model     = LabeledToggle("Model overlay  [M]")
+        self.chk_residuals = LabeledToggle("Residuals (Data − Model)  [−]")
         self.chk_crosshair = QCheckBox("Full-screen crosshair  [+]")
-        self.chk_errors    = QCheckBox("Error plot (1/√w)  [E]")
+        self.chk_errors    = LabeledToggle("Error plot (1/√w)  [E]")
 
         # chk_crosshair existe (pour les liaisons internes) mais n'est plus dans le panel —
         # il est remplacé par le bouton Crosshair [+] de la toolbar UV.
@@ -702,10 +747,7 @@ class ControlPanel(QDockWidget):
         h_uv_hdr = QHBoxLayout()
         lbl_uv = QLabel("Limite plan UV")
         lbl_uv.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
-        self.chk_uv_limit = QPushButton("OFF")
-        self.chk_uv_limit.setCheckable(True)
-        self.chk_uv_limit.setChecked(False)
-        self.chk_uv_limit.setStyleSheet(toggle_style)
+        self.chk_uv_limit = ToggleSwitch()
         self.chk_uv_limit.setToolTip("Activer les limites manuelles du plan UV")
         h_uv_hdr.addWidget(lbl_uv)
         h_uv_hdr.addStretch()
@@ -718,11 +760,7 @@ class ControlPanel(QDockWidget):
         grid.setSpacing(6)
 
         def _make_uv_axis(axis: str, invert: bool = False):
-            """Retourne (slider, inp_min, inp_max) pour un axe U ou V.
-
-            invert=True : axe visuel inversé (←max … min→), labels et champs swappés
-            pour que la gauche corresponde toujours à ce qui est à gauche du plot UV.
-            """
+            """Retourne (slider, inp_min, inp_max, reset_btn) pour un axe U ou V."""
             h_ax = QHBoxLayout(); h_ax.setContentsMargins(0, 0, 0, 0); h_ax.setSpacing(0)
             lbl_ax = QLabel(f"{axis}  (Mλ)")
             lbl_ax.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};")
@@ -737,22 +775,46 @@ class ControlPanel(QDockWidget):
             rs.setEnabled(False)
             grid.addWidget(rs)
 
-            inp_min = QLineEdit(); inp_min.setPlaceholderText("auto"); inp_min.setStyleSheet(field_style); inp_min.setEnabled(False)
+            inp_min = QLineEdit(); inp_min.setPlaceholderText("—"); inp_min.setStyleSheet(field_style); inp_min.setEnabled(False)
             inp_min.setToolTip(f"Limite {axis} minimum (Mλ)")
-            inp_max = QLineEdit(); inp_max.setPlaceholderText("auto"); inp_max.setStyleSheet(field_style); inp_max.setEnabled(False)
+            inp_max = QLineEdit(); inp_max.setPlaceholderText("—"); inp_max.setStyleSheet(field_style); inp_max.setEnabled(False)
             inp_max.setToolTip(f"Limite {axis} maximum (Mλ)")
+
+            rst = QToolButton(); rst.setText("↺"); rst.setFixedWidth(32)
+            rst.setToolTip(f"Réinitialiser l'axe {axis}")
+            rst.setEnabled(False)
+            rst.clicked.connect(lambda checked=False, _rs=rs, _a=inp_min, _b=inp_max: [
+                _a.setText(""), _b.setText(""),
+                _rs.set_values(_rs._min, _rs._max),
+                _emit_uv_limits_checked()
+            ])
 
             row = QHBoxLayout(); row.setSpacing(4)
             lbl_l = QLabel("min"); lbl_l.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};"); lbl_l.setFixedWidth(22)
             lbl_r = QLabel("max"); lbl_r.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};"); lbl_r.setFixedWidth(22)
             row.addWidget(lbl_l); row.addWidget(inp_min)
-            row.addSpacing(6)
+            row.addSpacing(4)
             row.addWidget(lbl_r); row.addWidget(inp_max)
+            row.addWidget(rst)
             grid.addLayout(row)
-            return rs, inp_min, inp_max
+            return rs, inp_min, inp_max, rst
 
-        self._slider_u, self.input_umin, self.input_umax = _make_uv_axis("U", invert=True)
-        self._slider_v, self.input_vmin_uv, self.input_vmax_uv = _make_uv_axis("V")
+        self._slider_u, self.input_umin, self.input_umax, self._rst_u = _make_uv_axis("U", invert=True)
+        self._slider_v, self.input_vmin_uv, self.input_vmax_uv, self._rst_v = _make_uv_axis("V")
+
+        rst_all_uv = QToolButton(); rst_all_uv.setText("↺  Reset all")
+        rst_all_uv.setEnabled(False)
+        def _reset_all_uv():
+            for f in (self.input_umin, self.input_umax,
+                      self.input_vmin_uv, self.input_vmax_uv):
+                f.setText("")
+            self._slider_u.set_values(self._slider_u._min, self._slider_u._max)
+            self._slider_v.set_values(self._slider_v._min, self._slider_v._max)
+            self._emit_uv_limits()
+        rst_all_uv.clicked.connect(_reset_all_uv)
+        self._rst_all_uv = rst_all_uv
+        row_rst = QHBoxLayout(); row_rst.addStretch(); row_rst.addWidget(rst_all_uv)
+        grid.addLayout(row_rst)
 
         _uv_sec.addWidget(self._uv_limit_box)
         layout.addWidget(self._uv_limits_section)
@@ -810,9 +872,9 @@ class ControlPanel(QDockWidget):
         self.input_vmax_uv.editingFinished.connect(_on_field_v)
 
         def _on_uv_toggle(checked):
-            self.chk_uv_limit.setText("ON" if checked else "OFF")
             for w in (self.input_umin, self.input_umax, self.input_vmin_uv, self.input_vmax_uv,
-                      self._slider_u, self._slider_v):
+                      self._slider_u, self._slider_v,
+                      self._rst_u, self._rst_v, self._rst_all_uv):
                 w.setEnabled(checked)
             self._emit_uv_limits()
 
@@ -832,10 +894,7 @@ class ControlPanel(QDockWidget):
         h_rad_hdr = QHBoxLayout()
         lbl_rad_lim = QLabel("Limite Radplot")
         lbl_rad_lim.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
-        self.chk_rad_limit = QPushButton("OFF")
-        self.chk_rad_limit.setCheckable(True)
-        self.chk_rad_limit.setChecked(False)
-        self.chk_rad_limit.setStyleSheet(toggle_style)
+        self.chk_rad_limit = ToggleSwitch()
         self.chk_rad_limit.setToolTip("Activer les limites manuelles du Radplot")
         h_rad_hdr.addWidget(lbl_rad_lim)
         h_rad_hdr.addStretch()
@@ -849,6 +908,7 @@ class ControlPanel(QDockWidget):
 
         _rad_sliders: list = []
         _rad_fields_list: list = []
+        _rad_rst_btns: list = []
 
         def _fmt_r(v: float) -> str:
             return f"{v:.2f}" if v != int(v) else str(int(v))
@@ -862,7 +922,7 @@ class ControlPanel(QDockWidget):
 
         def _make_rad_block(parent_layout, title: str, sl_min: float, sl_max: float,
                             tip_min: str, tip_max: str, invert: bool = False):
-            """Crée label + RangeSlider + champs min/max. Retourne (slider, inp_min, inp_max)."""
+            """Crée label + RangeSlider + champs min/max + reset. Retourne (slider, inp_min, inp_max, reset_btn)."""
             lbl = QLabel(title)
             lbl.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; font-weight: bold;")
             parent_layout.addWidget(lbl)
@@ -874,12 +934,24 @@ class ControlPanel(QDockWidget):
 
             row = QHBoxLayout(); row.setSpacing(4)
             la = QLabel("min"); la.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};"); la.setFixedWidth(24)
-            ia = QLineEdit(); ia.setPlaceholderText("auto"); ia.setStyleSheet(field_style); ia.setToolTip(tip_min); ia.setEnabled(False)
+            ia = QLineEdit(); ia.setPlaceholderText("—"); ia.setStyleSheet(field_style); ia.setToolTip(tip_min); ia.setEnabled(False)
             lb = QLabel("max"); lb.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS};"); lb.setFixedWidth(24)
-            ib = QLineEdit(); ib.setPlaceholderText("auto"); ib.setStyleSheet(field_style); ib.setToolTip(tip_max); ib.setEnabled(False)
+            ib = QLineEdit(); ib.setPlaceholderText("—"); ib.setStyleSheet(field_style); ib.setToolTip(tip_max); ib.setEnabled(False)
+
+            rst = QToolButton(); rst.setText("↺"); rst.setFixedWidth(32)
+            rst.setToolTip(f"Réinitialiser {title}")
+            rst.setEnabled(False)
+            rst.clicked.connect(lambda checked=False, _rs=rs, _a=ia, _b=ib: [
+                _a.setText(""), _b.setText(""),
+                _rs.set_values(_rs._min, _rs._max),
+                self._emit_rad_limits() if self.chk_rad_limit.isChecked() else None
+            ])
+
             row.addWidget(la); row.addWidget(ia); row.addSpacing(4); row.addWidget(lb); row.addWidget(ib)
+            row.addWidget(rst)
             parent_layout.addLayout(row)
             _rad_fields_list.extend([ia, ib])
+            _rad_rst_btns.append(rst)
 
             def _on_slider(lo, hi, _ia=ia, _ib=ib):
                 _ia.blockSignals(True); _ib.blockSignals(True)
@@ -898,25 +970,38 @@ class ControlPanel(QDockWidget):
             rs.range_changed.connect(_on_slider)
             ia.editingFinished.connect(_on_fields)
             ib.editingFinished.connect(_on_fields)
-            return rs, ia, ib
+            return rs, ia, ib, rst
 
         # ── UV Radius (toujours visible) ──────────────────────────
-        self._slider_rad_uv, self.input_rad_uvmin, self.input_rad_uvmax = _make_rad_block(
+        self._slider_rad_uv, self.input_rad_uvmin, self.input_rad_uvmax, _ = _make_rad_block(
             _rlb, "UV Radius (Mλ)", 0.0, 1000.0, "UV radius minimum (Mλ)", "UV radius maximum (Mλ)")
 
         # ── Amplitude (mode 1 ou 3) ───────────────────────────────
         self._rad_amp_box = QWidget()
         _amp_l = QVBoxLayout(self._rad_amp_box); _amp_l.setContentsMargins(0, 0, 0, 0); _amp_l.setSpacing(4)
-        self._slider_rad_amp, self.input_rad_ampmin, self.input_rad_ampmax = _make_rad_block(
+        self._slider_rad_amp, self.input_rad_ampmin, self.input_rad_ampmax, _ = _make_rad_block(
             _amp_l, "Amplitude (Jy)", 0.0, 2.0, "Amplitude minimum (Jy)", "Amplitude maximum (Jy)")
         _rlb.addWidget(self._rad_amp_box)
 
         # ── Phase (mode 2 ou 3) ───────────────────────────────────
         self._rad_phs_box = QWidget()
         _phs_l = QVBoxLayout(self._rad_phs_box); _phs_l.setContentsMargins(0, 0, 0, 0); _phs_l.setSpacing(4)
-        self._slider_rad_phs, self.input_rad_phsmin, self.input_rad_phsmax = _make_rad_block(
+        self._slider_rad_phs, self.input_rad_phsmin, self.input_rad_phsmax, _ = _make_rad_block(
             _phs_l, "Phase (°)", -180.0, 180.0, "Phase minimum (°)", "Phase maximum (°)")
         _rlb.addWidget(self._rad_phs_box)
+
+        rst_all_rad = QToolButton(); rst_all_rad.setText("↺  Reset all")
+        rst_all_rad.setEnabled(False)
+        def _reset_all_rad():
+            for f in _rad_fields_list:
+                f.setText("")
+            for rs in _rad_sliders:
+                rs.set_values(rs._min, rs._max)
+            self._emit_rad_limits()
+        rst_all_rad.clicked.connect(_reset_all_rad)
+        self._rst_all_rad = rst_all_rad
+        row_rst_rad = QHBoxLayout(); row_rst_rad.addStretch(); row_rst_rad.addWidget(rst_all_rad)
+        _rlb.addLayout(row_rst_rad)
 
         _rad_sec.addWidget(self._rad_limit_box)
         layout.addWidget(self._rad_limits_section)
@@ -943,11 +1028,13 @@ class ControlPanel(QDockWidget):
         _sync_rad_boxes()
 
         def _on_rad_toggle(checked):
-            self.chk_rad_limit.setText("ON" if checked else "OFF")
             for w in _rad_fields_list:
                 w.setEnabled(checked)
             for rs in _rad_sliders:
                 rs.setEnabled(checked)
+            for rb in _rad_rst_btns:
+                rb.setEnabled(checked)
+            self._rst_all_rad.setEnabled(checked)
             self._emit_rad_limits()
 
         self.chk_rad_limit.toggled.connect(_on_rad_toggle)
@@ -987,7 +1074,7 @@ class ControlPanel(QDockWidget):
         lbl_size.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
         lbl_size.setFixedWidth(52)
         self.lbl_slider_size = lbl_size
-        self.lbl_slider_size_val = QLabel("5 %")
+        self.lbl_slider_size_val = QLabel("40 %")
         self.lbl_slider_size_val.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
         self.lbl_slider_size_val.setAlignment(Qt.AlignmentFlag.AlignRight)
         h_size.addWidget(lbl_size)
@@ -997,7 +1084,7 @@ class ControlPanel(QDockWidget):
         self.slider_size = QSlider(Qt.Orientation.Horizontal)
         self.slider_size.setMinimum(1)
         self.slider_size.setMaximum(100)
-        self.slider_size.setValue(5)
+        self.slider_size.setValue(40)
         self.slider_size.setToolTip("Marker size (1–100 %)")
         self.slider_size.valueChanged.connect(
             lambda v: self.lbl_slider_size_val.setText(f"{v} %")
@@ -1126,41 +1213,10 @@ class ControlPanel(QDockWidget):
         h_grid.addStretch()
         ip.addLayout(h_grid)
 
-        h_uvf_hdr = QHBoxLayout(); h_uvf_hdr.setSpacing(6)
-        lbl_uvf = QLabel("UV Filtering")
-        lbl_uvf.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
-        self.chk_uv_filter = QPushButton("OFF")
-        self.chk_uv_filter.setCheckable(True); self.chk_uv_filter.setChecked(False)
-        self.chk_uv_filter.setStyleSheet(toggle_style)
-        self.chk_uv_filter.setToolTip("Activer le filtre de plage UV (uvrange) en Mλ")
-        h_uvf_hdr.addWidget(lbl_uvf); h_uvf_hdr.addStretch(); h_uvf_hdr.addWidget(self.chk_uv_filter)
-        ip.addLayout(h_uvf_hdr)
-
-        self._uv_filter_box = QWidget()
-        h_uvf = QHBoxLayout(self._uv_filter_box)
-        h_uvf.setContentsMargins(0, 0, 0, 0); h_uvf.setSpacing(6)
-        lbl_uvfmin = QLabel("UV min (Mλ)"); lbl_uvfmin.setFixedWidth(64)
-        self.input_uvfilter_min = QLineEdit(); self.input_uvfilter_min.setPlaceholderText("0")
-        self.input_uvfilter_min.setStyleSheet(field_s); self.input_uvfilter_min.setEnabled(False)
-        self.input_uvfilter_min.setToolTip(
-            "Rayon UV minimum en Méga-lambdas\n"
-            "Correspond au 1er argument de la commande uvrange de Difmap"
-        )
-        lbl_uvfmax = QLabel("UV max (Mλ)"); lbl_uvfmax.setFixedWidth(64)
-        self.input_uvfilter_max = QLineEdit(); self.input_uvfilter_max.setPlaceholderText("0")
-        self.input_uvfilter_max.setStyleSheet(field_s); self.input_uvfilter_max.setEnabled(False)
-        self.input_uvfilter_max.setToolTip(
-            "Rayon UV maximum en Méga-lambdas\n"
-            "Correspond au 2e argument de la commande uvrange de Difmap"
-        )
-        h_uvf.addWidget(lbl_uvfmin); h_uvf.addWidget(self.input_uvfilter_min)
-        h_uvf.addWidget(lbl_uvfmax); h_uvf.addWidget(self.input_uvfilter_max)
-        ip.addWidget(self._uv_filter_box)
-
         h_wt = QHBoxLayout(); h_wt.setSpacing(6)
         h_wt.addWidget(QLabel("Weighting:"))
         self.combo_weight = QComboBox()
-        self.combo_weight.addItems(["Uniform", "Natural", "Custom"])
+        self.combo_weight.addItems(["Uniform  (bin=2, err=0)", "Natural  (bin=0, err=−2)", "Custom"])
         self.combo_weight.setToolTip(
             "Pondération des visibilités UV (commande uvweight de Difmap)\n"
             "  Uniform  : uvweight 2,0   (résolution maximale — défaut Difmap)\n"
@@ -1186,8 +1242,37 @@ class ControlPanel(QDockWidget):
         self.custom_weight_widget.setVisible(False)
         ip.addWidget(self.custom_weight_widget)
         self.combo_weight.currentTextChanged.connect(
-            lambda t: self.custom_weight_widget.setVisible(t == "Custom")
+            lambda t: self.custom_weight_widget.setVisible(t.startswith("Custom"))
         )
+
+        h_uvf_hdr = QHBoxLayout(); h_uvf_hdr.setSpacing(6)
+        lbl_uvf = QLabel("UV Filtering")
+        lbl_uvf.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
+        self.chk_uv_filter = ToggleSwitch()
+        self.chk_uv_filter.setToolTip("Activer le filtre de plage UV (uvrange) en Mλ")
+        h_uvf_hdr.addWidget(lbl_uvf); h_uvf_hdr.addStretch(); h_uvf_hdr.addWidget(self.chk_uv_filter)
+        ip.addLayout(h_uvf_hdr)
+
+        self._uv_filter_box = QWidget()
+        h_uvf = QHBoxLayout(self._uv_filter_box)
+        h_uvf.setContentsMargins(0, 0, 0, 0); h_uvf.setSpacing(6)
+        lbl_uvfmin = QLabel("UV min (Mλ)"); lbl_uvfmin.setFixedWidth(64)
+        self.input_uvfilter_min = QLineEdit(); self.input_uvfilter_min.setPlaceholderText("0")
+        self.input_uvfilter_min.setStyleSheet(field_s); self.input_uvfilter_min.setEnabled(False)
+        self.input_uvfilter_min.setToolTip(
+            "Rayon UV minimum en Méga-lambdas\n"
+            "Correspond au 1er argument de la commande uvrange de Difmap"
+        )
+        lbl_uvfmax = QLabel("UV max (Mλ)"); lbl_uvfmax.setFixedWidth(64)
+        self.input_uvfilter_max = QLineEdit(); self.input_uvfilter_max.setPlaceholderText("0")
+        self.input_uvfilter_max.setStyleSheet(field_s); self.input_uvfilter_max.setEnabled(False)
+        self.input_uvfilter_max.setToolTip(
+            "Rayon UV maximum en Méga-lambdas\n"
+            "Correspond au 2e argument de la commande uvrange de Difmap"
+        )
+        h_uvf.addWidget(lbl_uvfmin); h_uvf.addWidget(self.input_uvfilter_min)
+        h_uvf.addWidget(lbl_uvfmax); h_uvf.addWidget(self.input_uvfilter_max)
+        ip.addWidget(self._uv_filter_box)
 
         lbl_taper_hdr = QLabel("Taper gaussien")
         lbl_taper_hdr.setStyleSheet(f"color: {D.ASTRAL_TEXT}; font-size: {D.FONT_SIZE_BASE}; font-weight: 600;")
@@ -1387,14 +1472,14 @@ class ControlPanel(QDockWidget):
 
         # ── Show Windows — visible uniquement sous CLEAN ──────────
         cc.addWidget(self._thin_sep())
-        self.chk_show_windows = QCheckBox("Show Windows  [W]")
+        self.chk_show_windows = LabeledToggle("Show Windows  [W]")
         self.chk_show_windows.setChecked(True)
         self.chk_show_windows.setToolTip(
             "Afficher les rectangles des fenêtres CLEAN sur la carte résiduelle"
         )
         cc.addWidget(self.chk_show_windows)
 
-        self.chk_show_model_map = QCheckBox("Show Model Components  [M]")
+        self.chk_show_model_map = LabeledToggle("Show Model Components  [M]")
         self.chk_show_model_map.setToolTip("Afficher les composantes CLEAN sur la carte")
         self.chk_show_model_map.setChecked(False)
         cc.addWidget(self.chk_show_model_map)
@@ -1415,35 +1500,37 @@ class ControlPanel(QDockWidget):
         )
         sc.addWidget(self.lbl_selfcal_status)
 
-        def _cmd_frame(cmd_name: str) -> tuple:
-            """Retourne (frame, inner_layout) avec un header monospace cmd_name."""
-            frame = QFrame()
-            frame.setStyleSheet(f"""
-                QFrame {{
+        def _cmd_frame(cmd_name: str, start_open: bool = True) -> tuple:
+            """Retourne (CollapsibleSection, inner_layout) avec header monospace cmd_name."""
+            sec = CollapsibleSection(cmd_name)
+            sec.toggle_button.setStyleSheet(f"""
+                QPushButton {{
                     background-color: {D.ASTRAL_DEEPEST};
+                    color: {D.ASTRAL_ACCENT};
                     border: 1px solid {D.ASTRAL_BORDER};
                     border-left: 3px solid {D.ASTRAL_ACCENT};
                     border-radius: 4px;
+                    padding: 6px 9px;
+                    text-align: left;
+                    font-family: monospace;
+                    font-size: {D.FONT_SIZE_XS};
+                    font-weight: bold;
+                    letter-spacing: 1px;
+                }}
+                QPushButton:hover {{ background-color: {D.ASTRAL_HOVER}; }}
+                QPushButton:checked {{
+                    border-bottom-left-radius: 0px;
+                    border-bottom-right-radius: 0px;
                 }}
             """)
-            vbox = QVBoxLayout(frame)
-            vbox.setContentsMargins(8, 6, 8, 6)
-            vbox.setSpacing(5)
-            lbl = QLabel(cmd_name)
-            lbl.setStyleSheet(f"""
-                color: {D.ASTRAL_ACCENT};
-                font-family: monospace;
-                font-size: {D.FONT_SIZE_XS};
-                font-weight: bold;
-                letter-spacing: 1px;
-                background: transparent;
-                border: none;
-            """)
-            vbox.addWidget(lbl)
-            return frame, vbox
+            sec.toggle_button.setChecked(start_open)
+            sec.content_area.setVisible(start_open)
+            arrow = "▼" if start_open else "▶"
+            sec.toggle_button.setText(f"{arrow}  {cmd_name}")
+            return sec, sec.content_layout
 
         # ── selfcal : doamp, dofloat, solint ─────────────────────
-        frm_sc, vsc = _cmd_frame("selfcal")
+        frm_sc, vsc = _cmd_frame("selfcal", start_open=True)
 
         h_mode = QHBoxLayout(); h_mode.setSpacing(6)
         lbl_doamp = QLabel("doamp")
@@ -1467,7 +1554,11 @@ class ControlPanel(QDockWidget):
         self.input_sc_solint.setToolTip("Intervalle de solution en minutes — 0 = une solution par intégration")
         lbl_solint_unit = QLabel("min")
         lbl_solint_unit.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;")
-        self.chk_sc_float_amp = QCheckBox("dofloat")
+        lbl_dofloat = QLabel("dofloat")
+        lbl_dofloat.setStyleSheet(
+            f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;"
+        )
+        self.chk_sc_float_amp = ToggleSwitch()
         self.chk_sc_float_amp.setToolTip(
             "Corrections d'amplitude non contraintes (flottantes)\n"
             "Disponible uniquement en mode Amplitude + Phase"
@@ -1488,17 +1579,23 @@ class ControlPanel(QDockWidget):
         h_sol_float.addWidget(self.input_sc_solint)
         h_sol_float.addWidget(lbl_solint_unit)
         h_sol_float.addStretch()
+        h_sol_float.addWidget(lbl_dofloat)
         h_sol_float.addWidget(self.chk_sc_float_amp)
         vsc.addLayout(h_sol_float)
         sc.addWidget(frm_sc)
 
         # ── selfflag : doflag, p_mintel, a_mintel ────────────────
-        frm_sf, vsf = _cmd_frame("selfflag")
+        frm_sf, vsf = _cmd_frame("selfflag", start_open=False)
 
         h_doflag = QHBoxLayout(); h_doflag.setSpacing(6)
-        self.chk_sc_doflag = QCheckBox("doflag")
+        lbl_doflag_text = QLabel("doflag")
+        lbl_doflag_text.setStyleSheet(
+            f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;"
+        )
+        self.chk_sc_doflag = ToggleSwitch()
         self.chk_sc_doflag.setChecked(True)
         self.chk_sc_doflag.setToolTip("Flaguer automatiquement les solutions jugées mauvaises")
+        h_doflag.addWidget(lbl_doflag_text)
         h_doflag.addWidget(self.chk_sc_doflag)
         h_doflag.addStretch()
         vsf.addLayout(h_doflag)
@@ -1534,7 +1631,7 @@ class ControlPanel(QDockWidget):
         sc.addWidget(frm_sf)
 
         # ── selflims : maxphs, maxamp, clip ───────────────────────
-        frm_sl, vsl = _cmd_frame("selflims")
+        frm_sl, vsl = _cmd_frame("selflims", start_open=False)
 
         h_lims = QHBoxLayout(); h_lims.setSpacing(8)
         lbl_maxphs = QLabel("maxphs (°)")
@@ -1561,18 +1658,23 @@ class ControlPanel(QDockWidget):
         vsl.addLayout(h_lims)
 
         h_clip = QHBoxLayout(); h_clip.setSpacing(6)
-        self.chk_sc_clip = QCheckBox("clip")
+        lbl_clip_text = QLabel("clip")
+        lbl_clip_text.setStyleSheet(
+            f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; background: transparent; border: none;"
+        )
+        self.chk_sc_clip = ToggleSwitch()
         self.chk_sc_clip.setToolTip(
             "Clipper les solutions hors limites (maxphs / maxamp)\n"
             "Actif uniquement si maxphs > 0 ou maxamp > 0"
         )
+        h_clip.addWidget(lbl_clip_text)
         h_clip.addWidget(self.chk_sc_clip)
         h_clip.addStretch()
         vsl.addLayout(h_clip)
         sc.addWidget(frm_sl)
 
         # ── selftaper : gauval, gaurad ────────────────────────────
-        frm_st, vst = _cmd_frame("selftaper")
+        frm_st, vst = _cmd_frame("selftaper", start_open=False)
         lbl_st_hint = QLabel("Taper UV pour selfcal uniquement — n'affecte pas la carte")
         lbl_st_hint.setStyleSheet(f"color: {D.ASTRAL_DIM}; font-size: {D.FONT_SIZE_XS}; font-style: italic; background: transparent; border: none;")
         lbl_st_hint.setWordWrap(True)
@@ -1728,7 +1830,6 @@ class ControlPanel(QDockWidget):
 
         # ── Connexions internes ───────────────────────────────────
         def _on_uvf_toggle(checked):
-            self.chk_uv_filter.setText("ON" if checked else "OFF")
             for w in (self.input_uvfilter_min, self.input_uvfilter_max):
                 w.setEnabled(checked)
 
